@@ -159,7 +159,7 @@ db.documents.createIndex({ topicId: 1 });
 db.documents.createIndex({ department: 1 });
 ```
 
-> ⚠️ `home` 다이제스트/커버리지 지표는 **집계 결과**이므로 별도 컬렉션을 두지 않고 Phase 1의 `/api/home/digest`에서 `review_items`/`documents`/`activity_log`를 roll-up 한다(일부 정적 지표는 시드 상수).
+> ⚠️ `home` 다이제스트 지표는 **집계 결과**이므로 별도 컬렉션을 두지 않고 Phase 1의 `/api/home/digest`에서 `review_items`/`documents`/`activity_log`를 roll-up 한다(일부 정적 지표는 시드 상수).
 
 ---
 

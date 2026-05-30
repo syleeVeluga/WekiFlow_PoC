@@ -1,9 +1,9 @@
-# 15. 프론트엔드 UI — V WIKI 디자인 단계별 적용 (개요 & 인덱스)
+# 15. 프론트엔드 UI — WikiFlow 디자인 단계별 적용 (개요 & 인덱스)
 
-> PRD 🚩 Frontend UI: *V WIKI 정적 목업(`docs/Design Reference/v-wiki.html`)을 풀스택으로 구현 — 데이터 계약 → API → 화면.*
-> *Bring the V WIKI mockup to life across 5+1 UI areas: data model, API, then screens.*
+> PRD 🚩 Frontend UI: *WikiFlow 정적 목업(`docs/Design Reference/v-wiki.html`)을 풀스택으로 구현 — 데이터 계약 → API → 화면.*
+> *Bring the WikiFlow mockup to life across 5+1 UI areas: data model, API, then screens.*
 
-이 폴더는 디자인 레퍼런스(`docs/Design Reference/v-wiki.html`, 2720줄, "V WIKI — 회사의 기억을 운영하는 AI")의 **사용자 시나리오·레이아웃·스타일**을 기준으로 **LNB·홈·검토·조직 지식·문서 트리 + 단일 문서 화면**을 구현하기 위한 **단계별 기능 적용 계획**이다. 각 Phase 문서는 기존 `docs/NN-phase-N-*.md` house style을 따르며, **완료 기준(DoD) 게이트**로 다음 단계를 연다.
+이 폴더는 디자인 레퍼런스(`docs/Design Reference/v-wiki.html`, 2720줄, "WikiFlow — 회사의 기억을 운영하는 AI")의 **사용자 시나리오·레이아웃·스타일**을 기준으로 **LNB·홈·검토·조직 지식·문서 트리 + 단일 문서 화면**을 구현하기 위한 **단계별 기능 적용 계획**이다. 각 Phase 문서는 기존 `docs/NN-phase-N-*.md` house style을 따르며, **완료 기준(DoD) 게이트**로 다음 단계를 연다.
 
 ---
 
@@ -71,7 +71,7 @@
 | 영역 | (A) 가용 | (B) 파생 | (C) 신규 생산 |
 | :--- | :--- | :--- | :--- |
 | LNB | nav 라우팅, 사용자/역할 | 조직지식 badge(=published 수) | 검토 badge(검토수+멀티소스), 워크스페이스(부서) |
-| 홈 | — | — | 상태바 지표, 다이제스트, 자동처리율, 커버리지, 최근활동 |
+| 홈 | — | — | 상태바 지표, 다이제스트, 자동처리율, 최근활동 |
 | 검토 | (문서 제목·본문 연결) | dp(작성자→부서), ex.content(본문 슬라이스) | pri·ct·t·thread·reason·멀티소스·소스권위 |
 | 조직 지식 | id·tp(title)·full(본문) | pv(요약)·by(작성자)·dt(날짜)·upd(version−1) | dp·cat·status(freshness)·uses·aiTags·AI태그제안·ori/chg |
 | 문서 트리 | 실 트리 구조(seam) | 업데이트 점(version>1) | 카테고리 그룹핑·카운트 |

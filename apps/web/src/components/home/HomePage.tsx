@@ -1,6 +1,5 @@
 import { useDigest, useActivity } from '../../data/hooks.js';
 import { useUiStore } from '../../store.js';
-import { Avatar } from '../common/Primitives.js';
 
 export function HomePage() {
   const { data } = useDigest();
@@ -10,12 +9,12 @@ export function HomePage() {
   const setReviewTab = useUiStore((s) => s.setReviewTab);
   if (!data) return <div className="pg">Loading</div>;
   const metrics = [
-    ['정상 운영', 'OK'],
-    ['Slack', '12채널'],
-    ['실패', data.metrics.failedCount],
-    ['검토 대기', data.metrics.pendingReview],
-    ['자동 처리', data.metrics.autoAppliedCount],
-    ['미답변', data.metrics.unansweredCount],
+    { label: '정상 운영 중', status: true },
+    { label: '오늘 신규', value: data.metrics.todayNewCount, unit: '건', tone: 'ok' },
+    { label: '오늘 분석', value: data.metrics.analysisCount, unit: '개 메시지' },
+    { label: '추출 주제', value: data.metrics.extractedCount },
+    { label: '검토 대기', value: data.metrics.pendingReview, tone: 'warn', onClick: () => go('review') },
+    { label: '자동 처리', value: data.metrics.autoAppliedCount, unit: '건 처리됨' },
   ];
   const recentAutoApplied = data.sections
     .flatMap((section) => section.entities)
@@ -23,13 +22,23 @@ export function HomePage() {
     .slice(0, 4);
   return (
     <section className="pg home-wrap">
-      <div className="home-hero"><div className="eyebrow">조직의 운영 기억</div><h1>안녕하세요, 이지수님</h1><p>{data.dateLabel} · V WIKI가 오늘 새로 배운 운영 지식을 정리했습니다.</p></div>
+      <div className="home-hero"><div className="eyebrow">조직의 운영 기억</div><h1>안녕하세요, 이지수님</h1><p>{data.dateLabel} · WikiFlow가 오늘 새로 배운 운영 지식을 정리했습니다.</p></div>
       <div className="statusbar">
-        {metrics.map(([label, value]) => (
-          <button key={label} className="hsb-item clickable" type="button" onClick={() => label === '검토 대기' && go('review')}>
-            <span className="hsb-label">{label}</span><span className="hsb-num">{value}</span>
-          </button>
-        ))}
+        {metrics.map((metric) => {
+          const content = (
+            <>
+              {metric.status ? <span className="hsb-dot" /> : null}
+              <span className="hsb-label">{metric.label}</span>
+              {'value' in metric ? <span className={`hsb-num ${metric.tone ? `tone-${metric.tone}` : ''}`}>{metric.value}</span> : null}
+              {'unit' in metric ? <span className="hsb-unit">{metric.unit}</span> : null}
+            </>
+          );
+          return metric.onClick ? (
+            <button key={metric.label} className="hsb-item clickable" type="button" onClick={metric.onClick}>{content}</button>
+          ) : (
+            <div key={metric.label} className={`hsb-item ${metric.status ? 'is-status' : ''}`}>{content}</div>
+          );
+        })}
       </div>
       <div className="digest-grid">
         <div className="card">
@@ -65,7 +74,6 @@ export function HomePage() {
             </div>
           </div>
           <div className="card"><h3>가장 많이 언급된 주제 <button className="btn-ghost" onClick={() => go('review')}>답변하기</button></h3><div className="widget-list">{data.mostAsked.map((m) => <div key={m.key}><b>{m.label}</b> {m.flag && <span className="badge badge-warn">{m.flag}</span>}<div className="bar"><span style={{ width: `${Math.min(100, m.count * 2)}%` }} /></div></div>)}</div></div>
-          <div className="card"><h3>담당자별 커버리지 <button className="btn-ghost" onClick={() => go('kb')}>전체 보기</button></h3><div className="widget-list">{data.coverage.map((c) => <div key={c.key}><Avatar name={c.label} /> <b>{c.label}</b> <span>{c.role}</span><span className={`badge badge-${c.tone ?? 'neutral'}`}>{c.flag}</span><div className="bar"><span style={{ width: `${Math.min(100, c.count * 3)}%` }} /></div></div>)}</div></div>
           <div className="card"><h3>최근 활동</h3>{activity.map((a) => <button className="filter-row" key={a.id} type="button" onClick={() => go('history')}><span>{a.actorLabel} · {a.targetTitle}</span><small>{a.time}</small></button>)}</div>
         </div>
       </div>

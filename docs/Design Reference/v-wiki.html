@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>V WIKI — 회사의 기억을 운영하는 AI</title>
+<title>WikiFlow — 회사의 기억을 운영하는 AI</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -948,7 +948,7 @@ body{font-family:var(--ff);background:var(--surface);color:var(--ink);display:fl
         <div class="home-hero">
           <div class="home-eyebrow">조직의 운영 기억</div>
           <h1 class="home-title">안녕하세요, 이지수님</h1>
-          <p class="home-subtitle">이지수 총무팀장 · 2026년 5월 29일 금요일 · V WIKI가 실시간으로 조직 지식을 관리하고 있습니다.</p>
+          <p class="home-subtitle">이지수 총무팀장 · 2026년 5월 29일 금요일 · WikiFlow가 실시간으로 조직 지식을 관리하고 있습니다.</p>
         </div>
 
         <!-- Status bar -->
@@ -1570,10 +1570,10 @@ function renderHome(){
     <div class="hsb-item hsb-live"><span class="hsb-live-dot"></span>정상 운영 중</div>
     <div class="hsb-item"><span class="hsb-label">Slack</span><span class="hsb-num">12</span><span class="hsb-label">채널</span></div>
     <div class="hsb-item"><span class="hsb-label">오늘 분석</span><span class="hsb-num">347</span><span class="hsb-label">개 메시지</span></div>
-    <div class="hsb-item"><span class="hsb-label">추출됨</span><span class="hsb-num">23</span></div>
+    <div class="hsb-item"><span class="hsb-label">추출 주제</span><span class="hsb-num">23</span></div>
     <div class="hsb-item clickable" onclick="go('review')"><span class="hsb-label">검토 대기</span><span class="hsb-num" style="color:var(--orange)">${RV_ALL.filter(notDone).length+msGroups.length}</span></div>
     <div class="hsb-item"><span class="hsb-label">자동 처리</span><span class="hsb-num">20</span><span class="hsb-label">건 처리됨</span></div>
-    <div class="hsb-item"><span class="hsb-label">미답변 질문</span><span class="hsb-num" style="color:var(--pink)">5</span></div>`;
+    `;
   $('nav-review-badge').textContent=RV_ALL.filter(notDone).length+msGroups.length;
 
   /* daily digest */
@@ -2372,7 +2372,7 @@ function renderWizard(){
 
   let body='';
   if(wizStep===1){
-    body=`<div class="wiz-panel"><div class="wiz-panel-title">${wizSource.name} 계정 인증</div><div class="wiz-panel-sub">V WIKI가 ${wizSource.name}의 지정된 채널을 읽을 수 있도록 권한을 부여합니다. 읽기 전용이며, 메시지를 발송하거나 삭제하지 않습니다.</div>
+    body=`<div class="wiz-panel"><div class="wiz-panel-title">${wizSource.name} 계정 인증</div><div class="wiz-panel-sub">WikiFlow가 ${wizSource.name}의 지정된 채널을 읽을 수 있도록 권한을 부여합니다. 읽기 전용이며, 메시지를 발송하거나 삭제하지 않습니다.</div>
       <div style="background:var(--surface-soft);border:1px solid var(--hairline);border-radius:var(--r-md);padding:18px;display:flex;align-items:center;gap:14px">
         <div class="src-icon" style="background:var(--surface);font-size:22px;width:48px;height:48px">${wizSource.icon}</div>
         <div style="flex:1"><div style="font-size:14px;font-weight:600;color:var(--ink);margin-bottom:3px">${wizSource.name} 워크스페이스 연결</div><div style="font-size:12px;color:var(--steel)">OAuth 인증으로 안전하게 연결됩니다</div></div>
@@ -2396,7 +2396,7 @@ function renderWizard(){
   }else{
     const chs=WIZ_CHANNELS[wizSource.id]||[];
     const selNames=chs.filter(c=>wizChannels.includes(c.id)).map(c=>c.name).join(', ')||'(선택 안 함)';
-    body=`<div class="wiz-panel"><div class="wiz-done"><div class="wiz-done-ic">✓</div><div class="wiz-done-title">${wizSource.name} 연결 완료</div><div class="wiz-done-sub">이제 V WIKI가 선택한 채널의 변화를 자동으로 감지합니다.</div>
+    body=`<div class="wiz-panel"><div class="wiz-done"><div class="wiz-done-ic">✓</div><div class="wiz-done-title">${wizSource.name} 연결 완료</div><div class="wiz-done-sub">이제 WikiFlow가 선택한 채널의 변화를 자동으로 감지합니다.</div>
       <div class="wiz-summary">
         <div class="wiz-summary-row"><span class="wk">소스</span><span class="wv">${wizSource.icon} ${wizSource.name}</span></div>
         <div class="wiz-summary-row"><span class="wk">수집 채널</span><span class="wv">${wizChannels.length}개</span></div>

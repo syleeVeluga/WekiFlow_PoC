@@ -37,7 +37,7 @@ export function createSeedKnowledgeItems(): KnowledgeItem[] {
       documentId: `doc-k${String(n).padStart(2, '0')}`,
       title,
       summary: `${department}에서 자주 묻는 ${category} 기준과 처리 절차입니다.`,
-      contentMarkdown: `# ${title}\n\n■ 핵심 기준\n- 담당 부서: ${department}\n- 적용 범위: 전사 공통 운영\n\n■ 처리 절차\n① 요청 내용을 확인한다.\n② 담당자가 기준을 검토한다.\n③ 승인 후 V WIKI에 반영한다.`,
+      contentMarkdown: `# ${title}\n\n■ 핵심 기준\n- 담당 부서: ${department}\n- 적용 범위: 전사 공통 운영\n\n■ 처리 절차\n① 요청 내용을 확인한다.\n② 담당자가 기준을 검토한다.\n③ 승인 후 WikiFlow에 반영한다.`,
       department,
       category,
       freshness,
@@ -260,11 +260,11 @@ export function createSeedDigest(pendingReview: number): DailyDigest {
     ],
     metrics: {
       pendingReview,
+      todayNewCount: 4,
       failedCount: 2,
       analysisCount: 347,
       extractedCount: 23,
       autoAppliedCount: 20,
-      unansweredCount: 5,
       autoProcessingRate: 43,
     },
     mostAsked: [
@@ -272,12 +272,6 @@ export function createSeedDigest(pendingReview: number): DailyDigest {
       { key: 'health', label: '건강검진', count: 28, flag: '충돌' },
       { key: 'travel', label: '출장', count: 24 },
       { key: 'office', label: '회의실', count: 18 },
-    ],
-    coverage: [
-      { key: '이지수', label: '이지수', count: 31, role: '총무팀장', tone: 'ok', flag: '양호' },
-      { key: '박민지', label: '박민지', count: 24, role: 'HR', tone: 'warn', flag: '보강 필요' },
-      { key: '김도윤', label: '김도윤', count: 16, role: 'IT', tone: 'ok', flag: '양호' },
-      { key: '미배정', label: '미배정', count: 11, role: '담당자 없음', tone: 'error', flag: '미배정 多' },
     ],
   };
 }

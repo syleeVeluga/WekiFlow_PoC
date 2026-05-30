@@ -204,15 +204,14 @@ export const DailyDigestSchema = z.object({
   sections: z.array(DigestSectionSchema),
   metrics: z.object({
     pendingReview: z.number().int().nonnegative(),
+    todayNewCount: z.number().int().nonnegative(),
     failedCount: z.number().int().nonnegative(),
     analysisCount: z.number().int().nonnegative(),
     extractedCount: z.number().int().nonnegative(),
     autoAppliedCount: z.number().int().nonnegative(),
-    unansweredCount: z.number().int().nonnegative(),
     autoProcessingRate: z.number().int().min(0).max(100),
   }),
   mostAsked: z.array(CoverageStatSchema),
-  coverage: z.array(CoverageStatSchema),
 });
 export type DailyDigest = z.infer<typeof DailyDigestSchema>;
 

@@ -14,7 +14,7 @@ Evidence:
 - `corepack pnpm --filter @wf/db ensure-indexes` passed.
 - `corepack pnpm seed:wiki` was run twice with stable counts: 88 documents, 8 topics, 3 review items, 4 multisource groups, 2 AI tag suggestions, 5 activity entries.
 - API smoke: `/api/knowledge` returned 88 items and `/api/home/digest` returned 7 pending review items.
-- Browser smoke: V WIKI shell, review detail panel, knowledge page, and tree-to-document flow rendered without console errors.
+- Browser smoke: WikiFlow shell, review detail panel, knowledge page, and tree-to-document flow rendered without console errors.
 
 Codex autonomy settings checked:
 

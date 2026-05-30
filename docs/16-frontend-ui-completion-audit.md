@@ -10,7 +10,7 @@ Scope: `docs/15-frontend-ui/00-README.md` and Phase 0-6 documents.
 | --- | --- | --- |
 | Phase 0 data model | Done | `packages/shared/src/wiki/*`, `packages/db/src/ensureIndexes.ts`, `scripts/seed-wiki.ts` |
 | Phase 1 API | Done | Wiki store methods and routes in `apps/api/src/store.ts`, `apps/api/src/mongoStore.ts`, `apps/api/src/server.ts` |
-| Phase 2 frontend foundation | Done | V WIKI shell in `apps/web/src/App.tsx`, Zustand slices, data hooks, design token CSS |
+| Phase 2 frontend foundation | Done | WikiFlow shell in `apps/web/src/App.tsx`, Zustand slices, data hooks, design token CSS |
 | Phase 3 LNB tree | Done | `apps/web/src/components/lnb/*`, live badges, category tree, doc open/category open flow |
 | Phase 4 home | Done | `apps/web/src/components/home/HomePage.tsx`, digest/status/widgets/activity |
 | Phase 5 org knowledge | Done | `apps/web/src/components/kb/KbPage.tsx`, `apps/web/src/components/doc/DocPage.tsx`, AI tag/category modals |
@@ -41,7 +41,7 @@ GET http://localhost:5173 -> 200
 Browser checks:
 
 ```text
-Home shell rendered with V WIKI navigation.
+Home shell rendered with WikiFlow navigation.
 Review page rendered and review detail panel opened.
 Knowledge page rendered from LNB navigation.
 Tree document click opened a document page.

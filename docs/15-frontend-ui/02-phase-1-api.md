@@ -29,7 +29,7 @@ export interface WekiFlowStore {
   resolveMultiSource(id: string, body: MsResolveBody, role: UserRole): Promise<ApproveResult>;
   splitMultiSource(id: string): Promise<{ ok: boolean }>;
   requestConfirmMultiSource(id: string): Promise<{ ok: boolean }>;
-  homeDigest(): Promise<DailyDigest & { metrics; coverage; mostAsked }>;
+  homeDigest(): Promise<DailyDigest & { metrics; mostAsked }>;
   listActivity(limit?: number): Promise<ActivityEntry[]>;
   treeCategories(): Promise<TreeCategory[]>;   // 카테고리→문서 그룹핑
 }
@@ -53,7 +53,7 @@ export interface WekiFlowStore {
 | `GET` | `/api/ai-tag-suggestions` | AI 태그 제안(pending) | KB 배너·모달 |
 | `GET` | `/api/reviews/rich` | 검토 항목(우선순위·확실성·thread 포함) | 검토 카드/패널 |
 | `GET` | `/api/multi-source` | 멀티소스 그룹 | 검토 멀티소스 |
-| `GET` | `/api/home/digest` | 다이제스트+상태바 지표+커버리지+가장많이언급된주제 | 홈 |
+| `GET` | `/api/home/digest` | 다이제스트+상태바 지표+가장많이언급된주제 | 홈 |
 | `GET` | `/api/activity?limit=5` | 최근 활동 | 홈·(변경 이력 seam) |
 | `GET` | `/api/tree/categories` | 카테고리→문서 그룹핑(트리용) | LNB 문서 트리 |
 
@@ -108,7 +108,7 @@ app.post('/api/reviews/:id/approve', async (request, reply) => {
 ```ts
 // homeDigest(): 원천 데이터 집계
 // - pendingReview = review_items.count({resolved:false}) + multi_source_groups.count({resolved:false})
-// - mostAsked / coverage = documents 그룹 집계(부서·작성자별 count) + 시드 상수(검색 빈도 등)
+// - mostAsked = documents 그룹 집계(부서·작성자별 count) + 시드 상수(검색 빈도 등)
 // - sections(충돌/신규/업데이트) = review_items에서 changeType별 상위 N + 연결 documentId
 ```
 

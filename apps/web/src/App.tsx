@@ -12,7 +12,7 @@ const queryClient = new QueryClient();
 function StubPage({ title }: { title: string }) {
   return (
     <section className="page">
-      <p className="eyebrow">V WIKI</p>
+      <p className="eyebrow">WikiFlow</p>
       <h1>{title}</h1>
       <div className="empty">이 영역은 현재 Phase 범위 밖의 내비게이션 스텁입니다.</div>
     </section>
