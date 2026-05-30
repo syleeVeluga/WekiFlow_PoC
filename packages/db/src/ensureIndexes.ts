@@ -7,6 +7,9 @@ export async function ensureIndexes(db: Db): Promise<void> {
     db.collection('documents').createIndex({ parentId: 1 }),
     db.collection('documents').createIndex({ status: 1 }),
     db.collection('documents').createIndex({ slug: 1 }, { unique: true }),
+    db.collection('documents').createIndex({ topicId: 1 }),
+    db.collection('documents').createIndex({ department: 1 }),
+    db.collection('documents').createIndex({ freshness: 1 }),
     db.collection('chunks').createIndex({ documentId: 1, chunkIndex: 1 }, { unique: true }),
     db.collection('kg_nodes').createIndex({ normalizedName: 1 }, { unique: true }),
     db.collection('kg_nodes').createIndex({ type: 1 }),
@@ -22,6 +25,12 @@ export async function ensureIndexes(db: Db): Promise<void> {
     db.collection('users').createIndex({ email: 1 }, { unique: true }),
     db.collection('sandbox_runs').createIndex({ jobId: 1 }),
     db.collection('sandbox_runs').createIndex({ createdAt: 1 }),
+    db.collection('topics').createIndex({ name: 1 }, { unique: true }),
+    db.collection('review_items').createIndex({ priority: 1, resolved: 1 }),
+    db.collection('review_items').createIndex({ resolved: 1, createdAt: -1 }),
+    db.collection('multi_source_groups').createIndex({ resolved: 1 }),
+    db.collection('ai_tag_suggestions').createIndex({ status: 1 }),
+    db.collection('activity_log').createIndex({ createdAt: -1 }),
   ]);
 }
 

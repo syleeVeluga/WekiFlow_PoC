@@ -14,6 +14,9 @@ importers:
       '@wf/agent-tools':
         specifier: workspace:*
         version: link:packages/agent-tools
+      '@wf/db':
+        specifier: workspace:*
+        version: link:packages/db
       '@wf/sandbox':
         specifier: workspace:*
         version: link:packages/sandbox

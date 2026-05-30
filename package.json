@@ -9,11 +9,12 @@
   },
   "scripts": {
     "build": "corepack pnpm -r build",
-    "typecheck": "corepack pnpm -r typecheck",
+    "typecheck": "corepack pnpm --filter @wf/shared build && corepack pnpm -r typecheck",
     "test": "corepack pnpm -r test",
     "lint": "corepack pnpm -r lint",
     "poc:sandbox": "tsx scripts/poc-sandbox-grep.ts",
     "poc:lightrag": "tsx scripts/poc-lightrag-extract.ts",
+    "seed:wiki": "tsx scripts/seed-wiki.ts",
     "poc:hybrid": "tsx scripts/poc-hybrid-rag.ts",
     "poc:agent": "tsx scripts/poc-main-agent.ts",
     "verify:testing": "corepack pnpm build && corepack pnpm -r typecheck && corepack pnpm -r test && corepack pnpm poc:sandbox && corepack pnpm poc:lightrag && corepack pnpm -r lint",
@@ -28,6 +29,7 @@
   "dependencies": {
     "@ai-sdk/openai": "^3.0.67",
     "@wf/agent-tools": "workspace:*",
+    "@wf/db": "workspace:*",
     "@wf/sandbox": "workspace:*",
     "@wf/shared": "workspace:*",
     "ai": "^6.0.193",

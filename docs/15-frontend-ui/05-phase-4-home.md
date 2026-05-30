@@ -22,7 +22,7 @@ apps/web/src/components/home/
   RecentActivity.tsx     // #home-activity
 ```
 
-데이터: `useDigest()`(상태바 지표·다이제스트·자동처리율·가장많이묻는주제·커버리지) + `useActivity()` + `review` 카운트 구독.
+데이터: `useDigest()`(상태바 지표·다이제스트·자동처리율·가장많이언급된주제·커버리지) + `useActivity()` + `review` 카운트 구독.
 
 ---
 
@@ -34,7 +34,7 @@ apps/web/src/components/home/
 | 상태바 | `home-statusbar` | 7지표: 정상 운영 / Slack 12채널 / 오늘 분석 347 / 추출 23 / **검토 대기**(클릭→`go('review')`, 라이브) / 자동 처리 20 / 미답변 5 |
 | 데일리 다이제스트 | `home-digest` | 아래 §3 |
 | 자동처리율 게이지 | `home-apr` | 43% 마커 + 권장 40~60% 존 + 경고 노트 |
-| 가장 많이 묻는 주제 | `home-mat` | 막대(법인카드 43 …), 건강검진은 `⚠ 충돌` flag, 헤더 "답변하기"→`go('review')` |
+| 가장 많이 언급된 주제 | `home-mat` | 막대(법인카드 43 …), 건강검진은 `⚠ 충돌` flag, 헤더 "답변하기"→`go('review')` |
 | 담당자별 커버리지 | `home-pcov` | 담당자 막대 + 태그(양호/보강 필요/미배정 多), 헤더 "전체 보기"→`go('kb')` |
 | 최근 활동 | `home-activity` | `useActivity()` 상위 5, 행 클릭→`go('history')`(스텁) |
 
@@ -72,7 +72,7 @@ apps/web/src/components/home/
 ## 4. 위젯 (게이지·막대)
 
 - **자동처리율**(`apr`): 그라데이션 바 위 `left:43%` 마커, 40~60% 권장 존 음영, "60% 초과 시 검토 형식화 / 40% 미만 시 가치 저하" 노트. 정적 지표(시드 상수, digest 응답 포함).
-- **가장 많이 묻는 주제**(`mat`): `Math.max` 정규화 막대 + 건수 + `flag` 배지.
+- **가장 많이 언급된 주제**(`mat`): `Math.max` 정규화 막대 + 건수 + `flag` 배지.
 - **담당자별 커버리지**(`pcov`): 아바타(`avColor`) + 이름/역할 + 정규화 막대 + 색 태그.
 
 > ⚠️ `mat`/`pcov`의 색은 목업 inline 색을 유지하되, 데이터는 `useDigest()` 응답(부서·작성자 집계 + 시드 상수)에서 받는다.
@@ -85,7 +85,7 @@ apps/web/src/components/home/
 - [ ] 상태바 "검토 대기" 수가 LNB 검토 뱃지와 동일하고, 검토 승인/반려(Phase 6) 후 함께 감소.
 - [ ] 다이제스트 entity 클릭 → 올바른 문서(`openDoc`)·검토 탭(`setReviewTab`+`go`)로 이동. HTML 주입 없이 React 핸들러로 동작.
 - [ ] 위젯 헤더 "답변하기"→검토, "전체 보기"→조직 지식 이동.
-- [ ] 자동처리율 게이지 마커/존, 가장많이묻는주제 flag, 커버리지 태그 렌더.
+- [ ] 자동처리율 게이지 마커/존, 가장많이언급된주제 flag, 커버리지 태그 렌더.
 - [ ] 최근 활동 상위 5건(`useActivity`) 렌더, 행 클릭은 스텁(history).
 - [ ] `pnpm --filter @wf/web typecheck` 통과.
 

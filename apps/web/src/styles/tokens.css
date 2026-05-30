@@ -1,0 +1,16 @@
+:root{
+  --primary:#5645d4;--primary-pressed:#4534b3;--on-primary:#fff;
+  --purple-100:#ede9fe;--purple-300:#a78bfa;
+  --navy:#0a1530;--navy-deep:#070f24;--navy-line:#203052;
+  --surface:#f6f7fb;--paper:#fff;--paper-soft:#f9fafb;
+  --ink:#111827;--muted:#64748b;--line:#e5e7eb;
+  --green:#16a34a;--orange:#f59e0b;--red:#ef4444;--blue:#0ea5e9;
+  --sw:256px;--tree-w:280px;--r:8px;
+  --ff:"Inter",-apple-system,system-ui,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+  --sh-sm:0 1px 2px rgba(15,15,15,.06);--sh-md:0 10px 24px rgba(15,23,42,.08);
+}
+*{box-sizing:border-box}
+html{font-size:14px}
+body{margin:0;font-family:var(--ff);background:var(--surface);color:var(--ink);min-height:100vh;overflow:hidden}
+button,input,textarea,select{font:inherit}
+button{cursor:pointer}

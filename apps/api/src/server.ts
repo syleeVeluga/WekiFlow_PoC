@@ -1,7 +1,7 @@
 import cors from '@fastify/cors';
 import type { Queue, QueueEvents } from 'bullmq';
 import Fastify from 'fastify';
-import { UserRoleSchema } from '@wf/shared';
+import { KnowledgeQuerySchema, MsResolveBodySchema, UserRoleSchema } from '@wf/shared';
 import { InMemoryWekiFlowStore, type WekiFlowStore } from './store.js';
 
 export interface BuildServerOptions {
@@ -47,6 +47,84 @@ export function buildServer({
   });
 
   app.get('/api/reviews', async () => store.reviews());
+
+  app.get('/api/knowledge', async (request) => store.listKnowledge(KnowledgeQuerySchema.parse(request.query)));
+
+  app.get('/api/knowledge/:id', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const item = await store.getKnowledge(id);
+    if (!item) return reply.code(404).send({ error: 'Not found' });
+    return item;
+  });
+
+  app.patch('/api/knowledge/:id', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const body = request.body as { contentMarkdown?: string };
+    const item = await store.patchKnowledge(id, { contentMarkdown: body.contentMarkdown ?? '' });
+    if (!item) return reply.code(404).send({ error: 'Not found' });
+    return item;
+  });
+
+  app.get('/api/topics', async () => store.listTopics());
+
+  app.post('/api/topics', async (request) => {
+    const body = request.body as { name?: string };
+    return store.createTopic((body.name ?? '새 주제').trim());
+  });
+
+  app.delete('/api/topics/:id', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const result = await store.deleteTopic(id);
+    if (!result.ok) return reply.code(result.statusCode ?? 400).send({ error: result.error ?? 'Failed' });
+    return result;
+  });
+
+  app.get('/api/ai-tag-suggestions', async () => store.listAiTagSuggestions());
+
+  app.post('/api/ai-tag-suggestions/:id/:action', async (request, reply) => {
+    const { id, action } = request.params as { id: string; action: 'approve' | 'reject' };
+    if (action !== 'approve' && action !== 'reject') return reply.code(400).send({ error: 'Invalid action' });
+    return store.resolveAiTagSuggestion(id, action);
+  });
+
+  app.get('/api/reviews/rich', async () => store.listRichReviews());
+
+  app.post('/api/reviews/:id/:action', async (request, reply) => {
+    const { id, action } = request.params as { id: string; action: 'approve' | 'reject' };
+    if (action !== 'approve' && action !== 'reject') return reply.code(400).send({ error: 'Invalid action' });
+    const role = UserRoleSchema.catch('VIEWER').parse(request.headers['x-user-role']);
+    const result = await store.resolveReview(id, action, role);
+    if (!result.ok) return reply.code(result.statusCode).send({ error: result.error });
+    return result;
+  });
+
+  app.get('/api/multi-source', async () => store.listMultiSource());
+
+  app.post('/api/multi-source/:id/resolve', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const role = UserRoleSchema.catch('VIEWER').parse(request.headers['x-user-role']);
+    const body = MsResolveBodySchema.parse(request.body);
+    const result = await store.resolveMultiSource(id, body, role);
+    if (!result.ok) return reply.code(result.statusCode).send({ error: result.error });
+    return result;
+  });
+
+  app.post('/api/multi-source/:id/split', async (request) => {
+    const { id } = request.params as { id: string };
+    return store.splitMultiSource(id);
+  });
+
+  app.post('/api/multi-source/:id/request-confirm', async (request) => {
+    const { id } = request.params as { id: string };
+    return store.requestConfirmMultiSource(id);
+  });
+
+  app.get('/api/home/digest', async () => store.homeDigest());
+  app.get('/api/activity', async (request) => {
+    const q = request.query as { limit?: string };
+    return store.listActivity(q.limit ? Number(q.limit) : undefined);
+  });
+  app.get('/api/tree/categories', async () => store.treeCategories());
 
   app.post('/api/documents/:id/approve', async (request, reply) => {
     const { id } = request.params as { id: string };

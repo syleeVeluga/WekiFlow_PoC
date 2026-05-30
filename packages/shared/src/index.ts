@@ -160,6 +160,8 @@ export function normalizeEntityName(value: string): string {
   return value.normalize('NFKC').toLowerCase().replace(/\s+/g, '');
 }
 
+export * from './wiki/index.js';
+
 // --- Chunking (Phase 2 §5: heading-based + token cap with overlap) ---
 
 export interface DocChunk {

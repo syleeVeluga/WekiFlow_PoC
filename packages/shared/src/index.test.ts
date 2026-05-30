@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { TripletArraySchema, canApprove, chunkMarkdown, normalizeEntityName } from './index.js';
+import {
+  DocumentStatusSchema,
+  KnowledgeFreshnessSchema,
+  TripletArraySchema,
+  canApprove,
+  chunkMarkdown,
+  createSeedKnowledgeItems,
+  normalizeEntityName,
+} from './index.js';
 
 describe('@wf/shared', () => {
   it('validates triplet arrays', () => {
@@ -24,6 +32,12 @@ describe('@wf/shared', () => {
     expect(canApprove('REVIEWER')).toBe(true);
     expect(canApprove('EDITOR')).toBe(false);
     expect(canApprove('VIEWER')).toBe(false);
+  });
+
+  it('keeps wiki freshness separate from document workflow status', () => {
+    expect(KnowledgeFreshnessSchema.safeParse('latest').success).toBe(true);
+    expect(DocumentStatusSchema.safeParse('latest').success).toBe(false);
+    expect(createSeedKnowledgeItems()).toHaveLength(88);
   });
 
   it('normalizes Korean entity surface forms consistently', () => {
