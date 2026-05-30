@@ -191,12 +191,21 @@ importers:
 
   workers/graph:
     dependencies:
-      '@wf/agent-tools':
+      '@ai-sdk/openai':
+        specifier: ^3.0.67
+        version: 3.0.67(zod@4.4.3)
+      '@wf/db':
         specifier: workspace:*
-        version: link:../../packages/agent-tools
+        version: link:../../packages/db
+      '@wf/queue':
+        specifier: workspace:*
+        version: link:../../packages/queue
       '@wf/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      ai:
+        specifier: ^6.0.193
+        version: 6.0.193(zod@4.4.3)
 
   workers/main:
     dependencies:

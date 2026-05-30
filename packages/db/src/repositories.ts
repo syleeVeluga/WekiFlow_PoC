@@ -177,6 +177,17 @@ export function createDocumentsRepo(db: Db) {
       );
       return updated ? toDocumentDTO(updated) : undefined;
     },
+
+    async markGraphIndexed(id: string): Promise<DocumentDTO | undefined> {
+      const oid = toObjectId(id);
+      if (!oid) return undefined;
+      const updated = await collection.findOneAndUpdate(
+        { _id: oid },
+        { $set: { status: 'GRAPH_INDEXED', updatedAt: new Date() } },
+        { returnDocument: 'after' },
+      );
+      return updated ? toDocumentDTO(updated) : undefined;
+    },
   };
 }
 
@@ -245,6 +256,13 @@ export function createChunksRepo(db: Db) {
 export function createJobsRepo(db: Db) {
   const collection = db.collection<{
     bullJobId: string;
+    queue?: string;
+    type?: string;
+    documentId?: ObjectId | string;
+    status?: string;
+    attempts?: number;
+    error?: string | null;
+    finishedAt?: Date | null;
     agentSteps?: Array<{ tool: string; args: unknown; result?: unknown; createdAt: Date }>;
   }>('jobs');
 
@@ -256,6 +274,36 @@ export function createJobsRepo(db: Db) {
           $setOnInsert: { createdAt: new Date() },
           $set: { updatedAt: new Date() },
           $push: { agentSteps: { ...step, createdAt: new Date() } },
+        },
+        { upsert: true },
+      );
+    },
+
+    async recordLifecycle(
+      jobId: string,
+      update: {
+        queue: string;
+        type: string;
+        documentId: string;
+        status: 'active' | 'completed' | 'failed';
+        attempts?: number;
+        error?: string | null;
+      },
+    ) {
+      await collection.updateOne(
+        { bullJobId: jobId },
+        {
+          $setOnInsert: { createdAt: new Date() },
+          $set: {
+            queue: update.queue,
+            type: update.type,
+            documentId: toObjectId(update.documentId) ?? update.documentId,
+            status: update.status,
+            attempts: update.attempts ?? 0,
+            error: update.error ?? null,
+            updatedAt: new Date(),
+            finishedAt: update.status === 'active' ? null : new Date(),
+          },
         },
         { upsert: true },
       );
@@ -283,6 +331,8 @@ export function createSandboxRunsRepo(db: Db) {
 }
 
 export async function upsertTriplets(db: Db, triplets: Triplet[], sourceDocId: string): Promise<void> {
+  const sourceDocRef = toObjectId(sourceDocId);
+  if (!sourceDocRef) throw new Error(`upsertTriplets: invalid sourceDocId ${sourceDocId}`);
   for (const triplet of triplets) {
     const subject = await db.collection('kg_nodes').findOneAndUpdate(
       { normalizedName: normalizeEntityName(triplet.subject) },
@@ -296,7 +346,7 @@ export async function upsertTriplets(db: Db, triplets: Triplet[], sourceDocId: s
         $set: { updatedAt: new Date() },
         $addToSet: {
           aliases: triplet.subject,
-          descriptions: { text: triplet.subject, sourceDocId },
+          descriptions: { text: triplet.subject, sourceDocId: sourceDocRef },
         },
       },
       { upsert: true, returnDocument: 'after' },
@@ -314,7 +364,7 @@ export async function upsertTriplets(db: Db, triplets: Triplet[], sourceDocId: s
         $set: { updatedAt: new Date() },
         $addToSet: {
           aliases: triplet.object,
-          descriptions: { text: triplet.object, sourceDocId },
+          descriptions: { text: triplet.object, sourceDocId: sourceDocRef },
         },
       },
       { upsert: true, returnDocument: 'after' },
@@ -331,10 +381,10 @@ export async function upsertTriplets(db: Db, triplets: Triplet[], sourceDocId: s
         $set: { updatedAt: new Date() },
         $max: { strength: triplet.strength },
         $addToSet: {
-          sourceDocIds: sourceDocId,
+          sourceDocIds: sourceDocRef,
           descriptions: {
             text: `${triplet.subject} ${triplet.predicate} ${triplet.object}`,
-            sourceDocId,
+            sourceDocId: sourceDocRef,
           },
         },
       },
