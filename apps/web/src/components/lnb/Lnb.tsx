@@ -31,7 +31,7 @@ export function Lnb() {
 
   return (
     <aside className="sb">
-      <div className="sb-logo"><span>☰</span><span>V <em>WIKI</em></span></div>
+      <div className="sb-logo"><span>☰</span><span>Wiki<em>Flow</em></span></div>
       <div className="sb-workspace"><Avatar name="총" /><div><strong>총무팀</strong><small>운영 워크스페이스</small></div><span>▾</span></div>
       <NavItem page="home" active={activePage} icon="⌂" label="홈" onClick={nav} />
       <NavItem page="review" active={activePage} icon="◰" label="검토" badge={pending} badgeClass="nb-red" onClick={nav} />

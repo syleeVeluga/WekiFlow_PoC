@@ -26,7 +26,7 @@ export function LoginPage() {
   return (
     <div className="login-shell">
       <form className="login-card" onSubmit={onSubmit}>
-        <div className="login-brand">V <em>WIKI</em></div>
+        <div className="login-brand">Wiki<em>Flow</em></div>
         <h1>로그인</h1>
         <p className="muted">이메일로 로그인하세요.</p>
         <label>

@@ -74,7 +74,7 @@ export function HomePage() {
               ))}
             </div>
           </div>
-          <div className="card"><h3>가장 많이 언급된 주제 <button className="btn-ghost" onClick={() => go('review')}>답변하기</button></h3><div className="widget-list">{data.mostAsked.map((m) => <div key={m.key}><b>{m.label}</b> {m.flag && <span className="badge badge-warn">{m.flag}</span>}<div className="bar"><span style={{ width: `${Math.min(100, m.count * 2)}%` }} /></div></div>)}</div></div>
+          <div className="card"><h3>가장 많이 언급된 주제</h3><div className="widget-list">{data.mostAsked.map((m) => <div key={m.key}><b>{m.label}</b> {m.flag && <span className="badge badge-warn">{m.flag}</span>}<div className="bar"><span style={{ width: `${Math.min(100, m.count * 2)}%` }} /></div></div>)}</div></div>
           <div className="card"><h3>최근 활동</h3>{activity.map((a) => <button className="filter-row" key={a.id} type="button" onClick={() => go('history')}><span>{a.actorLabel} · {a.targetTitle}</span><small>{a.time}</small></button>)}</div>
         </div>
       </div>
