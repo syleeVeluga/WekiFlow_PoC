@@ -1,4 +1,4 @@
-import { Queue, Worker, type JobsOptions, type Processor } from 'bullmq';
+import { Queue, QueueEvents, Worker, type JobsOptions, type Processor } from 'bullmq';
 import { Redis } from 'ioredis';
 import { loadEnv, type JobType } from '@wf/shared';
 
@@ -16,6 +16,10 @@ export function createMainQueue(connection = createRedisConnection()) {
 
 export function createGraphQueue(connection = createRedisConnection()) {
   return new Queue(GRAPH_QUEUE_NAME, { connection, prefix: 'wf:graph' });
+}
+
+export function createMainQueueEvents(connection = createRedisConnection()) {
+  return new QueueEvents(MAIN_QUEUE_NAME, { connection, prefix: 'wf:main' });
 }
 
 export function defaultJobOptions(): JobsOptions {

@@ -1,7 +1,36 @@
 import { InMemoryQueue } from '@wf/queue';
-import { type DocumentDTO, type UserRole, canApprove } from '@wf/shared';
+import {
+  type DocumentDTO,
+  type JobRef,
+  type TreeNode,
+  type UserRole,
+  canApprove,
+} from '@wf/shared';
 
-export class InMemoryWekiFlowStore {
+export type ApproveResult =
+  | { ok: true; doc: DocumentDTO; job: JobRef }
+  | { ok: false; statusCode: number; error: string };
+
+export interface WekiFlowStore {
+  seed?(): Promise<void> | void;
+  tree(): Promise<TreeNode[]>;
+  getDocument(id: string): Promise<DocumentDTO | undefined>;
+  createDocument(input: {
+    title: string;
+    contentMarkdown?: string;
+    parentId?: string | null;
+  }): Promise<DocumentDTO>;
+  ingest(input: {
+    title: string;
+    contentMarkdown: string;
+    parentId?: string | null;
+  }): Promise<{ doc: DocumentDTO; job: JobRef }>;
+  reviews(): Promise<DocumentDTO[]>;
+  approve(id: string, role: UserRole): Promise<ApproveResult>;
+  reject(id: string): Promise<DocumentDTO | undefined>;
+}
+
+export class InMemoryWekiFlowStore implements WekiFlowStore {
   readonly documents = new Map<string, DocumentDTO>();
   readonly mainQueue = new InMemoryQueue();
   readonly graphQueue = new InMemoryQueue();
@@ -28,7 +57,7 @@ export class InMemoryWekiFlowStore {
     this.documents.set(doc.id, doc);
   }
 
-  tree() {
+  async tree(): Promise<TreeNode[]> {
     return [...this.documents.values()].map((doc) => ({
       id: doc.id,
       parentId: doc.parentId,
@@ -39,11 +68,17 @@ export class InMemoryWekiFlowStore {
     }));
   }
 
-  getDocument(id: string) {
+  async getDocument(id: string): Promise<DocumentDTO | undefined> {
     return this.documents.get(id);
   }
 
-  ingest(input: { title: string; contentMarkdown: string; parentId?: string | null }) {
+  private create(input: {
+    title: string;
+    contentMarkdown: string;
+    parentId?: string | null;
+    status: DocumentDTO['status'];
+    sourceRefs: DocumentDTO['sourceRefs'];
+  }): DocumentDTO {
     const now = new Date().toISOString();
     const id = `doc-${++this.sequence + 1}`;
     const doc: DocumentDTO = {
@@ -52,18 +87,48 @@ export class InMemoryWekiFlowStore {
       title: input.title,
       parentId: input.parentId ?? null,
       isFolder: false,
-      status: 'PROCESSING',
+      status: input.status,
       contentMarkdown: input.contentMarkdown,
       draftMarkdown: null,
       version: 1,
-      sourceRefs: [{ type: 'manual', ref: 'api://ingest', note: '' }],
+      sourceRefs: input.sourceRefs,
       createdAt: now,
       updatedAt: now,
     };
     this.documents.set(id, doc);
-    const job = this.mainQueue.add('INGEST', { documentId: id });
-    this.applyStubMainWorker(id);
-    return { doc: this.documents.get(id), job };
+    return doc;
+  }
+
+  async createDocument(input: {
+    title: string;
+    contentMarkdown?: string;
+    parentId?: string | null;
+  }): Promise<DocumentDTO> {
+    return this.create({
+      title: input.title,
+      contentMarkdown: input.contentMarkdown ?? '',
+      parentId: input.parentId ?? null,
+      status: 'DRAFT',
+      sourceRefs: [],
+    });
+  }
+
+  async ingest(input: {
+    title: string;
+    contentMarkdown: string;
+    parentId?: string | null;
+  }): Promise<{ doc: DocumentDTO; job: JobRef }> {
+    const created = this.create({
+      title: input.title,
+      contentMarkdown: input.contentMarkdown,
+      parentId: input.parentId ?? null,
+      status: 'PROCESSING',
+      sourceRefs: [{ type: 'manual', ref: 'api://ingest', note: '' }],
+    });
+    const job = this.mainQueue.add('INGEST', { documentId: created.id });
+    // In-memory path runs the stub main worker inline so route tests stay hermetic.
+    this.applyStubMainWorker(created.id);
+    return { doc: this.documents.get(created.id)!, job };
   }
 
   applyStubMainWorker(id: string) {
@@ -78,17 +143,17 @@ export class InMemoryWekiFlowStore {
     });
   }
 
-  reviews() {
+  async reviews(): Promise<DocumentDTO[]> {
     return [...this.documents.values()].filter((doc) => doc.status === 'REVIEW');
   }
 
-  approve(id: string, role: UserRole) {
+  async approve(id: string, role: UserRole): Promise<ApproveResult> {
     if (!canApprove(role)) {
-      return { ok: false as const, statusCode: 403, error: 'Forbidden' };
+      return { ok: false, statusCode: 403, error: 'Forbidden' };
     }
     const doc = this.documents.get(id);
     if (!doc) {
-      return { ok: false as const, statusCode: 404, error: 'Not found' };
+      return { ok: false, statusCode: 404, error: 'Not found' };
     }
     const now = new Date().toISOString();
     const published: DocumentDTO = {
@@ -101,10 +166,10 @@ export class InMemoryWekiFlowStore {
     };
     this.documents.set(id, published);
     const job = this.graphQueue.add('EXTRACT_TRIPLETS', { documentId: id });
-    return { ok: true as const, doc: published, job };
+    return { ok: true, doc: published, job };
   }
 
-  reject(id: string) {
+  async reject(id: string): Promise<DocumentDTO | undefined> {
     const doc = this.documents.get(id);
     if (!doc) return undefined;
     const updated: DocumentDTO = { ...doc, status: 'DRAFT', draftMarkdown: null };

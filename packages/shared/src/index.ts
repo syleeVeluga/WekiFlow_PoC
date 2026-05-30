@@ -48,6 +48,26 @@ export const DocumentSchema = z.object({
 
 export type DocumentDTO = z.infer<typeof DocumentSchema>;
 
+export const TreeNodeSchema = z.object({
+  id: z.string(),
+  parentId: z.string().nullable(),
+  title: z.string(),
+  slug: z.string(),
+  isFolder: z.boolean(),
+  status: DocumentStatusSchema,
+});
+
+export type TreeNode = z.infer<typeof TreeNodeSchema>;
+
+export const JobRefSchema = z.object({
+  id: z.string(),
+  type: JobTypeSchema,
+  documentId: z.string(),
+  createdAt: z.string(),
+});
+
+export type JobRef = z.infer<typeof JobRefSchema>;
+
 export const TripletSchema = z.object({
   subject: z.string().min(1),
   predicate: z.string().min(1),

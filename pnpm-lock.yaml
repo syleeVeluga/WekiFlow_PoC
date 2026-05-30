@@ -36,15 +36,24 @@ importers:
       '@fastify/cors':
         specifier: ^11.1.0
         version: 11.2.0
+      '@wf/db':
+        specifier: workspace:*
+        version: link:../../packages/db
       '@wf/queue':
         specifier: workspace:*
         version: link:../../packages/queue
       '@wf/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      bullmq:
+        specifier: ^5.65.0
+        version: 5.77.6
       fastify:
         specifier: ^5.6.2
         version: 5.8.5
+      mongodb:
+        specifier: ^6.21.0
+        version: 6.21.0
       zod:
         specifier: ^4.1.13
         version: 4.4.3
@@ -176,9 +185,18 @@ importers:
       '@wf/agent-tools':
         specifier: workspace:*
         version: link:../../packages/agent-tools
+      '@wf/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@wf/queue':
+        specifier: workspace:*
+        version: link:../../packages/queue
       '@wf/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      bullmq:
+        specifier: ^5.65.0
+        version: 5.77.6
 
 packages:
 

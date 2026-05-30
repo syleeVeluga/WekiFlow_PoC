@@ -1,16 +1,141 @@
-import type { Db, ObjectId } from 'mongodb';
-import { normalizeEntityName, type DocumentDTO, type Triplet } from '@wf/shared';
+import { ObjectId, type Db, type Document, type WithId } from 'mongodb';
+import {
+  normalizeEntityName,
+  type DocumentDTO,
+  type DocumentStatus,
+  type TreeNode,
+  type Triplet,
+} from '@wf/shared';
+
+function toObjectId(id: string): ObjectId | null {
+  return ObjectId.isValid(id) ? new ObjectId(id) : null;
+}
+
+function slugify(title: string): string {
+  return (
+    title
+      .trim()
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}]+/gu, '-')
+      .replace(/^-+|-+$/g, '') || 'untitled'
+  );
+}
+
+function makeDocumentSlug(title: string, id: ObjectId): string {
+  return `${slugify(title)}-${id.toHexString().slice(-6)}`;
+}
+
+function toIso(value: unknown): string {
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value === 'string') return value;
+  return new Date(0).toISOString();
+}
+
+export function toDocumentDTO(raw: WithId<Document>): DocumentDTO {
+  return {
+    id: raw._id.toString(),
+    slug: String(raw.slug ?? ''),
+    title: String(raw.title ?? 'Untitled'),
+    parentId: raw.parentId ? String(raw.parentId) : null,
+    isFolder: Boolean(raw.isFolder),
+    status: (raw.status ?? 'DRAFT') as DocumentStatus,
+    contentMarkdown: String(raw.contentMarkdown ?? ''),
+    draftMarkdown: raw.draftMarkdown == null ? null : String(raw.draftMarkdown),
+    version: typeof raw.version === 'number' ? raw.version : 1,
+    sourceRefs: Array.isArray(raw.sourceRefs) ? raw.sourceRefs : [],
+    createdBy: raw.createdBy ? String(raw.createdBy) : undefined,
+    approvedBy: raw.approvedBy == null ? undefined : String(raw.approvedBy),
+    createdAt: toIso(raw.createdAt),
+    updatedAt: toIso(raw.updatedAt),
+  };
+}
 
 export function createDocumentsRepo(db: Db) {
   const collection = db.collection('documents');
 
   return {
-    async get(id: ObjectId) {
-      return collection.findOne({ _id: id });
+    async getById(id: string): Promise<DocumentDTO | undefined> {
+      const oid = toObjectId(id);
+      if (!oid) return undefined;
+      const doc = await collection.findOne({ _id: oid });
+      return doc ? toDocumentDTO(doc) : undefined;
     },
-    async setDraft(id: ObjectId, draftMarkdown: string) {
+
+    async tree(): Promise<TreeNode[]> {
+      const docs = await collection
+        .find({}, { projection: { title: 1, slug: 1, parentId: 1, isFolder: 1, status: 1 } })
+        .toArray();
+      return docs.map((doc) => ({
+        id: doc._id.toString(),
+        parentId: doc.parentId ? String(doc.parentId) : null,
+        title: String(doc.title ?? 'Untitled'),
+        slug: String(doc.slug ?? ''),
+        isFolder: Boolean(doc.isFolder),
+        status: (doc.status ?? 'DRAFT') as DocumentStatus,
+      }));
+    },
+
+    async reviews(): Promise<DocumentDTO[]> {
+      const docs = await collection.find({ status: 'REVIEW' }).toArray();
+      return docs.map(toDocumentDTO);
+    },
+
+    async createDraft(input: {
+      title: string;
+      contentMarkdown: string;
+      parentId?: string | null;
+    }): Promise<DocumentDTO> {
+      const now = new Date();
+      const id = new ObjectId();
+      const result = await collection.insertOne({
+        _id: id,
+        slug: makeDocumentSlug(input.title, id),
+        title: input.title,
+        parentId: input.parentId ?? null,
+        isFolder: false,
+        status: 'PROCESSING',
+        contentMarkdown: input.contentMarkdown,
+        draftMarkdown: null,
+        version: 1,
+        sourceRefs: [{ type: 'manual', ref: 'api://ingest', note: '' }],
+        createdAt: now,
+        updatedAt: now,
+      });
+      const doc = await collection.findOne({ _id: result.insertedId });
+      return toDocumentDTO(doc!);
+    },
+
+    async createDocument(input: {
+      title: string;
+      contentMarkdown?: string;
+      parentId?: string | null;
+      isFolder?: boolean;
+    }): Promise<DocumentDTO> {
+      const now = new Date();
+      const id = new ObjectId();
+      const result = await collection.insertOne({
+        _id: id,
+        slug: makeDocumentSlug(input.title, id),
+        title: input.title,
+        parentId: input.parentId ?? null,
+        isFolder: input.isFolder ?? false,
+        status: 'DRAFT',
+        contentMarkdown: input.contentMarkdown ?? '',
+        draftMarkdown: null,
+        version: 1,
+        sourceRefs: [],
+        createdAt: now,
+        updatedAt: now,
+      });
+      const doc = await collection.findOne({ _id: result.insertedId });
+      return toDocumentDTO(doc!);
+    },
+
+    async setDraft(id: string, draftMarkdown: string) {
+      const oid = toObjectId(id);
+      if (!oid) return;
       await collection.updateOne(
-        { _id: id },
+        { _id: oid },
         {
           $set: {
             draftMarkdown,
@@ -19,6 +144,38 @@ export function createDocumentsRepo(db: Db) {
           },
         },
       );
+    },
+
+    async publish(id: string): Promise<DocumentDTO | undefined> {
+      const oid = toObjectId(id);
+      if (!oid) return undefined;
+      const current = await collection.findOne({ _id: oid });
+      if (!current) return undefined;
+      const updated = await collection.findOneAndUpdate(
+        { _id: oid },
+        {
+          $set: {
+            contentMarkdown: current.draftMarkdown ?? current.contentMarkdown ?? '',
+            draftMarkdown: null,
+            status: 'PUBLISHED',
+            updatedAt: new Date(),
+          },
+          $inc: { version: 1 },
+        },
+        { returnDocument: 'after' },
+      );
+      return updated ? toDocumentDTO(updated) : undefined;
+    },
+
+    async reject(id: string): Promise<DocumentDTO | undefined> {
+      const oid = toObjectId(id);
+      if (!oid) return undefined;
+      const updated = await collection.findOneAndUpdate(
+        { _id: oid },
+        { $set: { status: 'DRAFT', draftMarkdown: null, updatedAt: new Date() } },
+        { returnDocument: 'after' },
+      );
+      return updated ? toDocumentDTO(updated) : undefined;
     },
   };
 }
@@ -122,8 +279,4 @@ export async function upsertTriplets(db: Db, triplets: Triplet[], sourceDocId: s
       { upsert: true },
     );
   }
-}
-
-export function toDocumentDTO(document: DocumentDTO): DocumentDTO {
-  return document;
 }

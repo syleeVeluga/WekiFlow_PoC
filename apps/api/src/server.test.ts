@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { EventEmitter } from 'node:events';
 import { buildServer } from './server.js';
 
 describe('@wf/api routes', () => {
@@ -33,6 +34,31 @@ describe('@wf/api routes', () => {
     expect(approved.statusCode).toBe(200);
     expect(approved.json().doc.status).toBe('PUBLISHED');
     expect(approved.json().job.type).toBe('EXTRACT_TRIPLETS');
+
+    await app.close();
+  });
+
+  it('emits the current job state when SSE starts after completion', async () => {
+    const app = buildServer({
+      jobEvents: new EventEmitter() as never,
+      jobQueue: {
+        async getJob() {
+          return {
+            async getState() {
+              return 'completed';
+            },
+            returnvalue: { documentId: 'doc-2', status: 'REVIEW' },
+            progress: 100,
+          };
+        },
+      } as never,
+    });
+
+    const stream = await app.inject({ method: 'GET', url: '/api/jobs/main-1/stream' });
+
+    expect(stream.statusCode).toBe(200);
+    expect(stream.payload).toContain('event: completed');
+    expect(stream.payload).toContain('"jobId":"main-1"');
 
     await app.close();
   });

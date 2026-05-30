@@ -14,6 +14,9 @@
   },
   "dependencies": {
     "@wf/agent-tools": "workspace:*",
-    "@wf/shared": "workspace:*"
+    "@wf/db": "workspace:*",
+    "@wf/queue": "workspace:*",
+    "@wf/shared": "workspace:*",
+    "bullmq": "^5.65.0"
   }
 }
