@@ -33,15 +33,17 @@ Phase 4 (하이브리드 RAG 통합 — 선순환 완성)
 
 ## 2. 권장 순서 & 산출물 (Recommended Order & Deliverables)
 
-| 순서 | 단계 | 핵심 산출물 | 게이트(DoD) |
-| :--- | :--- | :--- | :--- |
-| 1 | **Phase 0** | 모노레포, docker-compose, DB 인덱스, 샌드박스 이미지 | [06 문서 §4](./06-phase-0-foundation.md) |
-| 2 | **PoC ①·②** | grep 실행 스크립트, LightRAG 추출 스크립트 | [11 문서 §A·§B](./11-testing-and-verification.md) |
-| 3 | **Phase 1** | 투트랙 에디터 UI, Fastify API, 메인 큐(스텁 워커) | [07 문서 §4](./07-phase-1-editor-ui.md) |
-| 4 | **Phase 2** | 실제 에이전트 루프, 샌드박스/검색/병합/검증 도구 | [08 문서 §7](./08-phase-2-sandbox-pipeline-a.md) |
-| 5 | **Phase 3** | Graph Worker, 트리플 추출/적재, Resolution | [09 문서 §6](./09-phase-3-graph-pipeline-b.md) |
-| 6 | **Phase 4** | `tool_search_graph`, 하이브리드 랭킹, 선순환 | [10 문서 §6](./10-phase-4-hybrid-rag.md) |
+| 순서 | 단계 | 핵심 산출물 | 게이트(DoD) | 상태 |
+| :--- | :--- | :--- | :--- | :--- |
+| 1 | **Phase 0** | 모노레포, docker-compose, DB 인덱스, 샌드박스 이미지 | [06 문서 §4](./06-phase-0-foundation.md) | ✅ 완료 |
+| 2 | **PoC ①·②** | grep 실행 스크립트, LightRAG 추출 스크립트 | [11 문서 §A·§B](./11-testing-and-verification.md) | ✅ 완료 |
+| 3 | **Phase 1** | 투트랙 에디터 UI, Fastify API, 메인 큐(스텁 워커) | [07 문서 §4](./07-phase-1-editor-ui.md) | ✅ 완료 |
+| 4 | **Phase 2** | 실제 에이전트 루프, 샌드박스/검색/병합/검증 도구 | [08 문서 §7](./08-phase-2-sandbox-pipeline-a.md) | ⏳ 다음 |
+| 5 | **Phase 3** | Graph Worker, 트리플 추출/적재, Resolution | [09 문서 §6](./09-phase-3-graph-pipeline-b.md) | ⬜ 예정 |
+| 6 | **Phase 4** | `tool_search_graph`, 하이브리드 랭킹, 선순환 | [10 문서 §6](./10-phase-4-hybrid-rag.md) | ⬜ 예정 |
 
+> 진행 현황(2026-05-30): Phase 0 · 코어 PoC 2종 · Phase 1 골격 완료. 감사 결과는 [`14-goal-completion-audit.md`](./14-goal-completion-audit.md) 참조.
+>
 > 일정 수치는 팀 규모·AI 코딩 속도에 따라 달라지므로 의도적으로 명시하지 않음. 각 게이트 통과를 마일스톤으로 삼는다.
 
 ---
@@ -73,10 +75,11 @@ Phase 4 (하이브리드 RAG 통합 — 선순환 완성)
 
 ## 5. 다음 액션 (Immediate Next Actions)
 
-1. [`06-phase-0-foundation.md`](./06-phase-0-foundation.md)로 모노레포 + `docker compose up -d`.
-2. `docker build -t wekiflow/sandbox docker/sandbox` 후 [PoC ①](./11-testing-and-verification.md) 실행.
-3. [PoC ②](./11-testing-and-verification.md) 실행으로 트리플 추출 신뢰도 확인.
-4. 두 PoC 통과 시 Phase 1 착수.
+1. ~~[`06-phase-0-foundation.md`](./06-phase-0-foundation.md)로 모노레포 + `docker compose up -d`.~~ ✅ 완료
+2. ~~`docker build -t wekiflow/sandbox docker/sandbox` 후 [PoC ①](./11-testing-and-verification.md) 실행.~~ ✅ 완료
+3. ~~[PoC ②](./11-testing-and-verification.md) 실행으로 트리플 추출 신뢰도 확인.~~ ✅ 완료
+4. ~~두 PoC 통과 시 Phase 1 착수.~~ ✅ 완료 ([07 문서 §4](./07-phase-1-editor-ui.md))
+5. **Phase 2 착수**: `ai@6` 도입 + 실제 에이전트 루프/도구 구현 ([08 문서](./08-phase-2-sandbox-pipeline-a.md)).
 
 > 본 문서 묶음은 AI 페어 프로그래밍에 바로 투입 가능하도록 파일/함수/명령 단위까지 기술되어 있다. 각 Phase 문서를 작업 단위 프롬프트의 컨텍스트로 사용할 것.
 

@@ -6,7 +6,18 @@
 
 `docs/`의 구현 계획을 기준으로 WekiFlow PoC의 기반을 만들고, 가장 큰 기술 리스크인 Docker 샌드박스 팩트 확인과 LightRAG 트리플 추출을 조기에 검증한다.
 
-## 1차 중간 점검: Phase 0 완료
+## 진행 현황 (2026-05-30)
+
+| 점검 | 상태 | 증거 |
+| :--- | :--- | :--- |
+| 1차 — Phase 0 완료 | ✅ 완료 | [`docs/06-phase-0-foundation.md` §4](./docs/06-phase-0-foundation.md), [`docs/14`](./docs/14-goal-completion-audit.md) |
+| 2차 — 코어 PoC 2종 | ✅ 완료 | `poc:sandbox`, `poc:lightrag`, [`docs/14`](./docs/14-goal-completion-audit.md) |
+| 3차 — Phase 1 골격 | ✅ 완료 | [`docs/07-phase-1-editor-ui.md` §4](./docs/07-phase-1-editor-ui.md), [`docs/14`](./docs/14-goal-completion-audit.md) |
+| 다음 — Phase 2 (샌드박스+실제 에이전트) | ⏳ 미착수 | `ai@6` 미설치, [`docs/08`](./docs/08-phase-2-sandbox-pipeline-a.md) |
+
+> 전체 감사 결과는 [`docs/14-goal-completion-audit.md`](./docs/14-goal-completion-audit.md)에 정리되어 있다. 브라우저 시각 검증만 런타임 이슈로 미수행(빌드·HTTP smoke로 대체).
+
+## 1차 중간 점검: Phase 0 완료 — ✅ 완료
 
 점검 조건:
 
@@ -25,7 +36,7 @@
 - `docs/03-data-model.md`
 - `docs/05-sandbox-security.md`
 
-## 2차 중간 점검: 코어 PoC 2종 통과
+## 2차 중간 점검: 코어 PoC 2종 통과 — ✅ 완료
 
 점검 조건:
 
@@ -41,7 +52,7 @@
 - `docs/08-phase-2-sandbox-pipeline-a.md`
 - `docs/09-phase-3-graph-pipeline-b.md`
 
-## 3차 중간 점검: Phase 1 골격 동작
+## 3차 중간 점검: Phase 1 골격 동작 — ✅ 완료
 
 점검 조건:
 
@@ -68,6 +79,8 @@
 
 ## 다음 작업 제안
 
-1. Phase 0 스캐폴딩을 시작한다.
-2. 인프라가 올라오면 두 코어 PoC를 Phase 1보다 먼저 실행한다.
-3. PoC 결과를 기준으로 샌드박스 보안 옵션과 트리플 추출 프롬프트를 보정한다.
+1. ~~Phase 0 스캐폴딩을 시작한다.~~ ✅ 완료
+2. ~~인프라가 올라오면 두 코어 PoC를 Phase 1보다 먼저 실행한다.~~ ✅ 완료
+3. ~~PoC 결과를 기준으로 샌드박스 보안 옵션과 트리플 추출 프롬프트를 보정한다.~~ ✅ 완료
+4. **Phase 2 착수**: `ai@6`(Vercel AI SDK) 도입, 실제 에이전트 루프 + 샌드박스/검색/병합/검증 도구 구현 ([`docs/08`](./docs/08-phase-2-sandbox-pipeline-a.md)).
+5. 브라우저 시각 검증 런타임 이슈 해소 후 Phase 1 UI 수동 확인 보강.

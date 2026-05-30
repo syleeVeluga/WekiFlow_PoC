@@ -117,12 +117,12 @@
 
 ## 9. 의존성 호환성 체크리스트 (Compatibility Checklist)
 
-- [ ] Node **24 LTS** 고정(`.nvmrc`, `engines` 필드).
-- [ ] Vite **8** ↔ Node 24 OK. React **19** ↔ `@monaco-editor/react` 4.7(필요 시 `@next`) 확인.
-- [ ] `ai@6` ↔ `zod` 버전 정합(AI SDK 6가 요구하는 zod major 확인 후 통일).
-- [ ] `bullmq@5` ↔ `ioredis@5` ↔ Redis 7 OK.
-- [ ] `mongodb@6.18` ↔ MongoDB 서버 8 / Atlas OK. `$vectorSearch` 가용성(Atlas) 확인.
-- [ ] `dockerode@5` ↔ 호스트 Docker Engine 소켓 접근 권한 확인.
-- [ ] ESM 전역: 모든 `package.json`에 `"type": "module"`.
+- [x] Node **24 LTS** 고정(`.nvmrc`=24, 루트 `engines.node: ">=24 <25"`).
+- [x] Vite **8** ↔ Node 24 OK. React **19** ↔ `@monaco-editor/react` 4.7 확인(`apps/web` 동작).
+- [ ] `ai@6` ↔ `zod` 버전 정합 — **Phase 2에서 도입 예정**. 현재 `zod@4`로 전 패키지 통일 완료, `ai`는 미설치.
+- [x] `bullmq@5` ↔ `ioredis@5` ↔ Redis 7 OK.
+- [x] `mongodb@6.18` ↔ MongoDB 서버 8 OK. `$vectorSearch`는 미사용 — `VECTOR_SEARCH_MODE=app-cosine` 결정([13 문서](./13-implementation-decisions.md)).
+- [x] `dockerode@5` ↔ 호스트 Docker Engine 소켓 접근 권한 확인(샌드박스 PoC 실행).
+- [x] ESM 전역: 모든 `package.json`에 `"type": "module"`.
 
-> 위 체크리스트는 Phase 0 종료 게이트의 일부다. (`06-phase-0-foundation.md` 참조)
+> 위 체크리스트는 Phase 0 종료 게이트의 일부다. (`06-phase-0-foundation.md` 참조) — `ai@6` 항목을 제외하고 Phase 0 기준 통과(2026-05-30).

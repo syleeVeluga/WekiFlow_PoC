@@ -130,14 +130,15 @@ await graphQueue.add('EXTRACT_TRIPLETS', { documentId: id });
 
 ---
 
-## 4. ✅ 완료 기준 (Definition of Done)
+## 4. ✅ 완료 기준 (Definition of Done) — ✅ 완료 (2026-05-30)
 
-- [ ] BlockNote 열람/편집 ↔ Monaco Diff 토글이 한 문서에서 매끄럽게 전환.
-- [ ] Monaco Diff가 `contentMarkdown`(original) vs `draftMarkdown`(modified)을 좌우 비교 표시.
-- [ ] 문서 트리(무한 뎁스)가 인접 리스트에서 렌더.
-- [ ] `/api/ingest` → Main Queue → (스텁)워커 → REVIEW 전이가 동작.
-- [ ] SSE로 잡 진행 상황이 프론트에 실시간 표시.
-- [ ] `approve` 시 Graph Queue에 잡이 적재됨(소비자 없어도 enqueue 확인).
-- [ ] RBAC: 비권한 사용자의 승인 차단.
+- [x] BlockNote 열람/편집 ↔ Monaco Diff 토글이 한 문서에서 매끄럽게 전환. (`HybridEditor.tsx` 조건부 렌더링)
+- [x] Monaco Diff가 `contentMarkdown`(original) vs `draftMarkdown`(modified)을 좌우 비교 표시. (`MonacoDiffPane.tsx`)
+- [x] 문서 트리(무한 뎁스)가 인접 리스트에서 렌더. (`buildTree.ts` + `DocumentTree.tsx`)
+- [x] `/api/ingest` → Main Queue → (스텁)워커 → REVIEW 전이가 동작. (`server.test.ts`에서 `IngestStatus=REVIEW`)
+- [x] SSE로 잡 진행 상황이 프론트에 실시간 표시. (`/api/jobs/:id/stream` ↔ `useJobStream` EventSource → `IngestForm` 진행바)
+- [x] `approve` 시 Graph Queue에 잡이 적재됨. (`GraphJobType=EXTRACT_TRIPLETS` 확인)
+- [x] RBAC: 비권한 사용자의 승인 차단. (`DeniedStatus=403`)
 
-> 게이트 통과 후 **Phase 2**(샌드박스 + 실제 에이전트)로.
+> ✅ 게이트 통과 — 검증 증거는 [`14-goal-completion-audit.md`](./14-goal-completion-audit.md) 3차 점검 표 참조. **Phase 2**(샌드박스 + 실제 에이전트)가 다음 단계.
+> ⚠️ 단, 브라우저 시각 검증은 런타임 이슈로 미수행 — Vite production build·dev 서버 HTTP 200·API HTTP smoke로 대체 검증.

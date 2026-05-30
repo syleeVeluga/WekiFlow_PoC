@@ -129,14 +129,14 @@ docker compose up -d
 
 ---
 
-## 4. ✅ 완료 기준 (Definition of Done)
+## 4. ✅ 완료 기준 (Definition of Done) — ✅ 완료 (2026-05-30)
 
-- [ ] `docker compose up -d` 후 Redis/Mongo/MinIO 헬스 OK.
-- [ ] `pnpm -r build` 전 패키지 빌드 성공(빈 스텁이라도).
-- [ ] `pnpm --filter @wf/db exec tsx src/ensureIndexes.ts` 실행 시 인덱스 멱등 생성.
-- [ ] MinIO 콘솔(`:9001`)에서 `documents`/`assets` 버킷 확인.
-- [ ] 환경변수 zod 검증 통과(누락 시 친절한 에러).
-- [ ] `docker/sandbox/Dockerfile` 빌드 성공(`docker build -t wekiflow/sandbox docker/sandbox`).
-- [ ] [`02-tech-stack.md` §9 호환성 체크리스트](./02-tech-stack.md) 전부 통과.
+- [x] `docker compose up -d` 후 Redis/Mongo/MinIO 헬스 OK.
+- [x] `pnpm -r build` 전 패키지 빌드 성공(빈 스텁이라도).
+- [x] `pnpm --filter @wf/db exec tsx src/ensureIndexes.ts` 실행 시 인덱스 멱등 생성. (`ensure-indexes` 스크립트로 2회 연속 통과)
+- [x] MinIO 콘솔(`:9001`)에서 `documents`/`assets` 버킷 확인. (`@wf/storage ensure-buckets`)
+- [x] 환경변수 zod 검증 통과(누락 시 친절한 에러).
+- [x] `docker/sandbox/Dockerfile` 빌드 성공(`docker build -t wekiflow/sandbox docker/sandbox`).
+- [x] [`02-tech-stack.md` §9 호환성 체크리스트](./02-tech-stack.md) 통과 (단, `ai@6`는 Phase 2 도입 예정 — §9 주석 참고).
 
-> 게이트 통과 후 **Phase 1**으로. 단, PRD 권고에 따라 Phase 1과 병행하여 [`11-testing-and-verification.md`](./11-testing-and-verification.md)의 **2대 코어 PoC**를 가장 먼저 시도하는 것을 강력 권장.
+> ✅ 게이트 통과 — 검증 증거는 [`14-goal-completion-audit.md`](./14-goal-completion-audit.md) 1차 점검 표 참조. **Phase 1**과 **2대 코어 PoC**도 함께 완료됨.
