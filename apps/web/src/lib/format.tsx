@@ -1,18 +1,17 @@
 import type { KnowledgeFreshness, SourceAuthority } from '@wf/shared';
 
-// 디자인 목업(v-wiki.html)의 카테고리 색상. createSeedTopics의 주제명과 1:1 대응.
 export const CAT_COLORS: Record<string, string> = {
-  법인카드: '#dd5b00',
+  '법인카드': '#dd5b00',
   '출장·정산': '#0075de',
-  사무환경: '#2a9d99',
-  복리후생: '#7b3ff2',
+  '사무환경': '#2a9d99',
+  '복리후생': '#7b3ff2',
   '근태·휴가': '#e03131',
-  '급여·상여': '#dd5b00',
+  '급여·정산': '#dd5b00',
   '채용·온보딩': '#1aae39',
   '장비·소프트웨어': '#0075de',
-  사내시스템: '#7b3ff2',
+  '사내시스템': '#7b3ff2',
   '보안·권한': '#5645d4',
-  미분류: '#999999',
+  '미분류': '#999999',
 };
 
 const AV_COLORS = ['#5645d4', '#0ea5e9', '#16a34a', '#f59e0b', '#ef4444', '#8b5cf6'];
