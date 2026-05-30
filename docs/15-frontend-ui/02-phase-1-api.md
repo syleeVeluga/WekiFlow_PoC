@@ -118,14 +118,14 @@ app.post('/api/reviews/:id/approve', async (request, reply) => {
 
 ## 4. ✅ 완료 기준 (Definition of Done)
 
-- [ ] `WekiFlowStore` 인터페이스에 신규 메서드 추가 + `InMemory`/`Mongo` 양쪽 구현.
-- [ ] §2 조회 9개 + 변경 10개 라우트 등록, 모든 입력 zod 검증.
-- [ ] 변경 라우트의 RBAC가 `canApprove`로 게이트(비권한 403). 멀티소스 타입 C `resolve` 거부(409) + `split`/`request-confirm` 동작.
-- [ ] `DELETE /api/topics/:id`가 system 거부(400) + user 삭제 시 문서 `미분류` 재배정 건수 반환.
-- [ ] `PATCH /api/knowledge/:id` 저장 시 `version`/`modCount` 증가.
-- [ ] 시드 DB 대상 HTTP smoke: `/api/knowledge` 88건·필터 적용 시 부분 집합, `/api/reviews/rich`·`/api/multi-source` 개수, 승인 후 `/api/home/digest`의 검토 대기 수 감소.
-- [ ] `apps/api` 테스트(`server.test.ts` 패턴)로 핵심 라우트(승인 RBAC, 토픽 삭제 재배정, 멀티소스 C 거부) 검증.
-- [ ] `pnpm -r build && pnpm -r typecheck` 통과.
+- [x] `WekiFlowStore` 인터페이스에 신규 메서드 추가 + `InMemory`/`Mongo` 양쪽 구현.
+- [x] §2 조회 9개 + 변경 10개 라우트 등록, 모든 입력 zod 검증.
+- [x] 변경 라우트의 RBAC가 `canApprove`로 게이트(비권한 403). 멀티소스 타입 C `resolve` 거부(409) + `split`/`request-confirm` 동작.
+- [x] `DELETE /api/topics/:id`가 system 거부(400) + user 삭제 시 문서 `미분류` 재배정 건수 반환.
+- [x] `PATCH /api/knowledge/:id` 저장 시 `version`/`modCount` 증가.
+- [x] 시드 DB 대상 HTTP smoke: `/api/knowledge` 88건·필터 적용 시 부분 집합, `/api/reviews/rich`·`/api/multi-source` 개수, 승인 후 `/api/home/digest`의 검토 대기 수 감소.
+- [x] `apps/api` 테스트(`server.test.ts` 패턴)로 핵심 라우트(승인 RBAC, 토픽 삭제 재배정, 멀티소스 C 거부) 검증.
+- [x] `pnpm -r build && pnpm -r typecheck` 통과.
 
 > ✅ 게이트 통과 시 **Phase 2**(프론트 기반)로 진행. 프론트 data 훅은 이 엔드포인트를 `request<T>`로 소비한다.
 > ⚠️ 실시간 갱신은 React Query invalidate로 충분 — 이 단계에서 신규 SSE는 추가하지 않는다.

@@ -169,13 +169,13 @@ export function useResolveReview() {
 
 ## 6. ✅ 완료 기준 (Definition of Done)
 
-- [ ] `styles/tokens.css` 등 토큰 레이어 적용, 기존 `styles.css` 삭제, Inter 로드.
-- [ ] `App.tsx`가 고정 LNB(256px) + `.main`(`margin-left`) + `activePage` 조건부 렌더 + 전역 `Toast`/`DetailPanel` 오버레이로 재작성.
-- [ ] 임시 nav 클릭으로 `home/review/kb/doc` 빈 페이지 전환 + 시스템 메뉴 "준비 중" 스텁.
-- [ ] `store.ts`에 내비/`kb`/`review`/`doc`/모달/토스트 슬라이스 + `go`/`openDoc`/`openCategory` 액션.
-- [ ] `src/data/{client,queryKeys,hooks}.ts` 골격이 Phase 1 엔드포인트를 `request<T>`로 호출(타입은 `@wf/shared`).
-- [ ] `lib/format.ts` + `components/common/*` 작성.
-- [ ] 토큰(퍼플 `#5645d4` primary·네이비 `#0a1530`) 시각 확인, `pnpm --filter @wf/web typecheck` 통과(`noUncheckedIndexedAccess`/`exactOptionalPropertyTypes`).
+- [x] `styles/tokens.css` 등 토큰 레이어 적용, 기존 `styles.css` 삭제, Inter 로드.
+- [x] `App.tsx`가 고정 LNB(256px) + `.main`(`margin-left`) + `activePage` 조건부 렌더 + 전역 `Toast`/`DetailPanel` 오버레이로 재작성.
+- [x] 임시 nav 클릭으로 `home/review/kb/doc` 빈 페이지 전환 + 시스템 메뉴 "준비 중" 스텁.
+- [x] `store.ts`에 내비/`kb`/`review`/`doc`/모달/토스트 슬라이스 + `go`/`openDoc`/`openCategory` 액션.
+- [x] `src/data/{client,queryKeys,hooks}.ts` 골격이 Phase 1 엔드포인트를 `request<T>`로 호출(타입은 `@wf/shared`).
+- [x] `lib/format.ts` + `components/common/*` 작성.
+- [x] 토큰(퍼플 `#5645d4` primary·네이비 `#0a1530`) 시각 확인, `pnpm --filter @wf/web typecheck` 통과(`noUncheckedIndexedAccess`/`exactOptionalPropertyTypes`).
 
 > ✅ 게이트 통과 시 화면 Phase(3~6)를 병렬로 착수 가능. 권장 순서: **3(LNB+트리) → 4(홈) → 5(조직지식+단일문서) → 6(검토)**.
 > ⚠️ 기존 `IngestForm`/`HybridEditor`/`blocknote`/`monaco`/`buildTree`는 삭제하지 말 것(후속·seam). `App.tsx`에서 참조만 제거.

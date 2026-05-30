@@ -191,12 +191,12 @@ import { normalizeEntityName } from '@wf/shared';        // 재사용: 카테고
 
 ## 4. ✅ 완료 기준 (Definition of Done)
 
-- [ ] `packages/shared/src/wiki/{enums,types,index}.ts` 작성 + `index.ts` 재export. `pnpm -r build` 후 `@wf/shared`에서 `KnowledgeItem`/`ReviewItem`/`MultiSourceGroup`/`Topic`/`AiTagSuggestion` 등 신규 타입 import 가능.
-- [ ] 기존 `DocumentDTO`/`TreeNode`/`canApprove`/`normalizeEntityName`/`chunkMarkdown` **무변경**(additive only) 확인.
-- [ ] `KnowledgeFreshness`와 `DocumentStatus`가 별개 enum으로 공존.
-- [ ] `ensureIndexes.ts`에 신규 컬렉션 인덱스 멱등 추가.
-- [ ] `scripts/seed-wiki.ts` 실행 시 `documents` ≥ 88건 + `topics` + `review_items` + `multi_source_groups` + `ai_tag_suggestions` + `activity_log` 적재. **재실행해도 개수 불변(멱등)**.
-- [ ] `pnpm -r build && pnpm -r typecheck` 통과 (build 선행 — 워크스페이스 타입 stale dist 이슈).
+- [x] `packages/shared/src/wiki/{enums,types,index}.ts` 작성 + `index.ts` 재export. `pnpm -r build` 후 `@wf/shared`에서 `KnowledgeItem`/`ReviewItem`/`MultiSourceGroup`/`Topic`/`AiTagSuggestion` 등 신규 타입 import 가능.
+- [x] 기존 `DocumentDTO`/`TreeNode`/`canApprove`/`normalizeEntityName`/`chunkMarkdown` **무변경**(additive only) 확인.
+- [x] `KnowledgeFreshness`와 `DocumentStatus`가 별개 enum으로 공존.
+- [x] `ensureIndexes.ts`에 신규 컬렉션 인덱스 멱등 추가.
+- [x] `scripts/seed-wiki.ts` 실행 시 `documents` ≥ 88건 + `topics` + `review_items` + `multi_source_groups` + `ai_tag_suggestions` + `activity_log` 적재. **재실행해도 개수 불변(멱등)**.
+- [x] `pnpm -r build && pnpm -r typecheck` 통과 (build 선행 — 워크스페이스 타입 stale dist 이슈).
 
 > ✅ 게이트 통과 시 **Phase 1**(API 엔드포인트)로 진행. 신규 타입은 서버·워커·프론트가 공유하는 단일 계약이 된다.
 > ⚠️ `home` 집계 지표는 컬렉션이 아니라 Phase 1 엔드포인트에서 계산 — 이 단계에서는 원천 데이터(`review_items`/`activity_log`)만 적재한다.

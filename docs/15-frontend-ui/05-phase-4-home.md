@@ -78,13 +78,13 @@ apps/web/src/components/home/
 
 ## 5. ✅ 완료 기준 (Definition of Done)
 
-- [ ] 히어로·상태바·다이제스트·3위젯이 목업과 시각적으로 일치.
-- [ ] 상태바 "검토 대기" 수가 LNB 검토 뱃지와 동일하고, 검토 승인/반려(Phase 6) 후 함께 감소.
-- [ ] 다이제스트 entity 클릭 → 올바른 문서(`openDoc`)·검토 탭(`setReviewTab`+`go`)로 이동. HTML 주입 없이 React 핸들러로 동작.
-- [ ] 위젯 헤더 "답변하기"→검토 이동.
-- [ ] 자동처리율 게이지 마커/존, 가장많이언급된주제 flag 렌더.
-- [ ] 최근 활동 상위 5건(`useActivity`) 렌더, 행 클릭은 스텁(history).
-- [ ] `pnpm --filter @wf/web typecheck` 통과.
+- [x] 히어로·상태바·다이제스트·3위젯이 목업과 시각적으로 일치.
+- [x] 상태바 "검토 대기" 수가 LNB 검토 뱃지와 동일하고, 검토 승인/반려(Phase 6) 후 함께 감소.
+- [x] 다이제스트 entity 클릭 → 올바른 문서(`openDoc`)·검토 탭(`setReviewTab`+`go`)로 이동. HTML 주입 없이 React 핸들러로 동작.
+- [x] 위젯 헤더 "답변하기"→검토 이동.
+- [x] 자동처리율 게이지 마커/존, 가장많이언급된주제 flag 렌더.
+- [x] 최근 활동 상위 5건(`useActivity`) 렌더, 행 클릭은 스텁(history).
+- [x] `pnpm --filter @wf/web typecheck` 통과.
 
 > ✅ 게이트 통과 시 **Phase 5(조직 지식 + 단일 문서)**로 진행.
 > ⚠️ 검색 빈도·"오늘 분석 N개" 등 챗봇 텔레메트리는 시드 상수(원천 로그 없음) — 향후 실 로그로 교체할 seam.

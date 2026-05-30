@@ -100,14 +100,14 @@ useEffect(() => { /* keydown 등록/해제, review 페이지 게이트 */ }, [ac
 
 ## 6. ✅ 완료 기준 (Definition of Done)
 
-- [ ] 탭(전체/멀티소스/P0/P1/P2)이 라이브 카운트로 필터, 진행바가 승인/반려에 따라 전진.
-- [ ] 카드 ✓/✕가 slide-out 후 제거되고 **카운트·LNB 뱃지·홈 검토 대기**가 동기 감소.
-- [ ] 상세 패널이 slack 스레드(아바타·하이라이트)와 email(from·subj·body)을 각각 정확히 렌더.
-- [ ] 멀티소스 A/B/C/D 각 동작: B는 버전 선택 강제, C는 승인 차단 + 분리/확인요청, 타깃 ≥1 강제.
-- [ ] P2 "전체 일괄 승인"이 P2 전체를 정리. 모두 처리 시 빈 상태 표시.
-- [ ] 키보드 Space/X가 검토 페이지·패널 닫힘에서만 동작, 비권한 차단.
-- [ ] 모든 변경이 `data/hooks` mutation으로 서버 반영 + invalidate(`canApprove` 게이트).
-- [ ] `pnpm --filter @wf/web typecheck` 통과.
+- [x] 탭(전체/멀티소스/P0/P1/P2)이 라이브 카운트로 필터, 진행바가 승인/반려에 따라 전진.
+- [x] 카드 ✓/✕가 slide-out 후 제거되고 **카운트·LNB 뱃지·홈 검토 대기**가 동기 감소.
+- [x] 상세 패널이 slack 스레드(아바타·하이라이트)와 email(from·subj·body)을 각각 정확히 렌더.
+- [x] 멀티소스 A/B/C/D 각 동작: B는 버전 선택 강제, C는 승인 차단 + 분리/확인요청, 타깃 ≥1 강제.
+- [x] P2 "전체 일괄 승인"이 P2 전체를 정리. 모두 처리 시 빈 상태 표시.
+- [x] 키보드 Space/X가 검토 페이지·패널 닫힘에서만 동작, 비권한 차단.
+- [x] 모든 변경이 `data/hooks` mutation으로 서버 반영 + invalidate(`canApprove` 게이트).
+- [x] `pnpm --filter @wf/web typecheck` 통과.
 
 > ✅ 게이트 통과 시 5+1 화면 전체가 목업 파리티로 동작. 교차 일관성(LNB ↔ 홈 ↔ 검토 카운트)을 최종 점검한다.
 > ⚠️ 실 파이프라인이 `review_items`/`multi_source_groups`를 생성하는 연동은 후속(현재는 시드 데이터 기반). `documentId` join 키로 실 문서 반영을 연결할 seam은 이미 마련됨.
