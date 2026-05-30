@@ -110,11 +110,11 @@ async function resolveAndUpsert(triplets, documentId, db) {
 
 ## 6. ✅ 완료 기준 (Definition of Done)
 
-- [ ] 문서 승인 → Graph Worker가 자동 가동 → status=GRAPH_INDEXED.
-- [ ] 추출 트리플이 스키마(zod)에 100% 부합하는 JSON.
-- [ ] Entity Resolution으로 중복 엔티티가 `normalizedName` 기준 병합.
-- [ ] 동일 관계 재출현 시 `descriptions`/`sourceDocIds`만 누적, strength `$max`.
-- [ ] 추출 실패/부분 실패 시 재시도(BullMQ attempts) 및 감사 로깅.
-- [ ] PoC B(추출 프롬프트) 통과.
+- [x] 문서 승인 → Graph Worker가 자동 가동 → status=GRAPH_INDEXED.
+- [x] 추출 트리플이 스키마(zod)에 100% 부합하는 JSON.
+- [x] Entity Resolution으로 중복 엔티티가 `normalizedName` 기준 병합.
+- [x] 동일 관계 재출현 시 `descriptions`/`sourceDocIds`만 누적, strength `$max`.
+- [x] 추출 실패/부분 실패 시 재시도(BullMQ attempts) 및 감사 로깅.
+- [x] PoC B(추출 프롬프트) 통과.
 
 > 게이트 통과 후 **Phase 4**(하이브리드 RAG 통합)로.
