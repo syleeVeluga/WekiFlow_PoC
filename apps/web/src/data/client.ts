@@ -10,7 +10,6 @@ import type {
   ReviewItem,
   Topic,
   TreeCategory,
-  UserRole,
 } from '@wf/shared';
 import { request } from '../api/client.js';
 
@@ -50,14 +49,14 @@ export const dataClient = {
   listReviews(): Promise<ReviewItem[]> {
     return request('/reviews/rich');
   },
-  resolveReview(id: string, action: 'approve' | 'reject', role: UserRole): Promise<{ ok: true; job: JobRef }> {
-    return request(`/reviews/${id}/${action}`, { method: 'POST', headers: { 'x-user-role': role } });
+  resolveReview(id: string, action: 'approve' | 'reject'): Promise<{ ok: true; job: JobRef }> {
+    return request(`/reviews/${id}/${action}`, { method: 'POST' });
   },
   listMultiSource(): Promise<MultiSourceGroup[]> {
     return request('/multi-source');
   },
-  resolveMultiSource(id: string, body: MsResolveBody, role: UserRole): Promise<{ ok: true; job: JobRef }> {
-    return request(`/multi-source/${id}/resolve`, { method: 'POST', headers: { 'x-user-role': role }, body: JSON.stringify(body) });
+  resolveMultiSource(id: string, body: MsResolveBody): Promise<{ ok: true; job: JobRef }> {
+    return request(`/multi-source/${id}/resolve`, { method: 'POST', body: JSON.stringify(body) });
   },
   splitMultiSource(id: string): Promise<{ ok: boolean }> {
     return request(`/multi-source/${id}/split`, { method: 'POST' });

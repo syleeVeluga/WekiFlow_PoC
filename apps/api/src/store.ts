@@ -1,5 +1,7 @@
+import { randomUUID } from 'node:crypto';
 import { InMemoryQueue } from '@wf/queue';
 import {
+  type CreateUserBody,
   type DocumentDTO,
   type AiTagSuggestion,
   type DailyDigest,
@@ -12,8 +14,10 @@ import {
   type TreeCategory,
   type JobRef,
   type TreeNode,
+  type User,
   type UserRole,
   canApprove,
+  canReview,
   createSeedActivity,
   createSeedAiTagSuggestions,
   createSeedDigest,
@@ -22,12 +26,24 @@ import {
   createSeedReviews,
   createSeedTopics,
   groupKnowledgeByCategory,
+  loadEnv,
   normalizeEntityName,
+  seedDemoUsers,
 } from '@wf/shared';
 
 export type ApproveResult =
   | { ok: true; doc: DocumentDTO; job: JobRef }
   | { ok: false; statusCode: number; error: string };
+
+export type LoginResult =
+  | { ok: true; token: string; user: User }
+  | { ok: false; statusCode: number; error: string };
+
+export type UserResult =
+  | { ok: true; user: User }
+  | { ok: false; statusCode: number; error: string };
+
+export type OkResult = { ok: true } | { ok: false; statusCode: number; error: string };
 
 export interface WekiFlowStore {
   seed?(): Promise<void> | void;
@@ -63,6 +79,19 @@ export interface WekiFlowStore {
   homeDigest(): Promise<DailyDigest>;
   listActivity(limit?: number): Promise<ReturnType<typeof createSeedActivity>>;
   treeCategories(): Promise<TreeCategory[]>;
+  // --- Auth & users ---
+  login(email: string, password: string): Promise<LoginResult>;
+  me(token: string): Promise<User | undefined>;
+  logout(token: string): Promise<void>;
+  listUsers(): Promise<User[]>;
+  createUser(body: CreateUserBody): Promise<UserResult>;
+  updateUserRole(id: string, role: UserRole): Promise<UserResult>;
+  deleteUser(id: string): Promise<OkResult>;
+}
+
+function stripPassword(user: User & { password: string }): User {
+  const { password: _password, ...rest } = user;
+  return rest;
 }
 
 export class InMemoryWekiFlowStore implements WekiFlowStore {
@@ -75,10 +104,27 @@ export class InMemoryWekiFlowStore implements WekiFlowStore {
   readonly multiSource = new Map<string, MultiSourceGroup>();
   readonly aiTagSuggestions = new Map<string, AiTagSuggestion>();
   readonly activity = createSeedActivity();
+  readonly users = new Map<string, User & { password: string }>();
+  readonly sessions = new Map<string, string>(); // token -> userId
 
   private sequence = 0;
+  private userSequence = 0;
+
+  private addUser(name: string, email: string, role: UserRole, password: string) {
+    const id = `user-${++this.userSequence}`;
+    this.users.set(id, { id, email, name, role, password, createdAt: new Date().toISOString() });
+  }
+
+  private countOwners(): number {
+    return [...this.users.values()].filter((user) => user.role === 'OWNER').length;
+  }
 
   seed() {
+    if (this.users.size === 0) {
+      const env = loadEnv();
+      this.addUser('소유자', env.ADMIN_EMAIL, 'OWNER', env.ADMIN_PASSWORD);
+      for (const u of seedDemoUsers) this.addUser(u.name, u.email, u.role, u.email);
+    }
     if (this.documents.size > 0) return;
     const now = new Date().toISOString();
     for (const topic of createSeedTopics()) this.topics.set(topic.id, topic);
@@ -315,7 +361,10 @@ export class InMemoryWekiFlowStore implements WekiFlowStore {
   }
 
   async resolveReview(id: string, action: 'approve' | 'reject', role: UserRole): Promise<ApproveResult> {
-    if (!canApprove(role)) return { ok: false, statusCode: 403, error: 'Forbidden' };
+    // 승인은 승인(APPROVER) 이상, 반려는 검토(REVIEWER) 이상.
+    if (!(action === 'approve' ? canApprove(role) : canReview(role))) {
+      return { ok: false, statusCode: 403, error: 'Forbidden' };
+    }
     const review = this.richReviews.get(id);
     if (!review) return { ok: false, statusCode: 404, error: 'Not found' };
     this.richReviews.set(id, { ...review, resolved: true });
@@ -373,5 +422,62 @@ export class InMemoryWekiFlowStore implements WekiFlowStore {
 
   async treeCategories(): Promise<TreeCategory[]> {
     return groupKnowledgeByCategory([...this.knowledge.values()], await this.listTopics());
+  }
+
+  async login(email: string, password: string): Promise<LoginResult> {
+    const user = [...this.users.values()].find((candidate) => candidate.email === email);
+    if (!user || user.password !== password) {
+      return { ok: false, statusCode: 401, error: '이메일 또는 비밀번호가 올바르지 않습니다.' };
+    }
+    const token = randomUUID();
+    this.sessions.set(token, user.id);
+    return { ok: true, token, user: stripPassword(user) };
+  }
+
+  async me(token: string): Promise<User | undefined> {
+    const userId = this.sessions.get(token);
+    if (!userId) return undefined;
+    const user = this.users.get(userId);
+    return user ? stripPassword(user) : undefined;
+  }
+
+  async logout(token: string): Promise<void> {
+    this.sessions.delete(token);
+  }
+
+  async listUsers(): Promise<User[]> {
+    return [...this.users.values()].map(stripPassword);
+  }
+
+  async createUser(body: CreateUserBody): Promise<UserResult> {
+    if ([...this.users.values()].some((user) => user.email === body.email)) {
+      return { ok: false, statusCode: 409, error: '이미 존재하는 이메일입니다.' };
+    }
+    // PoC: 비밀번호는 이메일과 동일하게 발급.
+    this.addUser(body.name, body.email, body.role, body.email);
+    const created = [...this.users.values()].find((user) => user.email === body.email)!;
+    return { ok: true, user: stripPassword(created) };
+  }
+
+  async updateUserRole(id: string, role: UserRole): Promise<UserResult> {
+    const user = this.users.get(id);
+    if (!user) return { ok: false, statusCode: 404, error: '사용자를 찾을 수 없습니다.' };
+    if (user.role === 'OWNER' && role !== 'OWNER' && this.countOwners() <= 1) {
+      return { ok: false, statusCode: 400, error: '마지막 소유자의 권한은 변경할 수 없습니다.' };
+    }
+    const updated = { ...user, role };
+    this.users.set(id, updated);
+    return { ok: true, user: stripPassword(updated) };
+  }
+
+  async deleteUser(id: string): Promise<OkResult> {
+    const user = this.users.get(id);
+    if (!user) return { ok: false, statusCode: 404, error: '사용자를 찾을 수 없습니다.' };
+    if (user.role === 'OWNER' && this.countOwners() <= 1) {
+      return { ok: false, statusCode: 400, error: '마지막 소유자는 삭제할 수 없습니다.' };
+    }
+    this.users.delete(id);
+    for (const [token, userId] of this.sessions) if (userId === id) this.sessions.delete(token);
+    return { ok: true };
   }
 }

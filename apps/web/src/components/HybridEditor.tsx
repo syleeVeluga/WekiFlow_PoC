@@ -1,13 +1,12 @@
 import { lazy, Suspense, useState } from 'react';
-import type { DocumentDTO, UserRole } from '@wf/shared';
+import type { DocumentDTO } from '@wf/shared';
+import { canApprove, canReview, roleLabels } from '@wf/shared';
 import { useApprove, useReject } from '../api/hooks.js';
-import { useUiStore } from '../store.js';
+import { useAuthStore } from '../auth/store.js';
 import { ApiError } from '../api/client.js';
 import { BlockNotePane } from './blocknote/BlockNotePane.js';
 
 type ViewMode = 'read' | 'review';
-
-const ROLES: UserRole[] = ['ADMIN', 'REVIEWER', 'EDITOR', 'VIEWER'];
 
 const MonacoDiffPane = lazy(async () => {
   const module = await import('./monaco/MonacoDiffPane.js');
@@ -16,7 +15,7 @@ const MonacoDiffPane = lazy(async () => {
 
 export function HybridEditor({ doc }: { doc: DocumentDTO }) {
   const [mode, setMode] = useState<ViewMode>(doc.status === 'REVIEW' ? 'review' : 'read');
-  const { role, setRole } = useUiStore();
+  const role = useAuthStore((s) => s.user?.role ?? 'VIEWER');
   const approve = useApprove();
   const reject = useReject();
   const [error, setError] = useState<string | null>(null);
@@ -26,10 +25,10 @@ export function HybridEditor({ doc }: { doc: DocumentDTO }) {
   const onApprove = () => {
     setError(null);
     approve.mutate(
-      { id: doc.id, role },
+      { id: doc.id },
       {
         onError: (err) =>
-          setError(err instanceof ApiError && err.status === 403 ? '권한 없음: ADMIN/REVIEWER만 승인 가능' : '승인 실패'),
+          setError(err instanceof ApiError && err.status === 403 ? '권한 없음: 승인/소유자만 승인 가능' : '승인 실패'),
       },
     );
   };
@@ -67,24 +66,15 @@ export function HybridEditor({ doc }: { doc: DocumentDTO }) {
 
       {isReview && (
         <div className="review-actions">
-          <label>
-            역할:{' '}
-            <select value={role} onChange={(e) => setRole(e.target.value as UserRole)}>
-              {ROLES.map((r) => (
-                <option key={r} value={r}>
-                  {r}
-                </option>
-              ))}
-            </select>
-          </label>
-          <button type="button" className="approve" onClick={onApprove} disabled={approve.isPending}>
+          <span className="role-tag">권한: {roleLabels[role]}</span>
+          <button type="button" className="approve" onClick={onApprove} disabled={approve.isPending || !canApprove(role)}>
             ✅ 승인
           </button>
           <button
             type="button"
             className="reject"
             onClick={() => reject.mutate(doc.id)}
-            disabled={reject.isPending}
+            disabled={reject.isPending || !canReview(role)}
           >
             반려
           </button>

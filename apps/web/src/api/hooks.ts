@@ -5,7 +5,7 @@ import {
   useQueryClient,
   type UseQueryResult,
 } from '@tanstack/react-query';
-import type { DocumentDTO, TreeNode, UserRole } from '@wf/shared';
+import type { DocumentDTO, TreeNode } from '@wf/shared';
 import * as api from './client.js';
 
 export const queryKeys = {
@@ -55,7 +55,7 @@ export function useIngest() {
 export function useApprove() {
   const invalidate = useInvalidateAll();
   return useMutation({
-    mutationFn: ({ id, role }: { id: string; role: UserRole }) => api.approve(id, role),
+    mutationFn: ({ id }: { id: string }) => api.approve(id),
     onSuccess: invalidate,
   });
 }

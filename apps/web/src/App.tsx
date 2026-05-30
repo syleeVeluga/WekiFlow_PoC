@@ -1,10 +1,15 @@
+import { useEffect } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Lnb } from './components/lnb/Lnb.js';
 import { HomePage } from './components/home/HomePage.js';
 import { KbPage } from './components/kb/KbPage.js';
 import { DocPage } from './components/doc/DocPage.js';
 import { ReviewDetailPanel, ReviewPage } from './components/review/ReviewPage.js';
+import { UsersPage } from './components/users/UsersPage.js';
+import { LoginPage } from './components/auth/LoginPage.js';
 import { Toast } from './components/common/Primitives.js';
+import { fetchMe, setAuthToken } from './api/client.js';
+import { getStoredToken, useAuthStore } from './auth/store.js';
 import { useUiStore } from './store.js';
 
 const queryClient = new QueryClient();
@@ -25,6 +30,7 @@ function ActivePage() {
   if (activePage === 'review') return <ReviewPage />;
   if (activePage === 'kb') return <KbPage />;
   if (activePage === 'doc') return <DocPage />;
+  if (activePage === 'users') return <UsersPage />;
   if (activePage === 'sources') return <StubPage title="데이터 소스" />;
   if (activePage === 'rules') return <StubPage title="자동화 규칙" />;
   if (activePage === 'history') return <StubPage title="변경 이력" />;
@@ -45,9 +51,34 @@ function Workspace() {
 }
 
 export function App() {
+  const status = useAuthStore((s) => s.status);
+  const setUser = useAuthStore((s) => s.setUser);
+  const clear = useAuthStore((s) => s.clear);
+
+  // Restore the persisted session on boot: re-attach the token, then validate via /auth/me.
+  useEffect(() => {
+    const token = getStoredToken();
+    if (!token) {
+      clear();
+      return;
+    }
+    setAuthToken(token);
+    fetchMe()
+      .then(setUser)
+      .catch(() => clear());
+  }, [clear, setUser]);
+
   return (
     <QueryClientProvider client={queryClient}>
-      <Workspace />
+      {status === 'loading' ? (
+        <div className="login-shell">
+          <div className="login-splash">불러오는 중…</div>
+        </div>
+      ) : status === 'authed' ? (
+        <Workspace />
+      ) : (
+        <LoginPage />
+      )}
     </QueryClientProvider>
   );
 }

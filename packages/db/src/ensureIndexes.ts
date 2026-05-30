@@ -23,6 +23,7 @@ export async function ensureIndexes(db: Db): Promise<void> {
     db.collection('jobs').createIndex({ type: 1 }),
     db.collection('jobs').createIndex({ documentId: 1 }),
     db.collection('users').createIndex({ email: 1 }, { unique: true }),
+    db.collection('sessions').createIndex({ token: 1 }, { unique: true }),
     db.collection('sandbox_runs').createIndex({ jobId: 1 }),
     db.collection('sandbox_runs').createIndex({ createdAt: 1 }),
     db.collection('topics').createIndex({ name: 1 }, { unique: true }),

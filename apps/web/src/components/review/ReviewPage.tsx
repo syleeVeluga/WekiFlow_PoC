@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { MultiSourceGroup, ReviewItem } from '@wf/shared';
+import { canApprove, canReview } from '@wf/shared';
 import { useMultiSource, useMultiSourceActions, useResolveMultiSource, useResolveReview, useReviewBoard } from '../../data/hooks.js';
+import { useAuthStore } from '../../auth/store.js';
 import { useUiStore } from '../../store.js';
 import { Avatar, Badge, Certainty, PriBadge } from '../common/Primitives.js';
 
@@ -19,13 +21,14 @@ function matchesTab(item: ReviewItem | MultiSourceGroup, tab: string, isMulti = 
 }
 
 function ReviewCard({ item }: { item: ReviewItem }) {
-  const { review, role, setReviewDetail, markReviewDone, showToast } = useUiStore();
+  const { review, setReviewDetail, markReviewDone, showToast } = useUiStore();
+  const role = useAuthStore((s) => s.user?.role ?? 'VIEWER');
   const resolve = useResolveReview();
   const done = review.rvDone[item.id] || item.resolved;
 
   const act = (action: 'approve' | 'reject') => {
     resolve.mutate(
-      { id: item.id, action, role },
+      { id: item.id, action },
       {
         onSuccess: () => {
           markReviewDone(item.id);
@@ -54,10 +57,10 @@ function ReviewCard({ item }: { item: ReviewItem }) {
         </div>
       </div>
       <div className="ri-actions" onClick={(event) => event.stopPropagation()}>
-        <button type="button" title="승인" onClick={() => act('approve')}>
+        <button type="button" title="승인" onClick={() => act('approve')} disabled={!canApprove(role)}>
           ✓
         </button>
-        <button type="button" title="반려" onClick={() => act('reject')}>
+        <button type="button" title="반려" onClick={() => act('reject')} disabled={!canReview(role)}>
           ×
         </button>
       </div>
@@ -66,7 +69,8 @@ function ReviewCard({ item }: { item: ReviewItem }) {
 }
 
 function MultiSourceCard({ group }: { group: MultiSourceGroup }) {
-  const { role, showToast, openDoc } = useUiStore();
+  const { showToast, openDoc } = useUiStore();
+  const role = useAuthStore((s) => s.user?.role ?? 'VIEWER');
   const resolve = useResolveMultiSource();
   const aux = useMultiSourceActions();
   const [selected, setSelected] = useState(() => new Set(group.targets.filter((target) => target.selected !== false).map((target) => target.id)));
@@ -85,7 +89,6 @@ function MultiSourceCard({ group }: { group: MultiSourceGroup }) {
     resolve.mutate(
       {
         id: group.id,
-        role,
         body: {
           targetIds: [...selected],
           selectedVersion: group.multiSourceType === 'B' ? version : undefined,
@@ -103,7 +106,7 @@ function MultiSourceCard({ group }: { group: MultiSourceGroup }) {
     aux.mutate(
       { id: group.id, action },
       {
-        onSuccess: () => showToast(action === 'split' ? '항목을 분리했습니다.' : '담당자 확인 요청을 보냈습니다.', 'ok'),
+        onSuccess: () => showToast(action === 'split' ? '항목을 분리했습니다.' : '사용자 확인 요청을 보냈습니다.', 'ok'),
         onError: (error) => showToast(error instanceof Error ? error.message : '처리에 실패했습니다.', 'warn'),
       },
     );
@@ -154,11 +157,11 @@ function MultiSourceCard({ group }: { group: MultiSourceGroup }) {
       <div className="row right">
         {group.multiSourceType === 'C' ? (
           <>
-            <button type="button" onClick={() => secondary('split')}>분리</button>
-            <button type="button" onClick={() => secondary('request-confirm')}>확인 요청</button>
+            <button type="button" onClick={() => secondary('split')} disabled={!canReview(role)}>분리</button>
+            <button type="button" onClick={() => secondary('request-confirm')} disabled={!canReview(role)}>확인 요청</button>
           </>
         ) : (
-          <button type="button" onClick={resolveGroup} disabled={selected.size === 0}>반영</button>
+          <button type="button" onClick={resolveGroup} disabled={selected.size === 0 || !canApprove(role)}>반영</button>
         )}
       </div>
     </article>

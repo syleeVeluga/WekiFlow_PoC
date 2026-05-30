@@ -1,5 +1,8 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
+import { canManageUsers, roleLabels } from '@wf/shared';
 import { useKnowledgeItems, useMultiSource, useReviewBoard } from '../../data/hooks.js';
+import { logout } from '../../api/client.js';
+import { useAuthStore } from '../../auth/store.js';
 import { useUiStore } from '../../store.js';
 import { Avatar } from '../common/Primitives.js';
 import { LnbDocumentTree } from './DocumentTree.js';
@@ -9,6 +12,9 @@ export function Lnb() {
   const activePage = useUiStore((s) => s.activePage);
   const go = useUiStore((s) => s.go);
   const showToast = useUiStore((s) => s.showToast);
+  const user = useAuthStore((s) => s.user);
+  const clear = useAuthStore((s) => s.clear);
+  const [menuOpen, setMenuOpen] = useState(false);
   const { data: reviews = [] } = useReviewBoard();
   const { data: multi = [] } = useMultiSource();
   const { data: knowledge = [] } = useKnowledgeItems({ person: 'all', topic: 'all', tag: null, status: 'all', q: '', sort: 'uses' });
@@ -16,6 +22,11 @@ export function Lnb() {
   const nav = (page: Parameters<typeof go>[0]) => {
     if (['sources', 'rules', 'history', 'add'].includes(page)) showToast('준비 중입니다.', 'inf');
     go(page);
+  };
+
+  const onLogout = () => {
+    setMenuOpen(false);
+    void logout().finally(() => clear());
   };
 
   return (
@@ -32,7 +43,19 @@ export function Lnb() {
       <NavItem page="add" active={activePage} icon="+" label="직접 추가" onClick={nav} />
       <div className="sb-sec-label">Document Tree</div>
       <LnbDocumentTree />
-      <div className="sb-user"><Avatar name="이지수" /><div><strong>이지수</strong><small>총무팀장 · 지식 관리자</small></div></div>
+      <div className="sb-user">
+        <Avatar name={user?.name ?? '?'} />
+        <div className="sb-user-info"><strong>{user?.name ?? ''}</strong><small>{user ? roleLabels[user.role] : ''}</small></div>
+        <button type="button" className="sb-gear" title="설정" onClick={() => setMenuOpen((open) => !open)}>⚙</button>
+        {menuOpen ? (
+          <div className="sb-menu" onMouseLeave={() => setMenuOpen(false)}>
+            {user && canManageUsers(user.role) ? (
+              <button type="button" onClick={() => { setMenuOpen(false); go('users'); }}>사용자 관리</button>
+            ) : null}
+            <button type="button" onClick={onLogout}>로그아웃</button>
+          </div>
+        ) : null}
+      </div>
     </aside>
   );
 }

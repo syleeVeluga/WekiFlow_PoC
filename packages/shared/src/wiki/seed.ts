@@ -37,7 +37,7 @@ export function createSeedKnowledgeItems(): KnowledgeItem[] {
       documentId: `doc-k${String(n).padStart(2, '0')}`,
       title,
       summary: `${department}에서 자주 묻는 ${category} 기준과 처리 절차입니다.`,
-      contentMarkdown: `# ${title}\n\n■ 핵심 기준\n- 담당 부서: ${department}\n- 적용 범위: 전사 공통 운영\n\n■ 처리 절차\n① 요청 내용을 확인한다.\n② 담당자가 기준을 검토한다.\n③ 승인 후 WikiFlow에 반영한다.`,
+      contentMarkdown: `# ${title}\n\n■ 핵심 기준\n- 담당 부서: ${department}\n- 적용 범위: 전사 공통 운영\n\n■ 처리 절차\n① 요청 내용을 확인한다.\n② 사용자가 기준을 검토한다.\n③ 승인 후 WikiFlow에 반영한다.`,
       department,
       category,
       freshness,

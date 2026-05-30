@@ -4,6 +4,8 @@ import {
   KnowledgeFreshnessSchema,
   TripletArraySchema,
   canApprove,
+  canManageUsers,
+  canReview,
   chunkMarkdown,
   createSeedKnowledgeItems,
   normalizeEntityName,
@@ -27,11 +29,19 @@ describe('@wf/shared', () => {
     expect(parsed.triplets).toHaveLength(1);
   });
 
-  it('keeps approval limited to reviewer roles', () => {
-    expect(canApprove('ADMIN')).toBe(true);
-    expect(canApprove('REVIEWER')).toBe(true);
+  it('separates 검토(review) from 승인(approve): reviewers cannot give final approval', () => {
+    // 최종 승인은 승인(APPROVER) 이상만.
+    expect(canApprove('OWNER')).toBe(true);
+    expect(canApprove('APPROVER')).toBe(true);
+    expect(canApprove('REVIEWER')).toBe(false);
     expect(canApprove('EDITOR')).toBe(false);
     expect(canApprove('VIEWER')).toBe(false);
+    // 검토·반려는 검토(REVIEWER) 이상.
+    expect(canReview('REVIEWER')).toBe(true);
+    expect(canReview('EDITOR')).toBe(false);
+    // 사용자 관리는 승인 + 소유자.
+    expect(canManageUsers('APPROVER')).toBe(true);
+    expect(canManageUsers('REVIEWER')).toBe(false);
   });
 
   it('keeps wiki freshness separate from document workflow status', () => {

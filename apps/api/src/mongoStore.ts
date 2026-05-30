@@ -1,9 +1,10 @@
 import type { Queue } from 'bullmq';
 import type { Db } from 'mongodb';
-import { createDocumentsRepo, toDocumentDTO } from '@wf/db';
+import { createDocumentsRepo, createUsersRepo, toDocumentDTO } from '@wf/db';
 import { defaultJobOptions } from '@wf/queue';
 import {
   KnowledgeQuerySchema,
+  type CreateUserBody,
   type DocumentDTO,
   type ActivityEntry,
   type AiTagSuggestion,
@@ -18,16 +19,20 @@ import {
   type Topic,
   type TreeCategory,
   type TreeNode,
+  type User,
   type UserRole,
   canApprove,
+  canReview,
   createSeedDigest,
   groupKnowledgeByCategory,
+  loadEnv,
   normalizeEntityName,
 } from '@wf/shared';
-import type { ApproveResult, WekiFlowStore } from './store.js';
+import type { ApproveResult, LoginResult, OkResult, UserResult, WekiFlowStore } from './store.js';
 
 export class MongoWekiFlowStore implements WekiFlowStore {
   private readonly docs: ReturnType<typeof createDocumentsRepo>;
+  private readonly usersRepo: ReturnType<typeof createUsersRepo>;
 
   constructor(
     private readonly db: Db,
@@ -35,6 +40,13 @@ export class MongoWekiFlowStore implements WekiFlowStore {
     private readonly graphQueue: Queue,
   ) {
     this.docs = createDocumentsRepo(db);
+    this.usersRepo = createUsersRepo(db);
+  }
+
+  /** 부트 시 소유자 계정을 멱등하게 보장한다(데모 사용자는 scripts/seed-wiki.ts에서 시드). */
+  async seed(): Promise<void> {
+    const env = loadEnv();
+    await this.usersRepo.ensureOwner(env.ADMIN_EMAIL, env.ADMIN_PASSWORD);
   }
 
   private async enqueue(queue: Queue, type: JobType, documentId: string): Promise<JobRef> {
@@ -171,7 +183,10 @@ export class MongoWekiFlowStore implements WekiFlowStore {
   }
 
   async resolveReview(id: string, action: 'approve' | 'reject', role: UserRole): Promise<ApproveResult> {
-    if (!canApprove(role)) return { ok: false, statusCode: 403, error: 'Forbidden' };
+    // 승인은 승인(APPROVER) 이상, 반려는 검토(REVIEWER) 이상.
+    if (!(action === 'approve' ? canApprove(role) : canReview(role))) {
+      return { ok: false, statusCode: 403, error: 'Forbidden' };
+    }
     const review = (await this.dbCollection('review_items').findOne({ id })) as unknown as ReviewItem | null;
     if (!review) return { ok: false, statusCode: 404, error: 'Not found' };
     await this.dbCollection('review_items').updateOne({ id }, { $set: { resolved: true } });
@@ -233,5 +248,58 @@ export class MongoWekiFlowStore implements WekiFlowStore {
   private async documentByWikiId(id: string): Promise<DocumentDTO | undefined> {
     const row = await this.db.collection('documents').findOne({ 'wiki.id': id });
     return row ? toDocumentDTO(row) : undefined;
+  }
+
+  async login(email: string, password: string): Promise<LoginResult> {
+    const user = await this.usersRepo.findByEmailWithPassword(email);
+    if (!user || user.password !== password) {
+      return { ok: false, statusCode: 401, error: '이메일 또는 비밀번호가 올바르지 않습니다.' };
+    }
+    const token = await this.usersRepo.createSession(user.id);
+    const { password: _password, ...dto } = user;
+    return { ok: true, token, user: dto };
+  }
+
+  async me(token: string): Promise<User | undefined> {
+    const userId = await this.usersRepo.resolveSession(token);
+    if (!userId) return undefined;
+    return this.usersRepo.getById(userId);
+  }
+
+  async logout(token: string): Promise<void> {
+    await this.usersRepo.deleteSession(token);
+  }
+
+  async listUsers(): Promise<User[]> {
+    return this.usersRepo.list();
+  }
+
+  async createUser(body: CreateUserBody): Promise<UserResult> {
+    const existing = await this.usersRepo.findByEmailWithPassword(body.email);
+    if (existing) return { ok: false, statusCode: 409, error: '이미 존재하는 이메일입니다.' };
+    // PoC: 비밀번호는 이메일과 동일하게 발급.
+    const user = await this.usersRepo.create({ email: body.email, name: body.name, role: body.role, password: body.email });
+    return { ok: true, user };
+  }
+
+  async updateUserRole(id: string, role: UserRole): Promise<UserResult> {
+    const current = await this.usersRepo.getById(id);
+    if (!current) return { ok: false, statusCode: 404, error: '사용자를 찾을 수 없습니다.' };
+    if (current.role === 'OWNER' && role !== 'OWNER' && (await this.usersRepo.countByRole('OWNER')) <= 1) {
+      return { ok: false, statusCode: 400, error: '마지막 소유자의 권한은 변경할 수 없습니다.' };
+    }
+    const updated = await this.usersRepo.updateRole(id, role);
+    if (!updated) return { ok: false, statusCode: 404, error: '사용자를 찾을 수 없습니다.' };
+    return { ok: true, user: updated };
+  }
+
+  async deleteUser(id: string): Promise<OkResult> {
+    const current = await this.usersRepo.getById(id);
+    if (!current) return { ok: false, statusCode: 404, error: '사용자를 찾을 수 없습니다.' };
+    if (current.role === 'OWNER' && (await this.usersRepo.countByRole('OWNER')) <= 1) {
+      return { ok: false, statusCode: 400, error: '마지막 소유자는 삭제할 수 없습니다.' };
+    }
+    await this.usersRepo.remove(id);
+    return { ok: true };
   }
 }

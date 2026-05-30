@@ -1,9 +1,11 @@
 import { useDigest, useActivity } from '../../data/hooks.js';
+import { useAuthStore } from '../../auth/store.js';
 import { useUiStore } from '../../store.js';
 
 export function HomePage() {
   const { data } = useDigest();
   const { data: activity = [] } = useActivity(5);
+  const userName = useAuthStore((s) => s.user?.name ?? '');
   const go = useUiStore((s) => s.go);
   const openDoc = useUiStore((s) => s.openDoc);
   const setReviewTab = useUiStore((s) => s.setReviewTab);
@@ -22,7 +24,7 @@ export function HomePage() {
     .slice(0, 4);
   return (
     <section className="pg home-wrap">
-      <div className="home-hero"><div className="eyebrow">조직의 운영 기억</div><h1>안녕하세요, 이지수님</h1><p>{data.dateLabel} · WikiFlow가 오늘 새로 배운 운영 지식을 정리했습니다.</p></div>
+      <div className="home-hero"><div className="eyebrow">조직의 운영 기억</div><h1>안녕하세요, {userName}님</h1><p>{data.dateLabel} · WikiFlow가 오늘 새로 배운 운영 지식을 정리했습니다.</p></div>
       <div className="statusbar">
         {metrics.map((metric) => {
           const content = (

@@ -9,7 +9,7 @@ export const documentStatuses = [
   'FAILED',
 ] as const;
 
-export const userRoles = ['ADMIN', 'REVIEWER', 'EDITOR', 'VIEWER'] as const;
+export const userRoles = ['OWNER', 'APPROVER', 'REVIEWER', 'EDITOR', 'VIEWER'] as const;
 export const jobQueues = ['main', 'graph'] as const;
 export const jobTypes = ['INGEST', 'MERGE', 'EXTRACT_TRIPLETS'] as const;
 
@@ -144,6 +144,8 @@ export const EnvSchema = z.object({
   EMBEDDING_MODEL: z.string().default('text-embedding-3-large'),
   DOCKER_SOCKET: z.string().default('//./pipe/docker_engine'),
   VECTOR_SEARCH_MODE: z.enum(['app-cosine', 'atlas']).default('app-cosine'),
+  ADMIN_EMAIL: z.string().default('admin01@veluga.io'),
+  ADMIN_PASSWORD: z.string().default('admin01@veluga.io'),
 });
 
 export type Env = z.infer<typeof EnvSchema>;
@@ -152,9 +154,83 @@ export function loadEnv(input: NodeJS.ProcessEnv = process.env): Env {
   return EnvSchema.parse(input);
 }
 
-export function canApprove(role: UserRole): boolean {
-  return role === 'ADMIN' || role === 'REVIEWER';
+// --- Roles & permissions (cumulative ladder) ---
+// 소유자(OWNER) > 승인(APPROVER) > 검토(REVIEWER) > 편집(EDITOR) > 보기(VIEWER).
+// 검토(REVIEWER)는 검토·반려까지, 최종 승인은 승인(APPROVER) 이상만 가능하다.
+// 소유자·승인 권한자가 사용자별로 역할을 선택·부여한다.
+const roleRank: Record<UserRole, number> = { OWNER: 5, APPROVER: 4, REVIEWER: 3, EDITOR: 2, VIEWER: 1 };
+
+export const roleLabels: Record<UserRole, string> = {
+  OWNER: '소유자',
+  APPROVER: '승인',
+  REVIEWER: '검토',
+  EDITOR: '편집',
+  VIEWER: '보기',
+};
+
+/** 편집·문서 등록 가능 (편집 이상). */
+export function canEdit(role: UserRole): boolean {
+  return roleRank[role] >= roleRank.EDITOR;
 }
+
+/** 변경사항 검토·반려 가능 (검토 이상). */
+export function canReview(role: UserRole): boolean {
+  return roleRank[role] >= roleRank.REVIEWER;
+}
+
+/** 최종 승인 가능 (승인 이상). 검토는 승인 불가. */
+export function canApprove(role: UserRole): boolean {
+  return roleRank[role] >= roleRank.APPROVER;
+}
+
+/** 사용자 관리(역할 부여 등) 가능 (승인 + 소유자). */
+export function canManageUsers(role: UserRole): boolean {
+  return roleRank[role] >= roleRank.APPROVER;
+}
+
+/** 소유자 역할 부여/회수·소유자 계정 변경은 소유자만 가능. */
+export function canManageOwners(role: UserRole): boolean {
+  return role === 'OWNER';
+}
+
+// --- User & auth (Phase: 로그인/사용자 관리) ---
+export const UserSchema = z.object({
+  id: z.string(),
+  email: z.string().email(),
+  name: z.string(),
+  role: UserRoleSchema,
+  createdAt: z.string(),
+});
+export type User = z.infer<typeof UserSchema>;
+
+export const LoginBodySchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(1),
+});
+export type LoginBody = z.infer<typeof LoginBodySchema>;
+
+export const AuthResultSchema = z.object({ token: z.string(), user: UserSchema });
+export type AuthResult = z.infer<typeof AuthResultSchema>;
+
+export const CreateUserBodySchema = z.object({
+  email: z.string().email(),
+  name: z.string().min(1),
+  role: UserRoleSchema,
+});
+export type CreateUserBody = z.infer<typeof CreateUserBodySchema>;
+
+export const UpdateUserRoleBodySchema = z.object({ role: UserRoleSchema });
+export type UpdateUserRoleBody = z.infer<typeof UpdateUserRoleBodySchema>;
+
+// 데모 사용자 — 기존 시드 작성자 이름 기반. 비밀번호는 이메일과 동일하게 시드된다.
+// 소유자(OWNER)는 .env(ADMIN_EMAIL)에서 별도로 시드된다.
+export const seedDemoUsers: Array<{ name: string; email: string; role: UserRole }> = [
+  { name: '이지수', email: 'lee.jisoo@veluga.io', role: 'APPROVER' },
+  { name: '박민지', email: 'park.minji@veluga.io', role: 'REVIEWER' },
+  { name: '김도윤', email: 'kim.doyoon@veluga.io', role: 'EDITOR' },
+  { name: '최서연', email: 'choi.seoyeon@veluga.io', role: 'VIEWER' },
+  { name: '한준호', email: 'han.junho@veluga.io', role: 'REVIEWER' },
+];
 
 export function normalizeEntityName(value: string): string {
   return value.normalize('NFKC').toLowerCase().replace(/\s+/g, '');

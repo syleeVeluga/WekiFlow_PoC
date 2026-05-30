@@ -9,6 +9,9 @@ const graphQueue = createGraphQueue();
 const jobEvents = createMainQueueEvents();
 
 const store = new MongoWekiFlowStore(db, mainQueue, graphQueue);
+// Ensure the seeded owner exists before accepting logins (buildServer also calls
+// seed() but does not await it; ensureOwner is idempotent so the double call is safe).
+await store.seed();
 const app = buildServer({ store, jobQueue: mainQueue, jobEvents });
 
 const port = Number(process.env.PORT ?? 4000);

@@ -1,7 +1,17 @@
 import cors from '@fastify/cors';
 import type { Queue, QueueEvents } from 'bullmq';
-import Fastify from 'fastify';
-import { KnowledgeQuerySchema, MsResolveBodySchema, UserRoleSchema } from '@wf/shared';
+import Fastify, { type FastifyRequest } from 'fastify';
+import {
+  CreateUserBodySchema,
+  KnowledgeQuerySchema,
+  LoginBodySchema,
+  MsResolveBodySchema,
+  UpdateUserRoleBodySchema,
+  type User,
+  canManageOwners,
+  canManageUsers,
+  canReview,
+} from '@wf/shared';
 import { InMemoryWekiFlowStore, type WekiFlowStore } from './store.js';
 
 export interface BuildServerOptions {
@@ -18,6 +28,82 @@ export function buildServer({
   store.seed?.();
   const app = Fastify({ logger: false });
   void app.register(cors);
+
+  // Resolve the logged-in user from the `Authorization: Bearer <token>` header.
+  async function currentUser(request: FastifyRequest): Promise<User | undefined> {
+    const header = request.headers.authorization;
+    if (!header || !header.startsWith('Bearer ')) return undefined;
+    const token = header.slice('Bearer '.length).trim();
+    if (!token) return undefined;
+    return store.me(token);
+  }
+
+  // --- Auth ---
+  app.post('/api/auth/login', async (request, reply) => {
+    const body = LoginBodySchema.parse(request.body);
+    const result = await store.login(body.email, body.password);
+    if (!result.ok) return reply.code(result.statusCode).send({ error: result.error });
+    return { token: result.token, user: result.user };
+  });
+
+  app.get('/api/auth/me', async (request, reply) => {
+    const user = await currentUser(request);
+    if (!user) return reply.code(401).send({ error: 'Unauthorized' });
+    return user;
+  });
+
+  app.post('/api/auth/logout', async (request) => {
+    const header = request.headers.authorization;
+    if (header?.startsWith('Bearer ')) await store.logout(header.slice('Bearer '.length).trim());
+    return { ok: true };
+  });
+
+  // --- User management (소유자 + 승인; 소유자 역할/계정은 소유자만) ---
+  app.get('/api/users', async (request, reply) => {
+    const me = await currentUser(request);
+    if (!me || !canManageUsers(me.role)) return reply.code(403).send({ error: 'Forbidden' });
+    return store.listUsers();
+  });
+
+  app.post('/api/users', async (request, reply) => {
+    const me = await currentUser(request);
+    if (!me || !canManageUsers(me.role)) return reply.code(403).send({ error: 'Forbidden' });
+    const body = CreateUserBodySchema.parse(request.body);
+    if (body.role === 'OWNER' && !canManageOwners(me.role)) {
+      return reply.code(403).send({ error: '소유자 역할은 소유자만 부여할 수 있습니다.' });
+    }
+    const result = await store.createUser(body);
+    if (!result.ok) return reply.code(result.statusCode).send({ error: result.error });
+    return result.user;
+  });
+
+  app.patch('/api/users/:id', async (request, reply) => {
+    const me = await currentUser(request);
+    if (!me || !canManageUsers(me.role)) return reply.code(403).send({ error: 'Forbidden' });
+    const { id } = request.params as { id: string };
+    const body = UpdateUserRoleBodySchema.parse(request.body);
+    const target = (await store.listUsers()).find((user) => user.id === id);
+    if (!canManageOwners(me.role) && (body.role === 'OWNER' || target?.role === 'OWNER')) {
+      return reply.code(403).send({ error: '소유자 권한 변경은 소유자만 가능합니다.' });
+    }
+    const result = await store.updateUserRole(id, body.role);
+    if (!result.ok) return reply.code(result.statusCode).send({ error: result.error });
+    return result.user;
+  });
+
+  app.delete('/api/users/:id', async (request, reply) => {
+    const me = await currentUser(request);
+    if (!me || !canManageUsers(me.role)) return reply.code(403).send({ error: 'Forbidden' });
+    const { id } = request.params as { id: string };
+    if (id === me.id) return reply.code(400).send({ error: '본인 계정은 삭제할 수 없습니다.' });
+    const target = (await store.listUsers()).find((user) => user.id === id);
+    if (!canManageOwners(me.role) && target?.role === 'OWNER') {
+      return reply.code(403).send({ error: '소유자 계정은 소유자만 삭제할 수 있습니다.' });
+    }
+    const result = await store.deleteUser(id);
+    if (!result.ok) return reply.code(result.statusCode).send({ error: result.error });
+    return result;
+  });
 
   app.get('/api/tree', async () => store.tree());
 
@@ -92,8 +178,8 @@ export function buildServer({
   app.post('/api/reviews/:id/:action', async (request, reply) => {
     const { id, action } = request.params as { id: string; action: 'approve' | 'reject' };
     if (action !== 'approve' && action !== 'reject') return reply.code(400).send({ error: 'Invalid action' });
-    const role = UserRoleSchema.catch('VIEWER').parse(request.headers['x-user-role']);
-    const result = await store.resolveReview(id, action, role);
+    const me = await currentUser(request);
+    const result = await store.resolveReview(id, action, me?.role ?? 'VIEWER');
     if (!result.ok) return reply.code(result.statusCode).send({ error: result.error });
     return result;
   });
@@ -102,19 +188,23 @@ export function buildServer({
 
   app.post('/api/multi-source/:id/resolve', async (request, reply) => {
     const { id } = request.params as { id: string };
-    const role = UserRoleSchema.catch('VIEWER').parse(request.headers['x-user-role']);
+    const me = await currentUser(request);
     const body = MsResolveBodySchema.parse(request.body);
-    const result = await store.resolveMultiSource(id, body, role);
+    const result = await store.resolveMultiSource(id, body, me?.role ?? 'VIEWER');
     if (!result.ok) return reply.code(result.statusCode).send({ error: result.error });
     return result;
   });
 
-  app.post('/api/multi-source/:id/split', async (request) => {
+  app.post('/api/multi-source/:id/split', async (request, reply) => {
+    const me = await currentUser(request);
+    if (!me || !canReview(me.role)) return reply.code(403).send({ error: 'Forbidden' });
     const { id } = request.params as { id: string };
     return store.splitMultiSource(id);
   });
 
-  app.post('/api/multi-source/:id/request-confirm', async (request) => {
+  app.post('/api/multi-source/:id/request-confirm', async (request, reply) => {
+    const me = await currentUser(request);
+    if (!me || !canReview(me.role)) return reply.code(403).send({ error: 'Forbidden' });
     const { id } = request.params as { id: string };
     return store.requestConfirmMultiSource(id);
   });
@@ -128,13 +218,15 @@ export function buildServer({
 
   app.post('/api/documents/:id/approve', async (request, reply) => {
     const { id } = request.params as { id: string };
-    const role = UserRoleSchema.catch('VIEWER').parse(request.headers['x-user-role']);
-    const result = await store.approve(id, role);
+    const me = await currentUser(request);
+    const result = await store.approve(id, me?.role ?? 'VIEWER');
     if (!result.ok) return reply.code(result.statusCode).send({ error: result.error });
     return result;
   });
 
   app.post('/api/documents/:id/reject', async (request, reply) => {
+    const me = await currentUser(request);
+    if (!me || !canReview(me.role)) return reply.code(403).send({ error: 'Forbidden' });
     const { id } = request.params as { id: string };
     const doc = await store.reject(id);
     if (!doc) return reply.code(404).send({ error: 'Not found' });

@@ -1,7 +1,6 @@
 import { create } from 'zustand';
-import type { UserRole } from '@wf/shared';
 
-export type ActivePage = 'home' | 'review' | 'kb' | 'doc' | 'sources' | 'rules' | 'history' | 'add';
+export type ActivePage = 'home' | 'review' | 'kb' | 'doc' | 'sources' | 'rules' | 'history' | 'add' | 'users';
 
 interface UiState {
   activePage: ActivePage;
@@ -26,7 +25,6 @@ interface UiState {
   docTab: 'edit' | 'source' | 'relations' | 'history';
   modal: { aiTags: boolean; catManager: boolean };
   toast: { msg: string; type: 'ok' | 'warn' | 'inf' } | null;
-  role: UserRole;
   go: (page: ActivePage) => void;
   openDoc: (id: string, category?: string) => void;
   openCategory: (name: string) => void;
@@ -41,7 +39,6 @@ interface UiState {
   showToast: (msg: string, type?: 'ok' | 'warn' | 'inf') => void;
   clearToast: () => void;
   select: (id: string) => void;
-  setRole: (role: UserRole) => void;
 }
 
 export const useUiStore = create<UiState>((set) => ({
@@ -55,7 +52,6 @@ export const useUiStore = create<UiState>((set) => ({
   docTab: 'edit',
   modal: { aiTags: false, catManager: false },
   toast: null,
-  role: 'REVIEWER',
   go: (activePage) => set({ activePage }),
   openDoc: (id, category) =>
     set((state) => ({
@@ -83,5 +79,4 @@ export const useUiStore = create<UiState>((set) => ({
   showToast: (msg, type = 'inf') => set({ toast: { msg, type } }),
   clearToast: () => set({ toast: null }),
   select: (id) => set({ selectedDocId: id, activePage: 'doc' }),
-  setRole: (role) => set({ role }),
 }));

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { KnowledgeQuery, MsResolveBody, UserRole } from '@wf/shared';
+import type { KnowledgeQuery, MsResolveBody } from '@wf/shared';
 import { dataClient } from './client.js';
 import { dataQueryKeys } from './queryKeys.js';
 
@@ -54,7 +54,7 @@ export function usePatchKnowledge() {
 export function useResolveReview() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, action, role }: { id: string; action: 'approve' | 'reject'; role: UserRole }) => dataClient.resolveReview(id, action, role),
+    mutationFn: ({ id, action }: { id: string; action: 'approve' | 'reject' }) => dataClient.resolveReview(id, action),
     onSuccess: () => invalidateWiki(qc),
   });
 }
@@ -62,7 +62,7 @@ export function useResolveReview() {
 export function useResolveMultiSource() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, body, role }: { id: string; body: MsResolveBody; role: UserRole }) => dataClient.resolveMultiSource(id, body, role),
+    mutationFn: ({ id, body }: { id: string; body: MsResolveBody }) => dataClient.resolveMultiSource(id, body),
     onSuccess: () => invalidateWiki(qc),
   });
 }

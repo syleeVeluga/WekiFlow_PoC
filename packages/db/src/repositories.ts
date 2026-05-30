@@ -1,10 +1,13 @@
 import { ObjectId, type Db, type Document, type WithId } from 'mongodb';
+import { randomUUID } from 'node:crypto';
 import {
   normalizeEntityName,
   type DocumentDTO,
   type DocumentStatus,
   type TreeNode,
   type Triplet,
+  type User,
+  type UserRole,
 } from '@wf/shared';
 
 function toObjectId(id: string): ObjectId | null {
@@ -187,6 +190,100 @@ export function createDocumentsRepo(db: Db) {
         { returnDocument: 'after' },
       );
       return updated ? toDocumentDTO(updated) : undefined;
+    },
+  };
+}
+
+function toUserDTO(raw: WithId<Document>): User {
+  return {
+    id: raw._id.toString(),
+    email: String(raw.email ?? ''),
+    name: String(raw.name ?? ''),
+    role: (raw.role ?? 'VIEWER') as UserRole,
+    createdAt: toIso(raw.createdAt),
+  };
+}
+
+/**
+ * Users + opaque session tokens (PoC auth). Mirrors {@link createDocumentsRepo}.
+ * Passwords are stored in plaintext for the PoC and never returned in DTOs.
+ */
+export function createUsersRepo(db: Db) {
+  const users = db.collection('users');
+  const sessions = db.collection('sessions');
+
+  return {
+    /** Idempotently ensure the seeded owner exists (boot-time). */
+    async ensureOwner(email: string, password: string): Promise<void> {
+      const now = new Date();
+      await users.updateOne(
+        { email },
+        { $setOnInsert: { email, name: '소유자', role: 'OWNER', password, createdAt: now } },
+        { upsert: true },
+      );
+    },
+
+    async list(): Promise<User[]> {
+      const rows = await users.find({}, { projection: { password: 0 } }).sort({ createdAt: 1 }).toArray();
+      return rows.map(toUserDTO);
+    },
+
+    async getById(id: string): Promise<User | undefined> {
+      const oid = toObjectId(id);
+      if (!oid) return undefined;
+      const row = await users.findOne({ _id: oid }, { projection: { password: 0 } });
+      return row ? toUserDTO(row) : undefined;
+    },
+
+    /** Returns the raw record including password — login use only. */
+    async findByEmailWithPassword(email: string): Promise<(User & { password: string }) | undefined> {
+      const row = await users.findOne({ email });
+      return row ? { ...toUserDTO(row), password: String(row.password ?? '') } : undefined;
+    },
+
+    async create(input: { email: string; name: string; role: UserRole; password: string }): Promise<User> {
+      const now = new Date();
+      const id = new ObjectId();
+      await users.insertOne({ _id: id, ...input, createdAt: now });
+      return { id: id.toString(), email: input.email, name: input.name, role: input.role, createdAt: now.toISOString() };
+    },
+
+    async updateRole(id: string, role: UserRole): Promise<User | undefined> {
+      const oid = toObjectId(id);
+      if (!oid) return undefined;
+      const updated = await users.findOneAndUpdate(
+        { _id: oid },
+        { $set: { role } },
+        { returnDocument: 'after', projection: { password: 0 } },
+      );
+      return updated ? toUserDTO(updated) : undefined;
+    },
+
+    async remove(id: string): Promise<void> {
+      const oid = toObjectId(id);
+      if (!oid) return;
+      await users.deleteOne({ _id: oid });
+      await sessions.deleteMany({ userId: id });
+    },
+
+    async countByRole(role: UserRole): Promise<number> {
+      return users.countDocuments({ role });
+    },
+
+    async createSession(userId: string): Promise<string> {
+      const token = randomUUID();
+      await sessions.insertOne({ token, userId, createdAt: new Date() });
+      return token;
+    },
+
+    /** Resolve a session token to its user id (or undefined if unknown). */
+    async resolveSession(token: string): Promise<string | undefined> {
+      const row = await sessions.findOne({ token });
+      return row ? String(row.userId) : undefined;
+    },
+
+    async deleteSession(token: string): Promise<void> {
+      await sessions.deleteOne({ token });
     },
   };
 }
