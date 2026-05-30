@@ -12,7 +12,7 @@
 | 단위(Unit) | `vitest` | repo, 정규화 함수, 청킹, 트리플 파서, RRF 융합 |
 | 통합(Integration) | `vitest` + 로컬 인프라 | 큐 흐름, 샌드박스 실행, $vectorSearch/$graphLookup |
 | E2E(Smoke) | 스크립트/Playwright(선택) | 인입→검토→승인→그래프 선순환 |
-| 코어 PoC | tsx 스크립트 | ① 샌드박스 grep, ② LightRAG 추출 (아래) |
+| 코어 PoC | tsx 스크립트 | ① 샌드박스 grep, ② Triple 추출 (아래) |
 
 > **결정론적 테스트 원칙**: LLM 호출이 들어가는 테스트는 가능한 한 `generateObject`+스키마로 출력을 구조화하고, 어서션은 구조/존재 여부 중심으로. 정확도 평가는 별도 eval 트랙(RAGAS 등).
 
@@ -69,7 +69,7 @@ main();
 
 ---
 
-## B. 코어 PoC ② — LightRAG 추출 프롬프트 테스트
+## B. 코어 PoC ② — Triple 추출 프롬프트 테스트
 
 > PRD: *"사내 규정 텍스트를 넣었을 때 유효한 [Entity-Relation-Entity] JSON을 뱉어내는지 확인하는 파이프라인."*
 

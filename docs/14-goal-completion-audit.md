@@ -28,7 +28,7 @@
 | 리소스 제한 | `poc-sandbox-grep.ts`에서 512MB 할당 실패를 통과 조건으로 검사 |
 | 컨테이너 제거 | `poc-sandbox-grep.ts`에서 `docker ps -a --filter ancestor=wekiflow/sandbox:latest`가 비어 있음을 검사 |
 | timeout cleanup | timeout 발생 시 고유 이름의 샌드박스 컨테이너를 `docker rm -f`로 회수하고, 실제 timeout 재현 후 잔여 컨테이너가 없음을 확인 |
-| LightRAG 추출 스키마 | `corepack pnpm poc:lightrag`가 `TripletArraySchema` 검증 통과 |
+| Triple 추출 스키마 | `corepack pnpm poc:lightrag`가 `TripletArraySchema` 검증 통과 |
 | 핵심 관계 추출 | `신입사원 -> 연차 15일`, `연차 사용 신청 -> 부서장` 출력 |
 | 반복 안정성 | `poc-lightrag-extract.ts`가 동일 입력 2회 결과 동등성을 검사 |
 
@@ -52,7 +52,7 @@
 | Phase DoD 통과 여부 | Phase 0, 코어 PoC 2종, Phase 1 골격 기준 통과 |
 | 감사 가능성 | `createJobsRepo().appendAgentStep`, `createSandboxRunsRepo().record`, `DockerSandboxRunner.audit`, `createMainTools().recordStep` 구현 |
 | 멱등성 | 인덱스 생성 2회 통과, 트리플 upsert는 unique key 기반 |
-| zod 검증 | shared 스키마, LightRAG PoC, 테스트에서 검증 |
+| zod 검증 | shared 스키마, Triple PoC, 테스트에서 검증 |
 | 불확실한 사실 보강 | 샌드박스 PoC가 `rg`로 원문 라인을 결정론적으로 확인 |
 | 결정 사항 문서화 | `docs/13-implementation-decisions.md`, `AGENTS.md`, `.env.example` |
 

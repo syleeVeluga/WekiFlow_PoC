@@ -32,7 +32,7 @@
 | 06 | [`06-phase-0-foundation.md`](./06-phase-0-foundation.md) | **Phase 0** — 모노레포 스캐폴딩 & 로컬 인프라(docker-compose) |
 | 07 | [`07-phase-1-editor-ui.md`](./07-phase-1-editor-ui.md) | **Phase 1** — 투트랙 에디터 UI + 백엔드 뼈대 + 메인 큐 |
 | 08 | [`08-phase-2-sandbox-pipeline-a.md`](./08-phase-2-sandbox-pipeline-a.md) | **Phase 2** — 샌드박스 터미널 통합 (파이프라인 A 코어) |
-| 09 | [`09-phase-3-graph-pipeline-b.md`](./09-phase-3-graph-pipeline-b.md) | **Phase 3** — LightRAG 트리플 추출 (파이프라인 B 코어) |
+| 09 | [`09-phase-3-graph-pipeline-b.md`](./09-phase-3-graph-pipeline-b.md) | **Phase 3** — Triple 트리플 추출 (파이프라인 B 코어) |
 | 10 | [`10-phase-4-hybrid-rag.md`](./10-phase-4-hybrid-rag.md) | **Phase 4** — 궁극의 하이브리드 RAG 통합 |
 | 11 | [`11-testing-and-verification.md`](./11-testing-and-verification.md) | 테스트 전략 + PRD 권장 2대 코어 PoC 스크립트 |
 | 12 | [`12-roadmap-and-milestones.md`](./12-roadmap-and-milestones.md) | 타임라인, 의존성, 리스크, 완료 기준(DoD) |
@@ -42,7 +42,7 @@
 ## 빠른 시작 (TL;DR for AI Coding)
 
 1. **Phase 0** 먼저 — `06-phase-0-foundation.md`의 `docker-compose.yml`로 Redis/MongoDB/MinIO를 띄우고 pnpm 모노레포를 스캐폴딩한다.
-2. **2대 코어 PoC를 최우선** — PRD 권고대로 ① 샌드박스 grep 실행 테스트, ② LightRAG 추출 프롬프트 테스트를 먼저 통과시킨다. (`11-testing-and-verification.md`)
+2. **2대 코어 PoC를 최우선** — PRD 권고대로 ① 샌드박스 grep 실행 테스트, ② Triple 추출 프롬프트 테스트를 먼저 통과시킨다. (`11-testing-and-verification.md`)
 3. 이후 Phase 1 → 4 순서로 진행. 각 Phase 문서 끝의 **"완료 기준(Definition of Done)"** 을 게이트로 사용한다.
 
 ---

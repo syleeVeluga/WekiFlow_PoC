@@ -1,4 +1,4 @@
-# Phase 3 — LightRAG 트리플 추출 파이프라인 (파이프라인 B 코어)
+# Phase 3 — Triple 트리플 추출 파이프라인 (파이프라인 B 코어)
 
 > PRD 🚩 Phase 3: *문서 배포(Commit) 이벤트 시 동작하는 백그라운드 Graph 워커. LightRAG 시스템 프롬프트로 Entity/Relationship을 JSON 배열로 추출해 Graph DB에 일관되게 적재.*
 > *Background graph worker that extracts triplets (LightRAG) and upserts them into MongoDB.*

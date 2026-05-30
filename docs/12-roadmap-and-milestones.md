@@ -12,7 +12,7 @@ Phase 0 (기반: 모노레포 + 인프라)
    │
    ├──────────────┐
    ▼              ▼
-PoC ① 샌드박스   PoC ② LightRAG 추출      ← PRD 권고: 가장 먼저!
+PoC ① 샌드박스   PoC ② Triple 추출        ← PRD 권고: 가장 먼저!
    │              │
    ▼              │
 Phase 1 (에디터 UI + 메인 큐 골격)        ← PoC와 병행 가능
@@ -36,7 +36,7 @@ Phase 4 (하이브리드 RAG 통합 — 선순환 완성)
 | 순서 | 단계 | 핵심 산출물 | 게이트(DoD) | 상태 |
 | :--- | :--- | :--- | :--- | :--- |
 | 1 | **Phase 0** | 모노레포, docker-compose, DB 인덱스, 샌드박스 이미지 | [06 문서 §4](./06-phase-0-foundation.md) | ✅ 완료 |
-| 2 | **PoC ①·②** | grep 실행 스크립트, LightRAG 추출 스크립트 | [11 문서 §A·§B](./11-testing-and-verification.md) | ✅ 완료 |
+| 2 | **PoC ①·②** | grep 실행 스크립트, Triple 추출 스크립트 | [11 문서 §A·§B](./11-testing-and-verification.md) | ✅ 완료 |
 | 3 | **Phase 1** | 투트랙 에디터 UI, Fastify API, 메인 큐(스텁 워커) | [07 문서 §4](./07-phase-1-editor-ui.md) | ✅ 완료 |
 | 4 | **Phase 2** | 실제 에이전트 루프, 샌드박스/검색/병합/검증 도구 | [08 문서 §7](./08-phase-2-sandbox-pipeline-a.md) | ⏳ 다음 |
 | 5 | **Phase 3** | Graph Worker, 트리플 추출/적재, Resolution | [09 문서 §6](./09-phase-3-graph-pipeline-b.md) | ⬜ 예정 |
