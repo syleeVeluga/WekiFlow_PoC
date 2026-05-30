@@ -8,59 +8,24 @@ import type {
   Topic,
   TreeCategory,
 } from './types.js';
+import { SEED_KNOWLEDGE_ITEMS } from './seedKnowledge.js';
 
-const topicNames = ['법인카드', '출장', '복리후생', '사무환경', '보안', '입퇴사', '건강검진', '미분류'];
-const departments = ['총무팀', '인사팀', 'IT팀', '재무팀', '영업팀'] as const;
-const authors = ['이지수', '박민지', '김도윤', '최서연', '한준호'];
-const tagPool = ['정산', '승인', 'Slack', '정책', '신규입사', '보안', '복지', 'FAQ', 'AI추천'];
+// 디자인 목업(v-wiki.html)의 주제 분류 체계. 순서가 사이드바·트리 노출 순서가 된다.
+const topicNames = ['법인카드', '출장·정산', '사무환경', '복리후생', '근태·휴가', '급여·상여', '채용·온보딩', '장비·소프트웨어', '사내시스템', '보안·권한', '미분류'];
 
 export function createSeedTopics(): Topic[] {
   return topicNames.map((name, index) => ({
     id: `topic-${index + 1}`,
     name,
-    source: index < 6 || name === '미분류' ? 'system' : 'user',
+    source: 'system',
     isUnclassified: name === '미분류',
     count: 0,
   }));
 }
 
 export function createSeedKnowledgeItems(): KnowledgeItem[] {
-  return Array.from({ length: 88 }, (_, index) => {
-    const n = index + 1;
-    const category = topicNames[index % topicNames.length]!;
-    const department = departments[index % departments.length]!;
-    const authorName = authors[index % authors.length]!;
-    const freshness = n % 17 === 0 ? 'conflict' : n % 5 === 0 ? 'needs_update' : 'latest';
-    const title = `${category} 운영 지식 ${String(n).padStart(2, '0')}`;
-    return {
-      id: `k${String(n).padStart(2, '0')}`,
-      documentId: `doc-k${String(n).padStart(2, '0')}`,
-      title,
-      summary: `${department}에서 자주 묻는 ${category} 기준과 처리 절차입니다.`,
-      contentMarkdown: `# ${title}\n\n■ 핵심 기준\n- 담당 부서: ${department}\n- 적용 범위: 전사 공통 운영\n\n■ 처리 절차\n① 요청 내용을 확인한다.\n② 사용자가 기준을 검토한다.\n③ 승인 후 WikiFlow에 반영한다.`,
-      department,
-      category,
-      freshness,
-      usageCount: 12 + ((n * 7) % 90),
-      modCount: n % 4,
-      sourceLabel: n % 3 === 0 ? 'Slack #공지' : n % 3 === 1 ? 'Notion 운영규정' : 'Email 공지',
-      authorName,
-      updatedAtLabel: n < 10 ? '오늘' : `${(n % 28) + 1}일 전`,
-      aiTags: [tagPool[n % tagPool.length]!, tagPool[(n + 3) % tagPool.length]!],
-      origin: {
-        label: '최초 생성',
-        at: '2026-05-01',
-        by: authorName,
-        source: '시드 데이터',
-      },
-      lastChange: {
-        label: freshness === 'latest' ? '검토 완료' : '검토 필요',
-        at: '2026-05-30',
-        by: 'LORE',
-        source: '자동 감지',
-      },
-    };
-  });
+  // 호출자가 변이해도 시드 원본이 오염되지 않도록 깊은 복제본을 돌려준다.
+  return SEED_KNOWLEDGE_ITEMS.map((item) => structuredClone(item));
 }
 
 export function createSeedReviews(): ReviewItem[] {
@@ -68,7 +33,6 @@ export function createSeedReviews(): ReviewItem[] {
     {
       id: 'rv-1',
       changeType: 'conflict',
-      priority: 'p0',
       certainty: 2,
       department: '인사팀',
       topicTitle: '건강검진 대상 기준',
@@ -90,14 +54,12 @@ export function createSeedReviews(): ReviewItem[] {
         ],
       },
       reason: '기존 규정과 신규 공지가 상충합니다.',
-      priorityReason: '복리후생 답변 정확도에 직접 영향',
-      documentId: 'k07',
+      documentId: 'k35',
       resolved: false,
     },
     {
       id: 'rv-2',
       changeType: 'update',
-      priority: 'p1',
       certainty: 4,
       department: '총무팀',
       topicTitle: '법인카드 영수증 제출',
@@ -119,14 +81,12 @@ export function createSeedReviews(): ReviewItem[] {
         body: '법인카드 증빙은 사용일로부터 7일 이내 제출하도록 변경됩니다.',
       },
       reason: '공식 이메일 기준 업데이트입니다.',
-      priorityReason: '정산 지연 방지',
-      documentId: 'k01',
+      documentId: 'k07',
       resolved: false,
     },
     {
       id: 'rv-3',
       changeType: 'new',
-      priority: 'p2',
       certainty: 5,
       department: 'IT팀',
       topicTitle: 'VPN MFA 초기화 절차',
@@ -144,8 +104,7 @@ export function createSeedReviews(): ReviewItem[] {
         ],
       },
       reason: '문서화되지 않은 반복 문의입니다.',
-      priorityReason: 'P2 배치 승인 가능',
-      documentId: 'k05',
+      documentId: 'k72',
       resolved: false,
     },
   ];
@@ -156,7 +115,6 @@ export function createSeedMultiSourceGroups(): MultiSourceGroup[] {
     {
       id: 'ms-A',
       multiSourceType: 'A',
-      priority: 'p2',
       certainty: 5,
       department: '인사팀',
       topicTitle: '경조사 지원금 — 본인 결혼',
@@ -166,15 +124,13 @@ export function createSeedMultiSourceGroups(): MultiSourceGroup[] {
         { channel: 'Notion 복지규정', channelType: 'notion', author: '인사팀', time: '09:20', content: '동일 내용 반영 완료', authorityLevel: 'L1' },
       ],
       resolvedContent: '본인 결혼 경조사 지원금은 100만원입니다.',
-      targets: [{ id: 'k03', title: '복리후생 운영 지식 03', current: '80만원', category: '복리후생', selected: true }],
+      targets: [{ id: 'k30', title: '경조사 지원금 기준', current: '본인 결혼 80만원', category: '복리후생', selected: true }],
       reason: 'L1 채널 간 동일 내용',
-      priorityReason: '배치 승인 가능',
       resolved: false,
     },
     {
       id: 'ms-B',
       multiSourceType: 'B',
-      priority: 'p1',
       certainty: 3,
       department: '총무팀',
       topicTitle: '회의실 예약 취소 기한',
@@ -184,15 +140,13 @@ export function createSeedMultiSourceGroups(): MultiSourceGroup[] {
         { channel: 'Email', channelType: 'email', author: '총무팀', time: '11:05', content: '예약 1시간 전 취소', authorityLevel: 'L1' },
       ],
       resolvedContent: '회의실 예약 취소는 예약 1시간 전까지 가능합니다.',
-      targets: [{ id: 'k04', title: '사무환경 운영 지식 04', current: '2시간 전 취소', category: '사무환경' }],
+      targets: [{ id: 'k23', title: '회의실 예약 방법', current: '30분 전 취소', category: '사무환경' }],
       reason: 'L1 이메일 우선',
-      priorityReason: '현장 혼선 방지',
       resolved: false,
     },
     {
       id: 'ms-C',
       multiSourceType: 'C',
-      priority: 'p0',
       certainty: 1,
       department: '재무팀',
       topicTitle: '해외 출장 식비 한도',
@@ -202,15 +156,13 @@ export function createSeedMultiSourceGroups(): MultiSourceGroup[] {
         { channel: '#출장문의', channelType: 'slack', author: '영업지원', time: '08:32', content: '1일 90달러', authorityLevel: 'L2' },
       ],
       resolvedContent: null,
-      targets: [{ id: 'k02', title: '출장 운영 지식 02', current: '1일 80달러', category: '출장' }],
+      targets: [{ id: 'k13', title: '해외 출장 일비 기준', current: '미주·유럽 $80/일', category: '출장·정산' }],
       reason: '권위 있는 소스 간 충돌',
-      priorityReason: '금액 오류 리스크',
       resolved: false,
     },
     {
       id: 'ms-D',
       multiSourceType: 'D',
-      priority: 'p2',
       certainty: 4,
       department: 'IT팀',
       topicTitle: '노트북 반납 체크리스트',
@@ -220,11 +172,10 @@ export function createSeedMultiSourceGroups(): MultiSourceGroup[] {
       ],
       resolvedContent: '퇴사 시 노트북, 충전기, 보안키를 함께 반납한다.',
       targets: [
-        { id: 'k06', title: '입퇴사 운영 지식 06', current: '노트북 반납', category: '입퇴사', selected: true },
-        { id: 'k05', title: '보안 운영 지식 05', current: '보안키 반납', category: '보안' },
+        { id: 'k68', title: '퇴직 시 장비 반납', current: '노트북, 사원증, 충전기 등 지급 장비 일체', category: '장비·소프트웨어', selected: true },
+        { id: 'k63', title: '퇴직 절차', current: '사내 계정·장비 반납', category: '채용·온보딩' },
       ],
       reason: '선택적 반영 가능',
-      priorityReason: '자산 누락 방지',
       resolved: false,
     },
   ];
@@ -232,8 +183,9 @@ export function createSeedMultiSourceGroups(): MultiSourceGroup[] {
 
 export function createSeedAiTagSuggestions(): AiTagSuggestion[] {
   return [
-    { id: 'tag-1', itemId: 'k04', itemTitle: '사무환경 운영 지식 04', tag: '회의실', reason: '예약/취소 문맥이 반복 등장', status: 'pending' },
-    { id: 'tag-2', itemId: 'k05', itemTitle: '보안 운영 지식 05', tag: 'MFA', reason: '인증 초기화 문의와 연결', status: 'pending' },
+    { id: 'tag-1', itemId: 'k22', itemTitle: '택배 수령 절차', tag: '사무환경', reason: '내용 분석 결과 사무환경 관련 키워드 다수 감지', status: 'pending' },
+    { id: 'tag-2', itemId: 'k35', itemTitle: '건강검진 안내', tag: '복리후생', reason: '복지 제도 관련 내용으로 복리후생 태그 제안', status: 'pending' },
+    { id: 'tag-3', itemId: 'k81', itemTitle: '계정 잠금 해제 방법', tag: '보안·권한', reason: '계정 보안 관련 내용으로 보안·권한 태그 제안', status: 'pending' },
   ];
 }
 
@@ -254,9 +206,9 @@ export function createSeedDigest(pendingReview: number): DailyDigest {
     leadCounts: { detected: 23, conflicts: 2, toApply: pendingReview },
     topSearch: '법인카드 정산',
     sections: [
-      { title: '충돌이 감지된 정책', pill: '직접 판단 필요', tone: 'warn', entities: [{ kind: 'conflict', itemId: 'k07', title: '건강검진 대상 기준', quote: '입사 즉시 vs 1년 후' }] },
-      { title: '새로 감지된 조직 지식', pill: '+신규 4건', tone: 'ok', entities: [{ kind: 'new', itemId: 'k05', title: 'VPN MFA 초기화 절차' }] },
-      { title: '기존 지식이 갱신됩니다', pill: '업데이트 7건', tone: 'info', entities: [{ kind: 'update', itemId: 'k01', title: '법인카드 영수증 제출 기한' }] },
+      { title: '충돌이 감지된 정책', pill: '직접 판단 필요', tone: 'warn', entities: [{ kind: 'conflict', itemId: 'k35', title: '건강검진 안내', quote: '입사 즉시 vs 기존 기준' }] },
+      { title: '새로 감지된 조직 지식', pill: '+신규 4건', tone: 'ok', entities: [{ kind: 'new', itemId: 'k72', title: 'VPN 설치 및 접속' }] },
+      { title: '기존 지식이 갱신됩니다', pill: '업데이트 7건', tone: 'info', entities: [{ kind: 'update', itemId: 'k07', title: '법인카드 정산 기한 및 방법' }] },
     ],
     metrics: {
       pendingReview,

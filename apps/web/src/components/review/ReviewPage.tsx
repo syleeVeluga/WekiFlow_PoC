@@ -1,24 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useState } from 'react';
 import type { MultiSourceGroup, ReviewItem } from '@wf/shared';
 import { canApprove, canReview } from '@wf/shared';
 import { useMultiSource, useMultiSourceActions, useResolveMultiSource, useResolveReview, useReviewBoard } from '../../data/hooks.js';
 import { useAuthStore } from '../../auth/store.js';
 import { useUiStore } from '../../store.js';
-import { Avatar, Badge, Certainty, PriBadge } from '../common/Primitives.js';
-
-const tabs = [
-  ['all', '전체'],
-  ['p0', 'P0'],
-  ['p1', 'P1'],
-  ['p2', 'P2'],
-  ['ms', 'Multi-source'],
-] as const;
-
-function matchesTab(item: ReviewItem | MultiSourceGroup, tab: string, isMulti = false) {
-  if (tab === 'all') return true;
-  if (tab === 'ms') return isMulti;
-  return item.priority.toLowerCase() === tab;
-}
+import { Avatar, Badge, Certainty } from '../common/Primitives.js';
 
 function ReviewCard({ item }: { item: ReviewItem }) {
   const { review, setReviewDetail, markReviewDone, showToast } = useUiStore();
@@ -32,7 +18,7 @@ function ReviewCard({ item }: { item: ReviewItem }) {
       {
         onSuccess: () => {
           markReviewDone(item.id);
-          showToast(action === 'approve' ? '검토 항목을 반영했습니다.' : '검토 항목을 제외했습니다.', 'ok');
+          showToast(action === 'approve' ? '승인했습니다.' : '반려했습니다.', 'ok');
         },
         onError: (error) => showToast(error instanceof Error ? error.message : '처리에 실패했습니다.', 'warn'),
       },
@@ -40,12 +26,12 @@ function ReviewCard({ item }: { item: ReviewItem }) {
   };
 
   return (
-    <article className={`card ri-card ${done ? 'gone' : ''}`} onClick={() => setReviewDetail(item.id)}>
+    <article className={`card ri-card ${done ? 'gone' : ''}`}>
       <div>
         <div className="row">
-          <PriBadge value={item.priority} />
+          <Badge tone="info">신규 검토 대상</Badge>
           <Certainty value={item.certainty} />
-          <Badge tone="info">{item.changeType}</Badge>
+          <Badge>{item.changeType}</Badge>
         </div>
         <h3>{item.topicTitle}</h3>
         <p className="muted">{item.reason}</p>
@@ -56,12 +42,15 @@ function ReviewCard({ item }: { item: ReviewItem }) {
           <span>{item.source.time}</span>
         </div>
       </div>
-      <div className="ri-actions" onClick={(event) => event.stopPropagation()}>
-        <button type="button" title="승인" onClick={() => act('approve')} disabled={!canApprove(role)}>
-          ✓
+      <div className="ri-actions">
+        <button type="button" title="검토" onClick={() => setReviewDetail(item.id)} disabled={!canReview(role)}>
+          검토
         </button>
         <button type="button" title="반려" onClick={() => act('reject')} disabled={!canReview(role)}>
-          ×
+          반려
+        </button>
+        <button type="button" title="승인" onClick={() => act('approve')} disabled={!canApprove(role)}>
+          승인
         </button>
       </div>
     </article>
@@ -117,8 +106,8 @@ function MultiSourceCard({ group }: { group: MultiSourceGroup }) {
       <div className="rv-head">
         <div>
           <div className="row">
-            <PriBadge value={group.priority} />
-            <Badge tone="info">Type {group.multiSourceType}</Badge>
+            <Badge tone="info">Multi-source</Badge>
+            <Badge>Type {group.multiSourceType}</Badge>
             <Certainty value={group.certainty} />
           </div>
           <h3>{group.topicTitle}</h3>
@@ -179,12 +168,12 @@ export function ReviewDetailPanel() {
       <section className="detail-panel" onClick={(event) => event.stopPropagation()}>
         <div className="rv-head">
           <div>
-            <PriBadge value={item.priority} />
+            <Badge tone="info">검토</Badge>
             <h2>{item.topicTitle}</h2>
           </div>
-          <button type="button" onClick={() => setReviewDetail(null)}>×</button>
+          <button type="button" onClick={() => setReviewDetail(null)}>닫기</button>
         </div>
-        <p className="muted">{item.priorityReason}</p>
+        <p className="muted">{item.reason}</p>
         {item.existing ? (
           <div className="card subtle">
             <strong>기존 기준</strong>
@@ -219,60 +208,30 @@ export function ReviewDetailPanel() {
 }
 
 export function ReviewPage() {
-  const { review, setReviewTab } = useUiStore();
+  const { review } = useUiStore();
   const { data: items = [] } = useReviewBoard();
   const { data: groups = [] } = useMultiSource();
-  const visibleItems = useMemo(() => items.filter((item) => !item.resolved && matchesTab(item, review.tab)), [items, review.tab]);
-  const visibleGroups = useMemo(() => groups.filter((group) => !group.resolved && matchesTab(group, review.tab, true)), [groups, review.tab]);
-  const total = items.filter((item) => !item.resolved).length + groups.filter((group) => !group.resolved).length;
-  const p2Items = items.filter((item) => !item.resolved && item.priority === 'p2');
-  const progress = total === 0 ? 100 : Math.round(((total - visibleItems.length - visibleGroups.length) / total) * 100);
-
-  useEffect(() => {
-    const handler = (event: KeyboardEvent) => {
-      if (event.code === 'Space') setReviewTab('all');
-      if (event.key.toLowerCase() === 'x') setReviewTab('ms');
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [setReviewTab]);
+  const visibleItems = items.filter((item) => !item.resolved && !review.rvDone[item.id]);
+  const visibleGroups = groups.filter((group) => !group.resolved);
+  const pending = visibleItems.length + visibleGroups.length;
+  const completed = items.length + groups.length - pending;
+  const total = pending + completed;
+  const progress = total === 0 ? 100 : Math.round((completed / total) * 100);
 
   return (
     <section className="page">
       <div className="rv-head">
         <div>
-          <p className="eyebrow">Review Queue</p>
-          <h1>검토 및 멀티소스 반영</h1>
+          <p className="eyebrow">Review</p>
+          <h1>신규 검토 대상</h1>
         </div>
-        <div className="rv-tabs">
-          {tabs.map(([id, label]) => (
-            <button className={review.tab === id ? 'on' : ''} key={id} type="button" onClick={() => setReviewTab(id)}>
-              {label}
-            </button>
-          ))}
-        </div>
+        <Badge tone="warn">{pending}건</Badge>
       </div>
       <div className="rv-prog"><span style={{ width: `${progress}%` }} /></div>
-      <div className="row">
-        <Badge tone="warn">{total} pending</Badge>
-        <Badge tone="info">{groups.filter((group) => !group.resolved).length} multi-source</Badge>
-        <Badge tone="ok">{p2Items.length} P2 batch</Badge>
-      </div>
-
-      {p2Items.length > 0 ? (
-        <section className="card subtle">
-          <div className="rv-head">
-            <strong>P2 일괄 처리 후보</strong>
-            <span>{p2Items.length}개</span>
-          </div>
-          <p className="muted">낮은 우선순위 항목은 큐를 유지한 채 개별 검토 흐름과 같은 API로 처리합니다.</p>
-        </section>
-      ) : null}
-
       <div className="review-grid">
         {visibleItems.map((item) => <ReviewCard item={item} key={item.id} />)}
         {visibleGroups.map((group) => <MultiSourceCard group={group} key={group.id} />)}
-        {visibleItems.length === 0 && visibleGroups.length === 0 ? <div className="empty">현재 탭에 남은 검토 항목이 없습니다.</div> : null}
+        {pending === 0 ? <div className="empty">신규 검토 대상이 없습니다.</div> : null}
       </div>
     </section>
   );

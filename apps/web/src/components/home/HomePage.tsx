@@ -8,7 +8,6 @@ export function HomePage() {
   const userName = useAuthStore((s) => s.user?.name ?? '');
   const go = useUiStore((s) => s.go);
   const openDoc = useUiStore((s) => s.openDoc);
-  const setReviewTab = useUiStore((s) => s.setReviewTab);
   if (!data) return <div className="pg">Loading</div>;
   const metrics = [
     { label: '정상 운영 중', status: true },
@@ -57,7 +56,7 @@ export function HomePage() {
                 <p key={entity.itemId}>
                   <button className="dg-entity" type="button" onClick={() => openDoc(entity.itemId)}>{entity.title}</button>
                   {entity.quote ? ` — ${entity.quote} ` : ' '}
-                  {entity.kind === 'conflict' ? <button className="dg-cite" type="button" onClick={() => setReviewTab('p0')}>[검토]</button> : null}
+                  {entity.kind === 'conflict' ? <button className="dg-cite" type="button" onClick={() => go('review')}>[검토]</button> : null}
                 </p>
               ))}
             </div>

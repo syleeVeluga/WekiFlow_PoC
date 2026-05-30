@@ -7,7 +7,6 @@ import {
   DepartmentSchema,
   KnowledgeFreshnessSchema,
   MultiSourceTypeSchema,
-  ReviewPrioritySchema,
   SourceAuthoritySchema,
   SourceChannelTypeSchema,
   TopicSourceSchema,
@@ -111,7 +110,6 @@ export type ReviewSource = z.infer<typeof ReviewSourceSchema>;
 export const ReviewItemSchema = z.object({
   id: z.string(),
   changeType: ChangeTypeSchema,
-  priority: ReviewPrioritySchema,
   certainty: CertaintySchema,
   department: DepartmentSchema,
   topicTitle: z.string(),
@@ -122,7 +120,6 @@ export const ReviewItemSchema = z.object({
   diff: z.array(DiffLineSchema).default([]),
   thread: ConflictThreadSchema,
   reason: z.string(),
-  priorityReason: z.string(),
   documentId: z.string().optional(),
   resolved: z.boolean().default(false),
 });
@@ -140,7 +137,6 @@ export type MultiSourceTarget = z.infer<typeof MultiSourceTargetSchema>;
 export const MultiSourceGroupSchema = z.object({
   id: z.string(),
   multiSourceType: MultiSourceTypeSchema,
-  priority: ReviewPrioritySchema,
   certainty: CertaintySchema,
   department: DepartmentSchema,
   topicTitle: z.string(),
@@ -149,7 +145,6 @@ export const MultiSourceGroupSchema = z.object({
   resolvedContent: z.string().nullable(),
   targets: z.array(MultiSourceTargetSchema),
   reason: z.string(),
-  priorityReason: z.string(),
   resolved: z.boolean().default(false),
 });
 export type MultiSourceGroup = z.infer<typeof MultiSourceGroupSchema>;

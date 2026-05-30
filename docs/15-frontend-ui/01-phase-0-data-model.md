@@ -25,7 +25,6 @@ packages/shared/src/wiki/
 ```ts
 import { z } from 'zod';
 
-export const ReviewPrioritySchema = z.enum(['p0', 'p1', 'p2']);
 export const ChangeTypeSchema = z.enum(['conflict', 'update', 'new']);     // 목업 cf|upd|new 정규화
 export const CertaintySchema = z.number().int().min(1).max(5);             // 목업 ct (●○ dots)
 export const SourceAuthoritySchema = z.enum(['L1', 'L2', 'L3', 'L4']);
@@ -56,12 +55,12 @@ export type KnowledgeFreshness = z.infer<typeof KnowledgeFreshnessSchema>;
 | `Topic` | `TOPICS[]` | `id`, `name`, `source(system\|user)`, `isUnclassified?` |
 | `KnowledgeItem` | `KB_ALL[]` | `tp→title`, `pv→summary`, `full→contentMarkdown`, `dp→department`, `cat→category`, `status→freshness`, `uses→usageCount`, `upd→modCount`, `src→sourceLabel`, `by→authorName`, `dt→updatedAtLabel`, `aiTags`, `ori→origin`, `chg→lastChange`, `documentId?`(seam) |
 | `AiTagSuggestion` | `AI_TAG_SUGGEST[]` | `id`, `itemId`, `itemTitle`, `tag`, `reason` |
-| `ReviewItem` | `RV_ALL[]` | `t→changeType`(cf→conflict), `pri→priority`, `ct→certainty`, `dp→department`, `tp→topicTitle`, `srcType/srcCh/srcTime/srcAuthor→source{…}`, `ex→existing`, `nw→newValue`, `ct_text→newContent`, `dl→diff`, `thread`, `reason`, `priReason→priorityReason`, `documentId?` |
+| `ReviewItem` | `RV_ALL[]` | `t→changeType`(cf→conflict), `ct→certainty`, `dp→department`, `tp→topicTitle`, `srcType/srcCh/srcTime/srcAuthor→source{…}`, `ex→existing`, `nw→newValue`, `ct_text→newContent`, `dl→diff`, `thread`, `reason`, `documentId?` |
 | `ReviewExisting` | `ex{content,est,by,src}` | `content`, `establishedAt`, `by`, `source` |
 | `DiffLine` | `dl[]{t,c}` | `kind(add\|del)`, `content` |
 | `ConflictThread` | `thread` | `type(slack\|email)`, `channel?`, `from?`, `to?`, `subj?`, `date`, `messages:SourceMessage[]`, `body?` |
 | `SourceMessage` | `thread.msgs[]` / `sources[]` | `channel`, `channelType`, `icon?`, `author`, `time`, `content`, `isBaseline?`, `authorityLevel?`, `highlight?(hl)` |
-| `MultiSourceGroup` | `MS_GROUPS[]` | `msType→multiSourceType`, `pri→priority`, `ct→certainty`, `dp→department`, `tp→topicTitle`, `desc→description`, `sources[]`, `resolvedContent\|null`, `targets[]`, `reason`, `priReason→priorityReason` |
+| `MultiSourceGroup` | `MS_GROUPS[]` | `msType→multiSourceType`, `ct→certainty`, `dp→department`, `tp→topicTitle`, `desc→description`, `sources[]`, `resolvedContent\|null`, `targets[]`, `reason` |
 | `MultiSourceTarget` | `targets[]` | `id`, `title`, `current`, `category`, `selected?`(UI) |
 | `ActivityEntry` | `HIST_ALL[]` | `who→actor`, `wl→actorLabel`, `dp→department`, `k→kind`, `tg→targetTitle`, `time`, `dateLabel?` |
 | `CoverageStat` | 홈 `people[]`/`mat[]`/`KB_PEOPLE` | `key`, `label`, `count`, `role?`, `tone?(ok\|warn\|error)`, `flag?` |
@@ -117,24 +116,24 @@ export type KnowledgeItem = z.infer<typeof KnowledgeItemSchema>;
   "isUnclassified":false, "createdAt":"ISODate", "updatedAt":"ISODate" }
 
 // review_items — 검토 큐 항목(파이프라인이 감지한 변화)
-{ "_id":"ObjectId", "changeType":"conflict|update|new", "priority":"p0|p1|p2",
+{ "_id":"ObjectId", "changeType":"conflict|update|new",
   "certainty":2, "department":"인사팀", "topicTitle":"건강검진 대상 기준",
   "source":{ "type":"slack|email", "channel":"#HR공지", "time":"오전 10:14", "author":"박민지" },
   "existing":{ "content":"…","establishedAt":"…","by":"…","source":"…" },
   "newValue":"…", "newContent":"…", "diff":[{ "kind":"del","content":"…" }],
   "thread":{ "type":"slack","channel":"#HR공지","date":"…","messages":[…] },
-  "reason":"…", "priorityReason":"…",
+  "reason":"…",
   "documentId":"ObjectId|null", "resolved":false,
   "createdAt":"ISODate" }
 
 // multi_source_groups — 멀티소스 통합 검토
-{ "_id":"ObjectId", "multiSourceType":"A|B|C|D", "priority":"p2", "certainty":4,
+{ "_id":"ObjectId", "multiSourceType":"A|B|C|D", "certainty":4,
   "department":"인사팀", "topicTitle":"경조사 지원금 — 본인 결혼", "description":"…",
   "sources":[{ "channel":"#복리후생","authorityLevel":"L1","author":"박민지",
                "time":"오전 09:05","content":"…","isBaseline":true }],
   "resolvedContent":"…|null",
   "targets":[{ "documentId":"ObjectId","title":"…","current":"…","category":"복리후생" }],
-  "reason":"…", "priorityReason":"…", "resolved":false, "createdAt":"ISODate" }
+  "reason":"…", "resolved":false, "createdAt":"ISODate" }
 
 // ai_tag_suggestions — AI 자동 분류 태그 제안(검토 대기)
 { "_id":"ObjectId", "itemId":"ObjectId(documents)", "itemTitle":"택배 수령 절차",
@@ -150,7 +149,6 @@ export type KnowledgeItem = z.infer<typeof KnowledgeItemSchema>;
 
 ```js
 db.topics.createIndex({ name: 1 }, { unique: true });
-db.review_items.createIndex({ priority: 1, resolved: 1 });
 db.review_items.createIndex({ resolved: 1, createdAt: -1 });
 db.multi_source_groups.createIndex({ resolved: 1 });
 db.ai_tag_suggestions.createIndex({ status: 1 });

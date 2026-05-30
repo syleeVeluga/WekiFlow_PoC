@@ -27,7 +27,6 @@ export async function ensureIndexes(db: Db): Promise<void> {
     db.collection('sandbox_runs').createIndex({ jobId: 1 }),
     db.collection('sandbox_runs').createIndex({ createdAt: 1 }),
     db.collection('topics').createIndex({ name: 1 }, { unique: true }),
-    db.collection('review_items').createIndex({ priority: 1, resolved: 1 }),
     db.collection('review_items').createIndex({ resolved: 1, createdAt: -1 }),
     db.collection('multi_source_groups').createIndex({ resolved: 1 }),
     db.collection('ai_tag_suggestions').createIndex({ status: 1 }),

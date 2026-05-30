@@ -51,7 +51,7 @@ export interface WekiFlowStore {
 | `GET` | `/api/knowledge/:id` | 지식 단건(본문·태그·이력) | 단일 문서 |
 | `GET` | `/api/topics` | 주제 분류 목록(system+user) | KB 필터·트리·카테고리 관리 |
 | `GET` | `/api/ai-tag-suggestions` | AI 태그 제안(pending) | KB 배너·모달 |
-| `GET` | `/api/reviews/rich` | 검토 항목(우선순위·확실성·thread 포함) | 검토 카드/패널 |
+| `GET` | `/api/reviews/rich` | 검토 항목(확실성·thread 포함) | 검토 카드/패널 |
 | `GET` | `/api/multi-source` | 멀티소스 그룹 | 검토 멀티소스 |
 | `GET` | `/api/home/digest` | 다이제스트+상태바 지표+가장많이언급된주제 | 홈 |
 | `GET` | `/api/activity?limit=5` | 최근 활동 | 홈·(변경 이력 seam) |

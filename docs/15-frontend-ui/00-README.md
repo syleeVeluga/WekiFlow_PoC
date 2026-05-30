@@ -14,7 +14,7 @@
 | 셸 | 고정 네이비 LNB(256px) + 페이지 전환(`go(p)`) | 단일 화면 — 사이드바에 4컴포넌트 스택, 라우터 없음 |
 | 스타일 | 디자인 토큰(`:root`) + 영역별 CSS | 토큰 없는 평문 `styles.css` 256줄 |
 | 화면 | 홈·검토(멀티소스)·조직 지식·문서 트리·단일 문서 + 시스템 4종 | 트리/검토목록/지식목록/인입폼(단순 버튼 리스트) |
-| 데이터 | KB_ALL(~88) · TOPICS · RV_ALL · MS_GROUPS · AI_TAG_SUGGEST · HIST_ALL (손작성) | `DocumentDTO`/`TreeNode`만 — 부서·카테고리·AI태그·참조수·확실성·우선순위·변경유형·소스채널·멀티소스 **전무** |
+| 데이터 | KB_ALL(~88) · TOPICS · RV_ALL · MS_GROUPS · AI_TAG_SUGGEST · HIST_ALL (손작성) | `DocumentDTO`/`TreeNode`만 — 부서·카테고리·AI태그·참조수·확실성·변경유형·소스채널·멀티소스 **전무** |
 
 목표: 위 격차를 **풀스택**으로 메운다 — 부족 데이터를 `packages/shared` 타입 + MongoDB 컬렉션 + 신규 API로 실제 생산하고, `apps/web`을 목업과 동일한 UX로 재구축한다.
 
@@ -42,7 +42,7 @@
 | 용어 | 의미 |
 | :--- | :--- |
 | **LNB** | Left Navigation Bar — 좌측 고정 네이비 사이드바 (목업 `.sb`). 사용자가 "LMB"로 표기한 대상. |
-| **검토(Review)** | 감지된 변화를 사람이 승인/반려하는 Human-in-the-loop 큐. 우선순위 P0/P1/P2. |
+| **검토(Review)** | 감지된 변화를 사람이 검토·승인·반려하는 Human-in-the-loop 큐. |
 | **멀티소스(Multi-source)** | 동일 주제가 여러 채널에서 감지될 때의 통합 검토. 타입 A(동일)/B(유사·버전선택)/C(상충·자동해결불가)/D(선택적). |
 | **소스 권위(Source Authority)** | 채널 신뢰 등급 L1>L2>L3>L4 (공식 공지 > 비공식 문의 등). |
 | **신선도(Freshness)** | 지식 항목의 콘텐츠 상태 `latest`/`needs_update`/`conflict`. 문서 라이프사이클(`DocumentStatus`)과 **별개 축**. |

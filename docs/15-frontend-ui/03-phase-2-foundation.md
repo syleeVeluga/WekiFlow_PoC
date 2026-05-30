@@ -101,7 +101,7 @@ interface UiState {
   setKb: (patch: Partial<UiState['kb']>) => void;
 
   // 검토
-  review: { tab:'all'|'ms'|'p0'|'p1'|'p2'; rvDone:Record<string,boolean>; detailPanelItemId:string|null; };
+  review: { tab:'new'; rvDone:Record<string,boolean>; detailPanelItemId:string|null; };
   setReviewTab: (t: UiState['review']['tab']) => void;
 
   // 단일 문서
@@ -161,7 +161,7 @@ export function useResolveReview() {
 
 ### 🛠️ 2.5 `components/common/`
 
-`Toast`(스토어 구독), `Modal`(`modal-ov` 백드롭 닫기 셸), `Badge`/`PriBadge`(P0/P1/P2)/`Certainty`(`dots`)/`Avatar`(`avColor` + 이니셜).
+`Toast`(스토어 구독), `Modal`(`modal-ov` 백드롭 닫기 셸), `Badge`/`Certainty`(`dots`)/`Avatar`(`avColor` + 이니셜).
 
 > ⚠️ React는 JSX를 자동 escape하므로 목업의 `esc()`는 불필요 — 이식하지 않는다. `fmtBody`만 마크업 생성용으로 이식하되, 결과를 `dangerouslySetInnerHTML` 대신 React 엘리먼트로 빌드(가능하면) 또는 신뢰된 시드 본문에 한해 사용.
 

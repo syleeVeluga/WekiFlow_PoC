@@ -1,15 +1,9 @@
 import type { ReactNode } from 'react';
-import type { ReviewPriority } from '@wf/shared';
-import { avColor, dotColor, dots, priorityLabel } from '../../lib/format.js';
+import { avColor, dotColor, dots } from '../../lib/format.js';
 import { useUiStore } from '../../store.js';
 
 export function Badge({ children, tone = 'neutral' }: { children: ReactNode; tone?: 'neutral' | 'ok' | 'warn' | 'error' | 'info' }) {
   return <span className={`badge badge-${tone}`}>{children}</span>;
-}
-
-export function PriBadge({ value }: { value: ReviewPriority }) {
-  const tone = value === 'p0' ? 'error' : value === 'p1' ? 'warn' : 'info';
-  return <Badge tone={tone}>{priorityLabel(value)}</Badge>;
 }
 
 export function Certainty({ value }: { value: number }) {

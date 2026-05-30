@@ -1,14 +1,18 @@
-import type { KnowledgeFreshness, ReviewPriority, SourceAuthority } from '@wf/shared';
+import type { KnowledgeFreshness, SourceAuthority } from '@wf/shared';
 
+// 디자인 목업(v-wiki.html)의 카테고리 색상. createSeedTopics의 주제명과 1:1 대응.
 export const CAT_COLORS: Record<string, string> = {
-  법인카드: '#5645d4',
-  출장: '#0ea5e9',
-  복리후생: '#16a34a',
-  사무환경: '#f59e0b',
-  보안: '#ef4444',
-  입퇴사: '#8b5cf6',
-  건강검진: '#14b8a6',
-  미분류: '#94a3b8',
+  법인카드: '#dd5b00',
+  '출장·정산': '#0075de',
+  사무환경: '#2a9d99',
+  복리후생: '#7b3ff2',
+  '근태·휴가': '#e03131',
+  '급여·상여': '#dd5b00',
+  '채용·온보딩': '#1aae39',
+  '장비·소프트웨어': '#0075de',
+  사내시스템: '#7b3ff2',
+  '보안·권한': '#5645d4',
+  미분류: '#999999',
 };
 
 const AV_COLORS = ['#5645d4', '#0ea5e9', '#16a34a', '#f59e0b', '#ef4444', '#8b5cf6'];
@@ -34,10 +38,6 @@ export function dotColor(n: number): string {
 
 export function freshnessLabel(value: KnowledgeFreshness): string {
   return value === 'latest' ? '최신' : value === 'needs_update' ? '업데이트 필요' : '충돌';
-}
-
-export function priorityLabel(value: ReviewPriority): string {
-  return value.toUpperCase();
 }
 
 export function srcLevel(channel: string): SourceAuthority {

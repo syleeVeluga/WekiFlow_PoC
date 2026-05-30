@@ -18,7 +18,7 @@ interface UiState {
     sort: 'uses' | 'recent' | 'alpha';
   };
   review: {
-    tab: 'all' | 'ms' | 'p0' | 'p1' | 'p2';
+    tab: 'new';
     rvDone: Record<string, boolean>;
     detailPanelItemId: string | null;
   };
@@ -48,7 +48,7 @@ export const useUiStore = create<UiState>((set) => ({
   treeOpen: {},
   treeSearch: '',
   kb: { mode: 'grid', personF: 'all', topicF: 'all', tagF: null, statusF: 'all', query: '', sort: 'uses' },
-  review: { tab: 'all', rvDone: {}, detailPanelItemId: null },
+  review: { tab: 'new', rvDone: {}, detailPanelItemId: null },
   docTab: 'edit',
   modal: { aiTags: false, catManager: false },
   toast: null,
