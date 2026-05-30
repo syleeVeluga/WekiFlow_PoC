@@ -1,0 +1,30 @@
+{
+  "name": "wekiflow-poc",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "scripts": {
+    "build": "corepack pnpm -r build",
+    "typecheck": "corepack pnpm -r typecheck",
+    "test": "corepack pnpm -r test",
+    "lint": "corepack pnpm -r lint",
+    "poc:sandbox": "tsx scripts/poc-sandbox-grep.ts",
+    "poc:lightrag": "tsx scripts/poc-lightrag-extract.ts",
+    "verify:goal": "corepack pnpm build && corepack pnpm test && corepack pnpm poc:lightrag"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.14"
+  },
+  "dependencies": {
+    "@wf/agent-tools": "workspace:*",
+    "@wf/sandbox": "workspace:*",
+    "@wf/shared": "workspace:*"
+  }
+}
