@@ -1,22 +1,68 @@
-import { useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { useKnowledgeItem, usePatchKnowledge } from '../../data/hooks.js';
 import { useUiStore } from '../../store.js';
-import { Body } from '../kb/KbPage.js';
+import { BlockNotePane } from '../blocknote/BlockNotePane.js';
+
+const MonacoDiffPane = lazy(async () => {
+  const module = await import('../monaco/MonacoDiffPane.js');
+  return { default: module.MonacoDiffPane };
+});
+
+const DOC_TABS = ['edit', 'source', 'relations', 'history'] as const;
+
+const TAB_LABELS = {
+  edit: '편집',
+  source: '소스',
+  relations: '연결 관계',
+  history: '변경 기록',
+} satisfies Record<(typeof DOC_TABS)[number], string>;
 
 export function DocPage() {
   const selectedDocId = useUiStore((s) => s.selectedDocId);
   const { data: doc } = useKnowledgeItem(selectedDocId);
-  const { docTab, docEditing, setDocTab, setDocEditing, openCategory, showToast } = useUiStore();
+  const { docTab, setDocTab, openCategory, showToast } = useUiStore();
   const patch = usePatchKnowledge();
-  const [draft, setDraft] = useState('');
+  const [draft, setDraft] = useState<string | null>(null);
+
+  useEffect(() => {
+    setDraft(doc?.contentMarkdown ?? null);
+  }, [doc?.id, doc?.contentMarkdown]);
+
+  const historyMeta = useMemo(() => {
+    if (!doc) return [];
+    return [doc.origin, doc.lastChange].filter((item): item is NonNullable<typeof item> => item != null);
+  }, [doc]);
+
   if (!doc) return <section className="pg stub"><h1>문서를 선택하세요</h1></section>;
-  const save = () => patch.mutate({ id: doc.id, contentMarkdown: draft }, { onSuccess: () => { setDocEditing(false); showToast('저장했습니다.', 'ok'); } });
+  const currentMarkdown = draft ?? doc.contentMarkdown;
+  const changed = currentMarkdown !== doc.contentMarkdown;
+  const save = () => patch.mutate({ id: doc.id, contentMarkdown: currentMarkdown }, { onSuccess: () => showToast('저장했습니다.', 'ok') });
+
   return (
     <section className="pg doc-page">
       <div className="topbar"><div><h1>{doc.title}</h1><p>{doc.category} · {doc.department}</p></div><button className="btn" onClick={() => openCategory(doc.category)}>← 카테고리로</button></div>
-      <div className="doc-toolbar"><div className="tabs">{(['edit', 'source', 'relations', 'history'] as const).map((tab) => <button className={docTab === tab ? 'on' : ''} onClick={() => setDocTab(tab)} key={tab}>{tab === 'edit' ? '편집' : tab === 'source' ? '소스' : tab === 'relations' ? '연결 관계' : '변경 기록'}</button>)}</div><button className="btn" onClick={() => showToast('챗봇 컨텍스트를 전환했습니다.', 'inf')}>챗봇 토글</button></div>
+      <div className="doc-toolbar"><div className="tabs">{DOC_TABS.map((tab) => <button className={docTab === tab ? 'on' : ''} onClick={() => setDocTab(tab)} key={tab}>{TAB_LABELS[tab]}</button>)}</div><button className="btn" onClick={() => showToast('챗봇 컨텍스트를 전환했습니다.', 'inf')}>챗봇 토글</button></div>
       <div className="card doc-body">
-        {docTab === 'edit' ? <>{doc.sourceLabel.includes('Slack') ? <div className="learn-box">AI 학습: Slack 원천에서 감지된 지식입니다.</div> : null}{docEditing ? <><textarea value={draft || doc.contentMarkdown} onChange={(e) => setDraft(e.target.value)} /><button className="btn-primary" onClick={save}>저장</button><button className="btn" onClick={() => setDocEditing(false)}>취소</button></> : <><Body markdown={doc.contentMarkdown} /><button className="btn-primary" onClick={() => { setDraft(doc.contentMarkdown); setDocEditing(true); }}>편집하기</button></>}</> : docTab === 'source' ? <pre>{JSON.stringify({ sourceLabel: doc.sourceLabel, origin: doc.origin, lastChange: doc.lastChange }, null, 2)}</pre> : docTab === 'relations' ? <p>관련 문서: {doc.aiTags.map((tag) => `#${tag}`).join(' ')}</p> : <pre>{JSON.stringify([doc.origin, doc.lastChange], null, 2)}</pre>}
+        {docTab === 'edit' ? (
+          <>
+            {doc.sourceLabel.includes('Slack') ? <div className="learn-box">AI 학습: Slack 원천에서 감지된 지식입니다.</div> : null}
+            <BlockNotePane markdown={doc.contentMarkdown} editable onMarkdownChange={setDraft} />
+            <div className="doc-actions">
+              <button className="btn-primary" onClick={save} disabled={!changed || patch.isPending}>저장</button>
+            </div>
+          </>
+        ) : docTab === 'source' ? (
+          <pre className="markdown-source"><code>{currentMarkdown}</code></pre>
+        ) : docTab === 'relations' ? (
+          <p>관련 문서: {doc.aiTags.map((tag) => `#${tag}`).join(' ')}</p>
+        ) : (
+          <>
+            <div className="history-meta">{historyMeta.map((item) => <span key={`${item.label}-${item.at}`}>{item.label} · {item.at} · {item.by} · {item.source}</span>)}</div>
+            <Suspense fallback={<div className="panel">Diff loading</div>}>
+              <MonacoDiffPane original={doc.contentMarkdown} modified={currentMarkdown} />
+            </Suspense>
+          </>
+        )}
       </div>
     </section>
   );

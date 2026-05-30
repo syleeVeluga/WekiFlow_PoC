@@ -24,7 +24,6 @@ interface UiState {
     detailPanelItemId: string | null;
   };
   docTab: 'edit' | 'source' | 'relations' | 'history';
-  docEditing: boolean;
   modal: { aiTags: boolean; catManager: boolean };
   toast: { msg: string; type: 'ok' | 'warn' | 'inf' } | null;
   role: UserRole;
@@ -38,7 +37,6 @@ interface UiState {
   setReviewDetail: (id: string | null) => void;
   markReviewDone: (id: string) => void;
   setDocTab: (tab: UiState['docTab']) => void;
-  setDocEditing: (editing: boolean) => void;
   setModal: (patch: Partial<UiState['modal']>) => void;
   showToast: (msg: string, type?: 'ok' | 'warn' | 'inf') => void;
   clearToast: () => void;
@@ -55,7 +53,6 @@ export const useUiStore = create<UiState>((set) => ({
   kb: { mode: 'grid', personF: 'all', topicF: 'all', tagF: null, statusF: 'all', query: '', sort: 'uses' },
   review: { tab: 'all', rvDone: {}, detailPanelItemId: null },
   docTab: 'edit',
-  docEditing: false,
   modal: { aiTags: false, catManager: false },
   toast: null,
   role: 'REVIEWER',
@@ -67,7 +64,6 @@ export const useUiStore = create<UiState>((set) => ({
       selectedCategory: category ?? state.selectedCategory,
       treeOpen: category ? { ...state.treeOpen, [category]: true } : state.treeOpen,
       docTab: 'edit',
-      docEditing: false,
     })),
   openCategory: (name) =>
     set((state) => ({
@@ -83,7 +79,6 @@ export const useUiStore = create<UiState>((set) => ({
   setReviewDetail: (id) => set((state) => ({ review: { ...state.review, detailPanelItemId: id } })),
   markReviewDone: (id) => set((state) => ({ review: { ...state.review, rvDone: { ...state.review.rvDone, [id]: true } } })),
   setDocTab: (docTab) => set({ docTab }),
-  setDocEditing: (docEditing) => set({ docEditing }),
   setModal: (patch) => set((state) => ({ modal: { ...state.modal, ...patch } })),
   showToast: (msg, type = 'inf') => set({ toast: { msg, type } }),
   clearToast: () => set({ toast: null }),
