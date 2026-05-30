@@ -33,6 +33,10 @@ export function HomePage() {
       </div>
       <div className="digest-grid">
         <div className="card">
+          <div className="digest-meta">
+            <span className="digest-date">{data.dateLabel}</span>
+            <span className="digest-live"><span className="digest-live-dot" />마지막 업데이트: {data.updatedAtLabel ?? '방금 전'}</span>
+          </div>
           <h2>오늘, 조직이 새로 배운 것</h2>
           <p>가장 자주 검색된 주제는 <b>{data.topSearch}</b>입니다.</p>
           {data.sections.map((section) => (

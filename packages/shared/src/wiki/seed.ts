@@ -250,6 +250,7 @@ export function createSeedActivity(): ActivityEntry[] {
 export function createSeedDigest(pendingReview: number): DailyDigest {
   return {
     dateLabel: '2026년 5월 30일',
+    updatedAtLabel: '방금 전',
     leadCounts: { detected: 23, conflicts: 2, toApply: pendingReview },
     topSearch: '법인카드 정산',
     sections: [

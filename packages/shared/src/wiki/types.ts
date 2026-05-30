@@ -194,6 +194,7 @@ export type DigestSection = z.infer<typeof DigestSectionSchema>;
 
 export const DailyDigestSchema = z.object({
   dateLabel: z.string(),
+  updatedAtLabel: z.string().optional(),
   leadCounts: z.object({
     detected: z.number().int().nonnegative(),
     conflicts: z.number().int().nonnegative(),
