@@ -92,6 +92,41 @@ export const SandboxRunResultSchema = z.object({
 
 export type SandboxRunResult = z.infer<typeof SandboxRunResultSchema>;
 
+// --- Agent tool I/O (Phase 2) ---
+
+export const VectorHitSchema = z.object({
+  text: z.string(),
+  documentId: z.string(),
+  headingPath: z.array(z.string()),
+  score: z.number(),
+});
+
+export const VectorSearchResultSchema = z.object({
+  results: z.array(VectorHitSchema),
+});
+
+export type VectorHit = z.infer<typeof VectorHitSchema>;
+
+export const MergeResultSchema = z.object({
+  mergedMarkdown: z.string(),
+  changeSummary: z.string(),
+});
+
+export type MergeResult = z.infer<typeof MergeResultSchema>;
+
+export const VerifyResultSchema = z.object({
+  results: z.array(
+    z.object({
+      claim: z.string(),
+      verified: z.boolean(),
+      evidence: z.string(),
+    }),
+  ),
+  allVerified: z.boolean(),
+});
+
+export type VerifyResult = z.infer<typeof VerifyResultSchema>;
+
 export const EnvSchema = z.object({
   NODE_ENV: z.string().default('development'),
   MONGODB_URI: z.string().default('mongodb://localhost:27017'),
@@ -123,4 +158,106 @@ export function canApprove(role: UserRole): boolean {
 
 export function normalizeEntityName(value: string): string {
   return value.normalize('NFKC').toLowerCase().replace(/\s+/g, '');
+}
+
+// --- Chunking (Phase 2 §5: heading-based + token cap with overlap) ---
+
+export interface DocChunk {
+  chunkIndex: number;
+  text: string;
+  tokens: number;
+  headingPath: string[];
+}
+
+// Approximate token segmentation. A plain whitespace word count badly under-counts
+// scriptio-continua languages (Korean/CJK rarely space between words), so a long Korean
+// section would read as a handful of "words" and never window under the cap — risking
+// chunks that blow past the embedding model's token limit. Here each CJK character counts
+// as one token and every other whitespace-delimited run counts as one.
+const CJK = '\\p{Script=Han}\\p{Script=Hangul}\\p{Script=Hiragana}\\p{Script=Katakana}';
+const TOKEN_RE = new RegExp(`[${CJK}]|[^\\s${CJK}]+`, 'gu');
+
+/** Token spans (start/end offsets into `text`) used for both counting and windowing. */
+function tokenSpans(text: string): Array<{ start: number; end: number }> {
+  const spans: Array<{ start: number; end: number }> = [];
+  for (const match of text.matchAll(TOKEN_RE)) {
+    const start = match.index ?? 0;
+    spans.push({ start, end: start + match[0].length });
+  }
+  return spans;
+}
+
+/** Approximate token count for a string (CJK-aware; see {@link chunkMarkdown}). */
+export function estimateTokens(text: string): number {
+  return tokenSpans(text).length;
+}
+
+/**
+ * Splits markdown into heading-scoped chunks, further windowed to a token cap.
+ * Token count is approximated CJK-aware (see {@link estimateTokens}) so Korean sections
+ * window correctly. Heading-only sections (a heading with no body) are dropped — their
+ * title still survives in the `headingPath` of descendant chunks.
+ */
+export function chunkMarkdown(
+  markdown: string,
+  options: { maxTokens?: number; overlap?: number } = {},
+): DocChunk[] {
+  const maxTokens = options.maxTokens ?? 512;
+  const overlap = Math.min(options.overlap ?? 64, maxTokens - 1);
+  const stride = Math.max(1, maxTokens - overlap);
+
+  const isHeadingLine = (line: string) => /^#{1,6}\s+/.test(line);
+
+  const sections: Array<{ headingPath: string[]; lines: string[] }> = [];
+  const headingStack: Array<{ level: number; title: string }> = [];
+  let current: { headingPath: string[]; lines: string[] } | null = null;
+
+  const flush = () => {
+    if (!current || current.lines.join('\n').trim().length === 0) return;
+    // Drop sections that are nothing but their own heading (no body to retrieve on).
+    const hasBody = current.lines.some((line) => !isHeadingLine(line) && line.trim().length > 0);
+    if (current.headingPath.length > 0 && !hasBody) return;
+    sections.push(current);
+  };
+
+  for (const line of markdown.split(/\r?\n/)) {
+    const heading = /^(#{1,6})\s+(.*)$/.exec(line);
+    if (heading) {
+      flush();
+      const level = heading[1]!.length;
+      while (headingStack.length > 0 && headingStack[headingStack.length - 1]!.level >= level) {
+        headingStack.pop();
+      }
+      headingStack.push({ level, title: heading[2]!.trim() });
+      current = { headingPath: headingStack.map((h) => h.title), lines: [line] };
+    } else {
+      if (!current) current = { headingPath: [], lines: [] };
+      current.lines.push(line);
+    }
+  }
+  flush();
+
+  const chunks: DocChunk[] = [];
+  let chunkIndex = 0;
+  for (const section of sections) {
+    const text = section.lines.join('\n').trim();
+    const spans = tokenSpans(text);
+    if (spans.length <= maxTokens) {
+      chunks.push({ chunkIndex: chunkIndex++, text, tokens: spans.length, headingPath: section.headingPath });
+      continue;
+    }
+    for (let start = 0; start < spans.length; start += stride) {
+      const window = spans.slice(start, start + maxTokens);
+      // Slice the original substring across the window so spacing/formatting is preserved.
+      const sliceText = text.slice(window[0]!.start, window[window.length - 1]!.end).trim();
+      chunks.push({
+        chunkIndex: chunkIndex++,
+        text: sliceText,
+        tokens: window.length,
+        headingPath: section.headingPath,
+      });
+      if (start + maxTokens >= spans.length) break;
+    }
+  }
+  return chunks;
 }

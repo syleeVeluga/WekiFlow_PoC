@@ -119,7 +119,7 @@
 
 - [x] Node **24 LTS** 고정(`.nvmrc`=24, 루트 `engines.node: ">=24 <25"`).
 - [x] Vite **8** ↔ Node 24 OK. React **19** ↔ `@monaco-editor/react` 4.7 확인(`apps/web` 동작).
-- [ ] `ai@6` ↔ `zod` 버전 정합 — **Phase 2에서 도입 예정**. 현재 `zod@4`로 전 패키지 통일 완료, `ai`는 미설치.
+- [x] `ai@6` ↔ `zod` 버전 정합 — **Phase 2에서 도입 완료** (`ai@6.0.193`, `@ai-sdk/openai@3.0.67`, `zod@4`). 인스턴스 클래스는 `ToolLoopAgent`, 시스템 프롬프트는 `instructions`로 전달.
 - [x] `bullmq@5` ↔ `ioredis@5` ↔ Redis 7 OK.
 - [x] `mongodb@6.18` ↔ MongoDB 서버 8 OK. `$vectorSearch`는 미사용 — `VECTOR_SEARCH_MODE=app-cosine` 결정([13 문서](./13-implementation-decisions.md)).
 - [x] `dockerode@5` ↔ 호스트 Docker Engine 소켓 접근 권한 확인(샌드박스 PoC 실행).

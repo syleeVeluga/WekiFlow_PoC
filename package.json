@@ -14,6 +14,7 @@
     "lint": "corepack pnpm -r lint",
     "poc:sandbox": "tsx scripts/poc-sandbox-grep.ts",
     "poc:lightrag": "tsx scripts/poc-lightrag-extract.ts",
+    "poc:agent": "tsx scripts/poc-main-agent.ts",
     "verify:goal": "corepack pnpm build && corepack pnpm test && corepack pnpm poc:lightrag"
   },
   "devDependencies": {
@@ -23,8 +24,11 @@
     "vitest": "^4.0.14"
   },
   "dependencies": {
+    "@ai-sdk/openai": "^3.0.67",
     "@wf/agent-tools": "workspace:*",
     "@wf/sandbox": "workspace:*",
-    "@wf/shared": "workspace:*"
+    "@wf/shared": "workspace:*",
+    "ai": "^6.0.193",
+    "mongodb": "^6.18.0"
   }
 }

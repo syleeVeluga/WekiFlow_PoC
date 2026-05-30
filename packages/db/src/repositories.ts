@@ -180,6 +180,68 @@ export function createDocumentsRepo(db: Db) {
   };
 }
 
+export interface ChunkRecord {
+  chunkIndex: number;
+  text: string;
+  tokens: number;
+  headingPath: string[];
+  embedding: number[];
+  embeddingModel: string;
+}
+
+export interface ChunkSearchRow {
+  documentId: string;
+  text: string;
+  headingPath: string[];
+  embedding: number[];
+}
+
+export function createChunksRepo(db: Db) {
+  const collection = db.collection('chunks');
+
+  return {
+    /** Idempotently re-index a document: drop its existing chunks, then insert the new set. */
+    async replaceForDocument(
+      documentId: string,
+      chunks: ChunkRecord[],
+      signature?: string,
+    ): Promise<void> {
+      const oid = toObjectId(documentId);
+      if (!oid) return;
+      await collection.deleteMany({ documentId: oid });
+      if (chunks.length === 0) return;
+      const now = new Date();
+      await collection.insertMany(
+        chunks.map((chunk) => ({ ...chunk, documentId: oid, sourceHash: signature ?? null, createdAt: now })),
+      );
+    },
+
+    /** Signature stored alongside a document's chunks, used to skip re-embedding unchanged content. */
+    async getSignature(documentId: string): Promise<string | null> {
+      const oid = toObjectId(documentId);
+      if (!oid) return null;
+      const row = await collection.findOne({ documentId: oid }, { projection: { sourceHash: 1 } });
+      return row && typeof row.sourceHash === 'string' ? row.sourceHash : null;
+    },
+
+    /** Load embeddings for application-layer cosine search (VECTOR_SEARCH_MODE=app-cosine). */
+    async listForSearch(documentId?: string): Promise<ChunkSearchRow[]> {
+      const filter = documentId && toObjectId(documentId) ? { documentId: toObjectId(documentId)! } : {};
+      const rows = await collection
+        .find(filter, { projection: { text: 1, documentId: 1, headingPath: 1, embedding: 1 } })
+        .toArray();
+      return rows
+        .filter((row) => Array.isArray(row.embedding))
+        .map((row) => ({
+          documentId: String(row.documentId),
+          text: String(row.text ?? ''),
+          headingPath: Array.isArray(row.headingPath) ? (row.headingPath as string[]) : [],
+          embedding: row.embedding as number[],
+        }));
+    },
+  };
+}
+
 export function createJobsRepo(db: Db) {
   const collection = db.collection<{
     bullJobId: string;

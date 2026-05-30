@@ -114,14 +114,16 @@ new Worker('main', async (job) => runMainPipeline(job.data.documentId, ctx), { c
 
 ---
 
-## 7. ✅ 완료 기준 (Definition of Done)
+## 7. ✅ 완료 기준 (Definition of Done) — ✅ 완료 (2026-05-30)
 
-- [ ] 인입 → Main Worker(실제 에이전트) → REVIEW 초안 생성 E2E 동작.
-- [ ] 에이전트가 4종 도구(vector/sandbox/merge/verify)를 자율 선택해 호출.
-- [ ] 샌드박스가 격리 옵션(네트워크 차단/read-only/리소스 제한) 준수.
-- [ ] grep 기반 팩트가 병합 결과에 정확히 반영(할루시네이션 미발생).
-- [ ] `tool_verify_integrity` 미검증 시 재확인 루프 작동.
-- [ ] 진행 상황 SSE + `jobs.agentSteps` 감사 로깅.
-- [ ] 단계 상한(`stopWhen`)·타임아웃으로 폭주/무한루프 방지.
+- [x] 인입 → Main Worker(실제 에이전트) → REVIEW 초안 생성 E2E 동작. (`runMainPipeline` + `workers/main` 워커; 결정론적 mock-model 루프 테스트로 검증, 라이브 E2E는 `pnpm poc:agent`)
+- [x] 에이전트가 4종 도구(vector/sandbox/merge/verify)를 자율 선택해 호출. (`createMainTools` — AI SDK 6 `tool()` 5종, graph는 Phase 4 스텁)
+- [x] 샌드박스가 격리 옵션(네트워크 차단/read-only/리소스 제한) 준수. (Phase 0 `DockerSandboxRunner` + `poc:sandbox` 게이트)
+- [x] grep 기반 팩트가 병합 결과에 정확히 반영(할루시네이션 미발생). (`tool_merge` facts 주입, `poc:agent` 어서션)
+- [x] `tool_verify_integrity` 미검증 시 재확인 루프 작동. (claim별 `rg` 검증 + `allVerified`; system prompt가 보강 단계로 회귀 유도)
+- [x] 진행 상황 SSE + `jobs.agentSteps` 감사 로깅. (`onStepFinish`→`job.updateProgress`(SSE), `recordStep`→`jobsRepo.appendAgentStep`, 샌드박스는 `sandbox_runs`)
+- [x] 단계 상한(`stopWhen`)·타임아웃으로 폭주/무한루프 방지. (`stepCountIs(12)` + 샌드박스 `timeoutMs`/출력 cap)
+
+> 구현 메모: 문서의 `new Agent({...})`는 개념 표기이며, `ai@6.0.193`에서 인스턴스화 가능한 클래스는 `ToolLoopAgent`다(인터페이스 `Agent`는 타입). 시스템 프롬프트는 `instructions`로 전달한다. 벡터 검색은 Phase 0 결정대로 `app-cosine`(`ai`의 `cosineSimilarity`)로 구현했다.
 
 > 게이트 통과 후 **Phase 3**(파이프라인 B, 트리플 추출)로.
