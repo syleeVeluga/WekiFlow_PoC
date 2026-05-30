@@ -130,10 +130,16 @@ main();
 
 ## D. 검증 자동화 & 게이트 (CI Gates)
 
-- [ ] `pnpm -r typecheck` (전 패키지 타입 통과)
-- [ ] `pnpm -r test` (vitest 단위/통합)
-- [ ] `pnpm tsx scripts/poc-sandbox-grep.ts` 통과
-- [ ] `pnpm tsx scripts/poc-lightrag-extract.ts` 통과
-- [ ] lint/format 통과(`eslint`, `prettier --check`)
+- [x] `pnpm -r typecheck` (전 패키지 타입 통과)
+- [x] `pnpm -r test` (vitest 단위/통합)
+- [x] `pnpm tsx scripts/poc-sandbox-grep.ts` 통과
+- [x] `pnpm tsx scripts/poc-lightrag-extract.ts` 통과
+- [x] lint/format 통과(현재 repo gate: `pnpm -r lint`)
+
+루트 자동화 명령:
+
+```bash
+pnpm verify:testing
+```
 
 > 각 Phase 문서의 "완료 기준(DoD)"을 머지 게이트로 사용한다.
