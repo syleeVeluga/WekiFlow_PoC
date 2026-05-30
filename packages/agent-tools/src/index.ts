@@ -1,12 +1,13 @@
 import { cosineSimilarity, generateObject, tool, type LanguageModel } from 'ai';
 import { z } from 'zod';
 import type { Db } from 'mongodb';
-import { createChunksRepo, createDocumentsRepo } from '@wf/db';
+import { createChunksRepo, createDocumentsRepo, searchKnowledgeGraph, type GraphPath } from '@wf/db';
 import {
   MergeResultSchema,
   TripletArraySchema,
   type DocumentDTO,
   type Triplet,
+  type VectorHit,
 } from '@wf/shared';
 import type { SandboxRunner } from '@wf/sandbox';
 
@@ -16,6 +17,7 @@ export interface AgentStep {
   tool: string;
   args: unknown;
   result?: unknown;
+  tookMs?: number;
 }
 
 export interface MainToolContext {
@@ -44,7 +46,13 @@ export const MAIN_AGENT_SYSTEM_PROMPT = `너는 WekiFlow의 지식 병합 에이
 3) 충분한 팩트가 모이면 tool_merge로 병합 초안을 만들어라.
 4) 병합 후 반드시 tool_verify_integrity로 핵심 주장(수치/조항)을 자가 검증하라. 미검증 항목이 있으면 다시 grep으로 확인 후 수정하라.
 5) 최종 결과는 사람이 Monaco Diff로 검토할 것이므로 변경 요약(changeSummary)을 남겨라.
-도구는 필요할 때만, 최소 횟수로 호출하라.`;
+도구는 필요할 때만, 최소 횟수로 호출하라.
+
+Phase 4 retrieval guide:
+- For relationship questions, start with tool_search_graph or tool_hybrid_retrieve using the most concrete startEntity in the user/document text.
+- Prefer tool_hybrid_retrieve when both semantically similar chunks and knowledge-graph paths are useful; it returns RRF-ranked context from vector and graph retrieval.
+- If graph paths are sparse, fall back to tool_search_vector and finally tool_execute_sandbox_terminal for exact clauses, numbers, and policy wording.
+- Pass graph path facts into tool_merge as evidence when they explain relationships across documents.`;
 
 const MERGE_SYSTEM_PROMPT = `너는 사내 지식 문서 편집기다. 기존 문서(original)에 수집된 팩트(facts)를 정확히 병합한 마크다운 초안을 만든다.
 규칙:
@@ -66,12 +74,89 @@ ${doc.contentMarkdown}
 수치·조항·고유명사는 추측하지 말고 grep으로 검증한 뒤, tool_merge로 병합 초안을 만들고 tool_verify_integrity로 핵심 주장을 검증하라.`;
 }
 
+export interface HybridContext {
+  source: 'vector' | 'graph';
+  content: string;
+  score: number;
+  documentId?: string;
+  headingPath?: string[];
+  path?: GraphPath;
+  ranks: { vector?: number; graph?: number };
+}
+
+function graphPathContent(path: GraphPath): string {
+  return path.edges
+    .map((edge) => `${edge.subject} -[${edge.predicate}, strength=${edge.strength}]-> ${edge.object}`)
+    .join(' | ');
+}
+
+function rrf(rank: number, constant = 60): number {
+  return 1 / (constant + rank);
+}
+
+// Vector hits (chunks) and graph paths are heterogeneous — a chunk and a path are never the
+// "same item", so their keys never collide and each context carries exactly one rank. This is
+// therefore not cross-source rank fusion (where agreement between retrievers boosts a result);
+// it is an RRF-weighted interleave of two independently-ranked lists. Equal ranks tie, and
+// vector hits win ties by insertion order. Adequate for combining two disjoint sources; do not
+// rely on it to reward vector+graph agreement.
+export function fuseHybridRetrieval(input: {
+  vectorHits: VectorHit[];
+  graphPaths: GraphPath[];
+  k?: number;
+}): HybridContext[] {
+  const fused = new Map<string, HybridContext>();
+
+  input.vectorHits.forEach((hit, index) => {
+    const rank = index + 1;
+    const key = `vector:${hit.documentId}:${hit.headingPath.join('/')}:${hit.text}`;
+    fused.set(key, {
+      source: 'vector',
+      content: hit.text,
+      documentId: hit.documentId,
+      headingPath: hit.headingPath,
+      score: rrf(rank),
+      ranks: { vector: rank },
+    });
+  });
+
+  input.graphPaths.forEach((path, index) => {
+    const rank = index + 1;
+    const content = graphPathContent(path);
+    const key = `graph:${path.nodes.join('>')}:${content}`;
+    fused.set(key, {
+      source: 'graph',
+      content,
+      path,
+      score: rrf(rank),
+      ranks: { graph: rank },
+    });
+  });
+
+  return [...fused.values()].sort((a, b) => b.score - a.score).slice(0, input.k ?? 8);
+}
+
 export function createMainTools(ctx: MainToolContext) {
   const chunks = createChunksRepo(ctx.db);
   const documents = createDocumentsRepo(ctx.db);
 
   const record = async (step: AgentStep) => {
     await ctx.recordStep?.(step);
+  };
+
+  const searchVector = async (query: string, k: number, documentId?: string): Promise<VectorHit[]> => {
+    const [queryEmbedding] = await ctx.embed([query]);
+    const rows = await chunks.listForSearch(documentId);
+    return rows
+      .filter((row) => queryEmbedding != null && row.embedding.length === queryEmbedding.length)
+      .map((row) => ({
+        text: row.text,
+        documentId: row.documentId,
+        headingPath: row.headingPath,
+        score: cosineSimilarity(queryEmbedding!, row.embedding),
+      }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, k);
   };
 
   return {
@@ -83,24 +168,53 @@ export function createMainTools(ctx: MainToolContext) {
         documentId: z.string().optional(),
       }),
       execute: async ({ query, k, documentId }) => {
-        const [queryEmbedding] = await ctx.embed([query]);
-        const rows = await chunks.listForSearch(documentId);
-        const results = rows
-          .filter((row) => queryEmbedding != null && row.embedding.length === queryEmbedding.length)
-          .map((row) => ({
-            text: row.text,
-            documentId: row.documentId,
-            headingPath: row.headingPath,
-            score: cosineSimilarity(queryEmbedding!, row.embedding),
-          }))
-          .sort((a, b) => b.score - a.score)
-          .slice(0, k);
+        const started = Date.now();
+        const results = await searchVector(query, k, documentId);
         await record({
           tool: 'tool_search_vector',
           args: { query, k, documentId },
           result: { count: results.length, topScore: results[0]?.score ?? null },
+          tookMs: Date.now() - started,
         });
         return { results };
+      },
+    }),
+
+    tool_hybrid_retrieve: tool({
+      description:
+        'Vector chunks and knowledge-graph paths are retrieved and fused with reciprocal rank fusion for hybrid RAG context.',
+      inputSchema: z.object({
+        query: z.string(),
+        startEntity: z.string().optional(),
+        k: z.number().int().min(1).max(20).default(8),
+        maxDepth: z.number().int().min(1).max(3).default(2),
+        predicates: z.array(z.string()).optional(),
+        documentId: z.string().optional(),
+      }),
+      execute: async ({ query, startEntity, k, maxDepth, predicates, documentId }) => {
+        const started = Date.now();
+        const vectorHits = await searchVector(query, k, documentId);
+        const graph = startEntity
+          ? await searchKnowledgeGraph(ctx.db, {
+              startEntity,
+              maxDepth,
+              pathLimit: k,
+              ...(predicates ? { predicates } : {}),
+            })
+          : { paths: [], startNodes: [], exactMatch: false };
+        const contexts = fuseHybridRetrieval({ vectorHits, graphPaths: graph.paths, k });
+        await record({
+          tool: 'tool_hybrid_retrieve',
+          args: { query, startEntity, k, maxDepth, predicates, documentId },
+          result: {
+            vectorCount: vectorHits.length,
+            graphPathCount: graph.paths.length,
+            fusedCount: contexts.length,
+            exactGraphStartMatch: graph.exactMatch,
+          },
+          tookMs: Date.now() - started,
+        });
+        return { contexts, graphStartNodes: graph.startNodes, exactGraphStartMatch: graph.exactMatch };
       },
     }),
 
@@ -113,6 +227,7 @@ export function createMainTools(ctx: MainToolContext) {
         timeoutMs: z.number().int().min(1_000).max(30_000).default(10_000),
       }),
       execute: async ({ language, code, timeoutMs }) => {
+        const started = Date.now();
         const result = await ctx.sandbox.run({
           language,
           code,
@@ -123,6 +238,7 @@ export function createMainTools(ctx: MainToolContext) {
           tool: 'tool_execute_sandbox_terminal',
           args: { language, code, timeoutMs },
           result: { exitCode: result.exitCode, truncated: result.truncated },
+          tookMs: Date.now() - started,
         });
         return result;
       },
@@ -136,6 +252,7 @@ export function createMainTools(ctx: MainToolContext) {
         instruction: z.string().optional(),
       }),
       execute: async ({ facts, instruction }) => {
+        const started = Date.now();
         const doc = await documents.getById(ctx.documentId);
         const original = doc?.contentMarkdown ?? '';
         const factsBlock = facts.map((f, i) => `${i + 1}. [${f.source}] ${f.content}`).join('\n');
@@ -149,6 +266,7 @@ export function createMainTools(ctx: MainToolContext) {
           tool: 'tool_merge',
           args: { documentId: ctx.documentId, factCount: facts.length, instruction },
           result: { changeSummary: object.changeSummary },
+          tookMs: Date.now() - started,
         });
         return object;
       },
@@ -163,6 +281,7 @@ export function createMainTools(ctx: MainToolContext) {
         claims: z.array(z.string()).describe('검증할 핵심 주장/수치/조항'),
       }),
       execute: async ({ claims }) => {
+        const started = Date.now();
         const results = [];
         for (const claim of claims) {
           const run = await ctx.sandbox.run({
@@ -181,22 +300,37 @@ export function createMainTools(ctx: MainToolContext) {
           tool: 'tool_verify_integrity',
           args: { claimCount: claims.length },
           result: { allVerified, results },
+          tookMs: Date.now() - started,
         });
         return { results, allVerified };
       },
     }),
 
-    // ⏸️ Phase 4에서 활성화. 그래프가 비어 있어도 안전하게 빈 결과 반환.
     tool_search_graph: tool({
-      description: '지식 그래프에서 시작 엔티티로부터 멀티홉 관계를 탐색한다. (Phase 4에서 활성화)',
+      description: '지식 그래프에서 시작 엔티티로부터 멀티홉 관계를 탐색한다.',
       inputSchema: z.object({
         startEntity: z.string(),
         maxDepth: z.number().int().min(1).max(3).default(2),
         predicates: z.array(z.string()).optional(),
       }),
-      execute: async ({ startEntity, maxDepth }) => {
-        await record({ tool: 'tool_search_graph', args: { startEntity, maxDepth }, result: { paths: [] } });
-        return { paths: [] as Array<{ nodes: string[]; edges: unknown[] }> };
+      execute: async ({ startEntity, maxDepth, predicates }) => {
+        const started = Date.now();
+        const result = await searchKnowledgeGraph(ctx.db, {
+          startEntity,
+          maxDepth,
+          ...(predicates ? { predicates } : {}),
+        });
+        await record({
+          tool: 'tool_search_graph',
+          args: { startEntity, maxDepth, predicates },
+          result: {
+            pathCount: result.paths.length,
+            startNodes: result.startNodes.map((node) => node.name),
+            exactMatch: result.exactMatch,
+          },
+          tookMs: Date.now() - started,
+        });
+        return result;
       },
     }),
   };

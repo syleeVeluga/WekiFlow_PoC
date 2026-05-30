@@ -14,8 +14,9 @@
     "lint": "corepack pnpm -r lint",
     "poc:sandbox": "tsx scripts/poc-sandbox-grep.ts",
     "poc:lightrag": "tsx scripts/poc-lightrag-extract.ts",
+    "poc:hybrid": "tsx scripts/poc-hybrid-rag.ts",
     "poc:agent": "tsx scripts/poc-main-agent.ts",
-    "verify:goal": "corepack pnpm build && corepack pnpm test && corepack pnpm poc:lightrag"
+    "verify:goal": "corepack pnpm build && corepack pnpm test && corepack pnpm poc:lightrag && corepack pnpm poc:hybrid"
   },
   "devDependencies": {
     "@types/node": "^24.10.1",

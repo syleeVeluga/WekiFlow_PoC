@@ -253,6 +253,186 @@ export function createChunksRepo(db: Db) {
   };
 }
 
+export interface GraphNodeRow {
+  id: string;
+  name: string;
+  normalizedName: string;
+  type: string;
+}
+
+export interface GraphPathEdge {
+  subject: string;
+  predicate: string;
+  object: string;
+  strength: number;
+  sourceDocIds: string[];
+}
+
+export interface GraphPath {
+  nodes: string[];
+  edges: GraphPathEdge[];
+  score: number;
+}
+
+export interface GraphSearchResult {
+  paths: GraphPath[];
+  startNodes: GraphNodeRow[];
+  exactMatch: boolean;
+}
+
+function objectIdKey(value: unknown): string {
+  return value instanceof ObjectId ? value.toHexString() : String(value);
+}
+
+function toGraphNode(row: Document): GraphNodeRow & { _id: unknown } {
+  return {
+    _id: row._id,
+    id: objectIdKey(row._id),
+    name: String(row.name ?? ''),
+    normalizedName: String(row.normalizedName ?? ''),
+    type: String(row.type ?? 'ENTITY'),
+  };
+}
+
+function ngrams(value: string): Set<string> {
+  const padded = ` ${value} `;
+  const grams = new Set<string>();
+  for (let i = 0; i < Math.max(1, padded.length - 1); i += 1) grams.add(padded.slice(i, i + 2));
+  return grams;
+}
+
+function nameSimilarity(query: string, candidate: string): number {
+  if (query === candidate) return 1;
+  if (!query || !candidate) return 0;
+  const containment = query.includes(candidate) || candidate.includes(query) ? 0.35 : 0;
+  const queryGrams = ngrams(query);
+  const candidateGrams = ngrams(candidate);
+  const intersection = [...queryGrams].filter((gram) => candidateGrams.has(gram)).length;
+  const union = new Set([...queryGrams, ...candidateGrams]).size || 1;
+  return Math.min(1, containment + intersection / union);
+}
+
+async function rankedGraphStartNodes(
+  db: Db,
+  startEntity: string,
+  fallbackK: number,
+): Promise<{ nodes: Array<GraphNodeRow & { _id: unknown }>; exactMatch: boolean }> {
+  const normalized = normalizeEntityName(startEntity);
+  const exact = await db.collection('kg_nodes').findOne({ normalizedName: normalized });
+  if (exact) return { nodes: [toGraphNode(exact)], exactMatch: true };
+
+  // PoC: no exact match, so scan all nodes and score by bigram similarity in JS.
+  // This is O(node count) per query; past PoC scale, replace with an index-backed
+  // prefilter (text index or normalizedName $regex prefix) before client-side scoring.
+  const candidates = await db
+    .collection('kg_nodes')
+    .find({}, { projection: { name: 1, normalizedName: 1, type: 1 } })
+    .toArray();
+  const nodes = candidates
+    .map((row) => ({ node: toGraphNode(row), score: nameSimilarity(normalized, String(row.normalizedName ?? '')) }))
+    .filter((candidate) => candidate.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, fallbackK)
+    .map((candidate) => candidate.node);
+
+  return { nodes, exactMatch: false };
+}
+
+// Rank paths by mean edge strength, with a mild shorter-is-better tiebreak (1/sqrt(length)).
+// We divide by sqrt(length) rather than length so a strong multi-hop path can still
+// outrank a weak single hop — dividing by length again would penalize depth so hard that
+// multi-hop retrieval becomes pointless.
+function scoreGraphPath(edges: GraphPathEdge[]): number {
+  if (edges.length === 0) return 0;
+  const averageStrength = edges.reduce((sum, edge) => sum + edge.strength, 0) / edges.length;
+  return averageStrength / Math.sqrt(edges.length);
+}
+
+export async function searchKnowledgeGraph(
+  db: Db,
+  input: {
+    startEntity: string;
+    maxDepth?: number;
+    predicates?: string[];
+    nodeLimit?: number;
+    pathLimit?: number;
+    fallbackK?: number;
+  },
+): Promise<GraphSearchResult> {
+  const maxDepth = Math.min(Math.max(input.maxDepth ?? 2, 1), 3);
+  const nodeLimit = input.nodeLimit ?? 200;
+  const pathLimit = input.pathLimit ?? 50;
+  const predicateSet = input.predicates?.length ? new Set(input.predicates) : undefined;
+  const { nodes: startNodes, exactMatch } = await rankedGraphStartNodes(db, input.startEntity, input.fallbackK ?? 3);
+  if (startNodes.length === 0) return { paths: [], startNodes: [], exactMatch: false };
+
+  const nodeCollection = db.collection('kg_nodes');
+  const edgeCollection = db.collection('kg_edges');
+  const paths: GraphPath[] = [];
+  const expanded = new Set<string>();
+  let visitedCount = startNodes.length;
+
+  const queue = startNodes.map((start) => ({
+    current: start,
+    nodeIds: [objectIdKey(start._id)],
+    nodes: [start.name],
+    edges: [] as GraphPathEdge[],
+    depth: 0,
+  }));
+
+  while (queue.length > 0 && visitedCount <= nodeLimit && paths.length < pathLimit) {
+    const currentPath = queue.shift()!;
+    if (currentPath.depth >= maxDepth) continue;
+
+    const currentKey = objectIdKey(currentPath.current._id);
+    if (expanded.has(currentKey)) continue;
+    expanded.add(currentKey);
+
+    const edgeRows = await edgeCollection.find({ subjectId: currentPath.current._id }).toArray();
+    const sortedEdges = edgeRows
+      .filter((edge) => !predicateSet || predicateSet.has(String(edge.predicate ?? '')))
+      .sort((a, b) => Number(b.strength ?? 0) - Number(a.strength ?? 0));
+
+    for (const edge of sortedEdges) {
+      if (paths.length >= pathLimit || visitedCount > nodeLimit) break;
+      const object = await nodeCollection.findOne({ _id: edge.objectId });
+      if (!object) continue;
+      const objectNode = toGraphNode(object);
+      const objectKey = objectIdKey(objectNode._id);
+      if (currentPath.nodeIds.includes(objectKey)) continue;
+
+      const sourceDocIds = Array.isArray(edge.sourceDocIds) ? edge.sourceDocIds.map(objectIdKey) : [];
+      const pathEdge: GraphPathEdge = {
+        subject: currentPath.current.name,
+        predicate: String(edge.predicate ?? ''),
+        object: objectNode.name,
+        strength: typeof edge.strength === 'number' ? edge.strength : 0,
+        sourceDocIds,
+      };
+      const nextPath = {
+        current: objectNode,
+        nodeIds: [...currentPath.nodeIds, objectKey],
+        nodes: [...currentPath.nodes, objectNode.name],
+        edges: [...currentPath.edges, pathEdge],
+        depth: currentPath.depth + 1,
+      };
+      paths.push({
+        nodes: nextPath.nodes,
+        edges: nextPath.edges,
+        score: scoreGraphPath(nextPath.edges),
+      });
+      queue.push(nextPath);
+      visitedCount += 1;
+    }
+  }
+
+  return {
+    paths: paths.sort((a, b) => b.score - a.score).slice(0, pathLimit),
+    startNodes: startNodes.map(({ _id, ...node }) => node),
+    exactMatch,
+  };
+}
+
 export function createJobsRepo(db: Db) {
   const collection = db.collection<{
     bullJobId: string;
