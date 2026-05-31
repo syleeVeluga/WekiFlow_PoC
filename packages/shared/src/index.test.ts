@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   DocumentStatusSchema,
   KnowledgeFreshnessSchema,
+  TagClassificationSchema,
   TripletArraySchema,
   canApprove,
   canManageUsers,
@@ -27,6 +28,18 @@ describe('@wf/shared', () => {
     });
 
     expect(parsed.triplets).toHaveLength(1);
+  });
+
+  it('requires two to four classified tags', () => {
+    expect(TagClassificationSchema.safeParse({ tags: ['one'] }).success).toBe(false);
+    expect(TagClassificationSchema.parse({ tags: ['one', 'two'] }).tags).toEqual(['one', 'two']);
+    expect(TagClassificationSchema.parse({ tags: ['one', 'two', 'three', 'four'] }).tags).toEqual([
+      'one',
+      'two',
+      'three',
+      'four',
+    ]);
+    expect(TagClassificationSchema.safeParse({ tags: ['one', 'two', 'three', 'four', 'five'] }).success).toBe(false);
   });
 
   it('separates 검토(review) from 승인(approve): reviewers cannot give final approval', () => {

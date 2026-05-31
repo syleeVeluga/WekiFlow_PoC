@@ -4,7 +4,7 @@ import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { createOpenAI } from '@ai-sdk/openai';
 import type { Db } from 'mongodb';
 import { createDocumentsRepo, indexDocumentChunks, upsertTriplets } from '@wf/db';
-import { TripletArraySchema, chunkMarkdown, type DocChunk, type EmbedFn, type Env, type Triplet } from '@wf/shared';
+import { TagClassificationSchema, TripletArraySchema, chunkMarkdown, type DocChunk, type EmbedFn, type Env, type Triplet } from '@wf/shared';
 
 export const LIGHTRAG_EXTRACT_PROMPT = `You are a knowledge graph extractor.
 Analyze the document chunk and return explicit (Subject)-[Predicate]->(Object) triplets only.
@@ -16,12 +16,26 @@ Rules:
 4. Extract only facts directly stated in the text. Do not infer or invent facts.
 5. Prefer concise, stable entity names that can be matched across chunks.`;
 
+export const TAG_CLASSIFY_PROMPT = `You are a knowledge document classifier.
+Read the document and return 2 to 4 short Korean topic tags that best represent it.
+
+Rules:
+1. Prefer reusing tags from the provided existing tag list whenever one fits the document.
+2. Only invent a new tag when no existing tag is a good fit. Keep new tags concise (1-3 words).
+3. Tags describe the document's subject/category, not individual entities or facts.
+4. Return Korean tags. Do not duplicate tags.`;
+
 export interface TripletModel {
   label: string;
   model: LanguageModel;
 }
 
 export type TripletExtractor = (chunk: DocChunk) => Promise<{ triplets: Triplet[]; modelLabel?: string }>;
+
+export type TagClassifier = (
+  content: string,
+  knownTags: string[],
+) => Promise<{ tags: string[]; modelLabel?: string }>;
 
 export function createTripletExtractionModels(env: Env): TripletModel[] {
   const models: TripletModel[] = [];
@@ -49,6 +63,7 @@ export interface GraphPipelineContext {
   model?: LanguageModel;
   models?: TripletModel[];
   extractTriplets?: TripletExtractor;
+  classifyTags?: TagClassifier;
   embed?: EmbedFn;
   embeddingModel?: string;
   persist?: boolean;
@@ -110,6 +125,56 @@ function createDefaultExtractor(models: TripletModel[]): TripletExtractor {
   };
 }
 
+const TAG_CLASSIFY_MAX_CHARS = 8000;
+const TAG_CLASSIFY_MAX_KNOWN_TAGS = 100;
+const TAG_CLASSIFY_MAX_VOCAB_CHARS = 2000;
+
+export function formatKnownTagVocabulary(knownTags: string[]): string {
+  const tags: string[] = [];
+  const seen = new Set<string>();
+  let chars = 0;
+
+  for (const raw of knownTags) {
+    const tag = raw.trim();
+    if (!tag || seen.has(tag)) continue;
+    if (tag.length > TAG_CLASSIFY_MAX_VOCAB_CHARS) continue;
+    const separatorChars = tags.length > 0 ? 2 : 0;
+    const nextChars = chars + separatorChars + tag.length;
+    if (tags.length >= TAG_CLASSIFY_MAX_KNOWN_TAGS || nextChars > TAG_CLASSIFY_MAX_VOCAB_CHARS) break;
+    seen.add(tag);
+    tags.push(tag);
+    chars = nextChars;
+  }
+
+  return tags.length > 0 ? tags.join(', ') : '(none yet)';
+}
+
+function createTagClassifier(models: TripletModel[]): TagClassifier {
+  return async (content, knownTags) => {
+    const text = content.slice(0, TAG_CLASSIFY_MAX_CHARS);
+    const vocabulary = formatKnownTagVocabulary(knownTags);
+    const prompt = `Existing tags (reuse when they fit): ${vocabulary}\n\nDocument:\n${text}`;
+    const errors: string[] = [];
+
+    for (const candidate of models) {
+      try {
+        const { object } = await generateObject({
+          model: candidate.model,
+          schema: TagClassificationSchema,
+          system: TAG_CLASSIFY_PROMPT,
+          prompt,
+        });
+        return { tags: object.tags, modelLabel: candidate.label };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        errors.push(`${candidate.label}: ${message}`);
+      }
+    }
+
+    throw new Error(`Tag classification failed for all configured models. ${errors.join(' | ')}`);
+  };
+}
+
 export async function runGraphPipeline(
   documentId: string,
   ctx: GraphPipelineContext,
@@ -121,6 +186,7 @@ export async function runGraphPipeline(
   const models = ctx.models ?? (ctx.model ? [{ label: 'default', model: ctx.model }] : []);
   const extractor = ctx.extractTriplets ?? (models.length > 0 ? createDefaultExtractor(models) : undefined);
   if (!extractor) throw new Error('Graph pipeline requires a model or extractTriplets override');
+  const classifyTags = ctx.classifyTags ?? (models.length > 0 ? createTagClassifier(models) : undefined);
 
   const persist = ctx.persist ?? true;
   const allChunks = chunkMarkdown(doc.contentMarkdown);
@@ -175,6 +241,32 @@ export async function runGraphPipeline(
     });
 
     await documents.markGraphIndexed(documentId);
+
+    // Best-effort AI tag classification. Tags are auxiliary (triplets are the primary deliverable),
+    // so a failure here must not fail the job — log the step and move on. Reuses existing tag
+    // vocabulary to avoid tag sprawl, and unions via addWikiTags so manual/prior tags are preserved.
+    if (classifyTags) {
+      const tagStarted = Date.now();
+      try {
+        const knownTags = await documents.listKnownTags();
+        const classification = await classifyTags(doc.contentMarkdown, knownTags);
+        const tags = TagClassificationSchema.parse({ tags: classification.tags }).tags;
+        await documents.addWikiTags(documentId, tags);
+        await ctx.recordStep?.({
+          tool: 'graph_classify_tags',
+          args: { documentId, knownTagCount: knownTags.length },
+          result: { tags, model: classification.modelLabel },
+          tookMs: Date.now() - tagStarted,
+        });
+      } catch (error) {
+        await ctx.recordStep?.({
+          tool: 'graph_classify_tags',
+          args: { documentId },
+          result: { error: error instanceof Error ? error.message : String(error) },
+          tookMs: Date.now() - tagStarted,
+        });
+      }
+    }
   } else {
     await ctx.recordStep?.({
       tool: 'graph_preview_triplets',

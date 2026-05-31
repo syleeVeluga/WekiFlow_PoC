@@ -277,6 +277,36 @@ export function createDocumentsRepo(db: Db) {
       return updated ? toDocumentDTO(updated) : undefined;
     },
 
+    /** Existing tag vocabulary (document aiTags + topic names), deduped — used to bias AI tag reuse. */
+    async listKnownTags(): Promise<string[]> {
+      const [aiTags, topicNames] = await Promise.all([
+        collection.distinct('wiki.aiTags', { trashed: { $ne: true } }) as Promise<string[]>,
+        db.collection('topics').distinct('name', { isUnclassified: { $ne: true } }) as Promise<string[]>,
+      ]);
+      const seen = new Set<string>();
+      const out: string[] = [];
+      for (const tag of [...aiTags, ...topicNames]) {
+        const trimmed = typeof tag === 'string' ? tag.trim() : '';
+        if (trimmed && !seen.has(trimmed)) {
+          seen.add(trimmed);
+          out.push(trimmed);
+        }
+      }
+      return out;
+    },
+
+    /** Union new AI tags into wiki.aiTags, preserving existing/manually-curated tags. */
+    async addWikiTags(id: string, tags: string[]): Promise<void> {
+      const oid = toObjectId(id);
+      if (!oid) return;
+      const cleaned = [...new Set(tags.map((tag) => tag.trim()).filter(Boolean))];
+      if (cleaned.length === 0) return;
+      await collection.updateOne(
+        { _id: oid },
+        { $addToSet: { 'wiki.aiTags': { $each: cleaned } }, $set: { updatedAt: new Date() } },
+      );
+    },
+
     /** Soft-delete: hide the document from the tree/KB and move it to the trash. */
     async trash(id: string): Promise<DocumentDTO | undefined> {
       const oid = toObjectId(id);

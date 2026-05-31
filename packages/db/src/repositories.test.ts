@@ -81,6 +81,71 @@ describe('createDocumentsRepo', () => {
     expect(documents.some((doc) => doc._id.equals(trashedId))).toBe(false);
     expect(calls).toEqual(['documents:true', 'chunks:delete', 'edges:update', 'edges:delete']);
   });
+
+  it('lists known tags from document aiTags and topic names, deduped and trimmed', async () => {
+    const calls: Array<{ field: string; query?: unknown }> = [];
+    const repo = createDocumentsRepo({
+      collection(name: string) {
+        if (name === 'documents') {
+          return {
+            async distinct(field: string, query: unknown) {
+              calls.push({ field, query });
+              return [' 복지 ', '인사', '복지'];
+            },
+          };
+        }
+        if (name === 'chunks') return {};
+        if (name === 'topics') {
+          return {
+            async distinct(field: string, query: unknown) {
+              calls.push({ field, query });
+              return ['인사', '계획'];
+            },
+          };
+        }
+        throw new Error(`Unexpected collection ${name}`);
+      },
+    } as never);
+
+    const tags = await repo.listKnownTags();
+
+    // Deduped (복지 trimmed-equal, 인사 across both sources) and order-preserving (docs first, topics next).
+    expect(tags).toEqual(['복지', '인사', '계획']);
+    // aiTags distinct excludes trashed docs; topic names exclude the system unclassified topic.
+    expect(calls).toContainEqual({ field: 'wiki.aiTags', query: { trashed: { $ne: true } } });
+    expect(calls).toContainEqual({ field: 'name', query: { isUnclassified: { $ne: true } } });
+  });
+
+  it('unions cleaned tags into wiki.aiTags via $addToSet and skips empty writes', async () => {
+    const id = new ObjectId();
+    const updates: Array<{ query: unknown; update: Record<string, unknown> }> = [];
+    const repo = createDocumentsRepo({
+      collection(name: string) {
+        if (name === 'documents') {
+          return {
+            async updateOne(query: unknown, update: Record<string, unknown>) {
+              updates.push({ query, update });
+              return { matchedCount: 1 };
+            },
+          };
+        }
+        if (name === 'chunks') return {};
+        throw new Error(`Unexpected collection ${name}`);
+      },
+    } as never);
+
+    await repo.addWikiTags(id.toHexString(), [' 복지 ', '복지', '', '인사']);
+    expect(updates).toHaveLength(1);
+    expect(updates[0]!.update.$addToSet).toEqual({ 'wiki.aiTags': { $each: ['복지', '인사'] } });
+
+    // A set that cleans down to nothing must not issue a write.
+    await repo.addWikiTags(id.toHexString(), ['  ', '']);
+    expect(updates).toHaveLength(1);
+
+    // An unparseable id must not issue a write.
+    await repo.addWikiTags('not-an-object-id', ['복지']);
+    expect(updates).toHaveLength(1);
+  });
 });
 
 describe('getDocumentConnections', () => {

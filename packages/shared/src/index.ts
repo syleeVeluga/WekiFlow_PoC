@@ -85,6 +85,12 @@ export const TripletArraySchema = z.object({
 
 export type Triplet = z.infer<typeof TripletSchema>;
 
+export const TagClassificationSchema = z.object({
+  tags: z.array(z.string().min(1)).min(2).max(4),
+});
+
+export type TagClassification = z.infer<typeof TagClassificationSchema>;
+
 /** A human-readable fact extracted from this document (subject → predicate → object). */
 export const ConnectionFactSchema = z.object({
   subject: z.string(),
