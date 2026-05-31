@@ -4,6 +4,7 @@ import type {
   AuthResult,
   CreateUserBody,
   DocumentDTO,
+  IngestRequest,
   JobRef,
   LoginBody,
   TreeNode,
@@ -88,12 +89,26 @@ export function fetchReviews(): Promise<DocumentDTO[]> {
   return request<DocumentDTO[]>('/reviews');
 }
 
-export function ingest(input: {
-  title: string;
-  contentMarkdown: string;
-  parentId?: string | null;
-}): Promise<{ doc: DocumentDTO; job: JobRef }> {
+export function ingest(input: IngestRequest): Promise<{ doc: DocumentDTO; job: JobRef }> {
   return request('/ingest', { method: 'POST', body: JSON.stringify(input) });
+}
+
+export async function ingestFile(file: File, meta: Omit<IngestRequest, 'contentMarkdown'>): Promise<{ doc: DocumentDTO; job: JobRef }> {
+  const form = new FormData();
+  form.append('file', file);
+  form.append('title', meta.title);
+  if (meta.parentId) form.append('parentId', meta.parentId);
+  if (meta.topic) form.append('topic', meta.topic);
+  if (meta.department) form.append('department', meta.department);
+  if (meta.sourceLabel) form.append('sourceLabel', meta.sourceLabel);
+  const headers: Record<string, string> = {};
+  if (authToken) headers.authorization = `Bearer ${authToken}`;
+  const res = await fetch(`${BASE}/ingest/file`, { method: 'POST', headers, body: form });
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new ApiError(res.status, body.error ?? `Request failed: ${res.status}`);
+  }
+  return res.json() as Promise<{ doc: DocumentDTO; job: JobRef }>;
 }
 
 export function approve(id: string): Promise<{ ok: true; doc: DocumentDTO; job: JobRef }> {

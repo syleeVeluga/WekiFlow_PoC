@@ -1,0 +1,58 @@
+.add-shell{display:grid;grid-template-columns:280px minmax(0,1fr);gap:18px;height:calc(100vh - 56px);min-height:0}
+.add-topics{background:#fff;border:1px solid var(--line);border-radius:var(--r);padding:16px;overflow:auto;display:flex;flex-direction:column;gap:16px}
+.add-topics header{display:grid;gap:6px}
+.add-topics h2,.add-topic-section h3,.add-card h1,.add-card h2{margin:0}
+.add-topics p,.add-help,.add-footnote{margin:0;color:var(--muted);line-height:1.55}
+.add-topic-section{display:grid;gap:8px}
+.add-topic-section h3{font-size:13px}
+.add-topic-list{display:grid;gap:6px}
+.add-topic-row{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:8px;border:1px solid var(--line);border-radius:var(--r);background:#fff;padding:8px;text-align:left;color:var(--ink)}
+.add-topic-row:hover,.add-topic-row.on{border-color:var(--primary);background:#f5f3ff}
+.add-topic-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.add-topic-count{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.add-topic-delete{font-size:12px;color:var(--red)}
+.add-topic-empty{border:1px dashed var(--line);border-radius:var(--r);padding:10px;font-size:13px}
+.add-topic-create{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;margin-top:auto}
+.add-topic-create input,.add-fields input,.add-fields select,.add-manual textarea,.add-source input,.add-chip-new input{border:1px solid var(--line);border-radius:var(--r);background:#fff;color:var(--ink);padding:9px 10px;min-width:0}
+.add-topic-create button{border:1px solid var(--primary);background:var(--primary);color:#fff;border-radius:var(--r);padding:0 12px;font-weight:700}
+.add-main{display:flex;flex-direction:column;gap:14px;min-width:0;overflow:auto;padding-bottom:24px}
+.add-breadcrumb{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:13px}
+.add-breadcrumb button{border:0;background:transparent;color:var(--primary);padding:0;font-weight:700}
+.add-card{background:#fff;border:1px solid var(--line);border-radius:var(--r);padding:18px;display:grid;gap:14px}
+.add-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.add-required{font-size:12px;color:var(--red);font-weight:700}
+.add-chip-grid{display:flex;flex-wrap:wrap;gap:8px}
+.add-chip{min-height:36px;border:1px solid var(--line);border-radius:999px;background:#fff;color:var(--ink);padding:7px 12px;font-weight:700}
+.add-chip:hover,.add-chip.on{border-color:var(--primary);background:#f5f3ff;color:var(--primary)}
+.add-chip-new{display:flex;align-items:center;gap:8px;border-style:dashed}
+.add-chip-new input{width:130px;padding:5px 8px;border-radius:999px;font-weight:400}
+.add-fields{display:grid;grid-template-columns:minmax(0,1fr) 220px;gap:12px}
+.add-fields label,.add-manual,.add-source{display:grid;gap:6px;font-size:13px;color:var(--muted)}
+.add-fields label span,.add-manual span,.add-source span{font-weight:700;color:var(--ink)}
+.add-mode-tabs{display:flex;gap:6px;flex-wrap:wrap}
+.add-mode-tabs button{border:1px solid var(--line);background:#fff;border-radius:var(--r);padding:7px 12px;color:var(--muted);font-weight:700}
+.add-mode-tabs button.on{border-color:var(--primary);background:#eef2ff;color:var(--primary)}
+.add-manual textarea{min-height:210px;resize:vertical}
+.add-drop{display:grid;gap:6px;color:var(--ink)}
+.add-drop small{color:var(--muted)}
+.add-drop.has-error{border-color:var(--red);background:#fef2f2}
+.add-disabled-panel{border:1px dashed var(--line);border-radius:var(--r);padding:20px;display:grid;gap:6px;color:var(--muted);background:#f8fafc}
+.add-disabled-panel strong{color:var(--ink)}
+.add-source{max-width:560px}
+.add-error{margin:0;color:var(--red);font-size:13px}
+.add-actions{display:flex;justify-content:flex-end;gap:8px;border-top:1px solid var(--line);padding-top:14px}
+.add-actions .btn,.add-actions .btn-primary{border-radius:var(--r);padding:9px 14px;font-weight:700}
+.add-actions .btn{border:1px solid var(--line);background:#fff;color:var(--ink)}
+.add-actions .btn-primary{border:1px solid var(--primary);background:var(--primary);color:#fff}
+.add-actions .btn-primary:disabled,.add-topic-create button:disabled{opacity:.5;cursor:not-allowed}
+
+@media (max-width:1100px){
+  .add-shell{grid-template-columns:1fr;height:auto;overflow:visible}
+  .add-topics{max-height:none}
+}
+@media (max-width:720px){
+  .add-fields{grid-template-columns:1fr}
+  .add-card{padding:14px}
+  .add-actions{justify-content:stretch}
+  .add-actions .btn,.add-actions .btn-primary{flex:1}
+}

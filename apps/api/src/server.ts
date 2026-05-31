@@ -8,6 +8,7 @@ import { ZodError } from 'zod';
 import {
   AgentPreviewRequestSchema,
   CreateUserBodySchema,
+  IngestRequestSchema,
   KnowledgeQuerySchema,
   LoginBodySchema,
   MsResolveBodySchema,
@@ -19,9 +20,18 @@ import {
 } from '@wf/shared';
 import { InMemoryWekiFlowStore, type WekiFlowStore } from './store.js';
 
-const PREVIEW_MAX_UPLOAD_BYTES = 12 * 1024 * 1024;
+// Shared cap for both upload routes (/api/ingest/file and /api/agent-preview).
+const INGEST_MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
 const PREVIEW_MAX_CHARS = 120_000;
 const PREVIEW_MAX_PDF_PAGES = 20;
+
+/** Carries an HTTP status for upload-handling failures so the error handler can map it. */
+class UploadError extends Error {
+  constructor(message: string, readonly statusCode: number) {
+    super(message);
+    this.name = 'UploadError';
+  }
+}
 
 export interface BuildServerOptions {
   store?: WekiFlowStore;
@@ -37,7 +47,19 @@ export function buildServer({
   store.seed?.();
   const app = Fastify({ logger: false });
   void app.register(cors);
-  void app.register(multipart, { limits: { fileSize: PREVIEW_MAX_UPLOAD_BYTES, files: 1 } });
+  void app.register(multipart, { limits: { fileSize: INGEST_MAX_UPLOAD_BYTES, files: 1 } });
+
+  // Map known error shapes to client-facing statuses; everything else is a 500.
+  app.setErrorHandler((error, _request, reply) => {
+    if (error instanceof UploadError) {
+      return reply.code(error.statusCode).send({ error: error.message });
+    }
+    if (error instanceof ZodError) {
+      return reply.code(400).send({ error: 'Invalid request' });
+    }
+    const { statusCode = 500, message = 'Request failed' } = (error ?? {}) as { statusCode?: number; message?: string };
+    return reply.code(statusCode).send({ error: statusCode >= 500 ? 'Internal Server Error' : message });
+  });
 
   // Resolve the logged-in user from the `Authorization: Bearer <token>` header.
   async function currentUser(request: FastifyRequest): Promise<User | undefined> {
@@ -70,31 +92,42 @@ export function buildServer({
 
   async function extractPreviewFile(filename: string, buffer: Buffer): Promise<string> {
     const ext = path.extname(filename).toLowerCase();
-    if (ext === '.pdf') return extractPreviewPdf(buffer);
+    if (ext === '.pdf') {
+      try {
+        return await extractPreviewPdf(buffer);
+      } catch {
+        throw new UploadError('Could not read uploaded PDF', 422);
+      }
+    }
     if (ext === '.md' || ext === '.txt') return capPreviewText(buffer.toString('utf8'));
-    throw new Error('Unsupported preview file type');
+    throw new UploadError('Unsupported file type', 415);
+  }
+
+  // Drains a multipart request, extracting the single file's text and trimmed field values.
+  async function collectUploadParts(
+    request: FastifyRequest,
+  ): Promise<{ fileName: string; contentMarkdown: string; fields: Record<string, string> }> {
+    let fileName = '';
+    let contentMarkdown = '';
+    const fields: Record<string, string> = {};
+    for await (const part of request.parts()) {
+      if (part.type === 'file') {
+        fileName = part.filename;
+        contentMarkdown = await extractPreviewFile(part.filename, await part.toBuffer());
+      } else if (typeof part.value === 'string') {
+        fields[part.fieldname] = part.value.trim();
+      }
+    }
+    return { fileName, contentMarkdown, fields };
   }
 
   async function readAgentPreviewInput(request: FastifyRequest): Promise<{ title: string; contentMarkdown: string; commit: boolean }> {
     if (request.isMultipart()) {
-      let title = '';
-      let fileName = '';
-      let contentMarkdown = '';
-      let commit = false;
-      for await (const part of request.parts()) {
-        if (part.type === 'file') {
-          fileName = part.filename;
-          contentMarkdown = await extractPreviewFile(part.filename, await part.toBuffer());
-        } else if (part.fieldname === 'title' && typeof part.value === 'string') {
-          title = part.value.trim();
-        } else if (part.fieldname === 'commit' && typeof part.value === 'string') {
-          commit = part.value === 'true';
-        }
-      }
+      const { fileName, contentMarkdown, fields } = await collectUploadParts(request);
       return {
-        title: title || path.parse(fileName).name || '에이전트 미리보기',
+        title: fields.title || path.parse(fileName).name || '에이전트 미리보기',
         contentMarkdown,
-        commit,
+        commit: fields.commit === 'true',
       };
     }
 
@@ -104,6 +137,18 @@ export function buildServer({
       contentMarkdown: capPreviewText(body.message),
       commit: body.commit ?? false,
     };
+  }
+
+  async function readIngestFileInput(request: FastifyRequest) {
+    if (!request.isMultipart()) throw new UploadError('Expected multipart upload', 400);
+    const { fileName, contentMarkdown, fields } = await collectUploadParts(request);
+    return IngestRequestSchema.parse({
+      title: fields.title || path.parse(fileName).name || 'Uploaded document',
+      contentMarkdown,
+      topic: fields.topic || undefined,
+      department: fields.department || undefined,
+      sourceLabel: fields.sourceLabel || fileName || undefined,
+    });
   }
 
   function writeSse(res: import('node:http').ServerResponse, event: string, data: unknown) {
@@ -197,11 +242,27 @@ export function buildServer({
   });
 
   app.post('/api/ingest', async (request) => {
-    const body = request.body as { title?: string; contentMarkdown?: string; parentId?: string | null };
+    const body = IngestRequestSchema.parse(request.body);
     return store.ingest({
-      title: body.title ?? 'Manual Ingest',
-      contentMarkdown: body.contentMarkdown ?? '',
+      title: body.title,
+      contentMarkdown: body.contentMarkdown,
       parentId: body.parentId ?? null,
+      ...(body.topic ? { topic: body.topic } : {}),
+      ...(body.department ? { department: body.department } : {}),
+      ...(body.sourceLabel ? { sourceLabel: body.sourceLabel } : {}),
+    });
+  });
+
+  app.post('/api/ingest/file', async (request, reply) => {
+    const input = await readIngestFileInput(request);
+    if (!input.contentMarkdown.trim()) return reply.code(422).send({ error: 'Upload content is empty' });
+    return store.ingest({
+      title: input.title,
+      contentMarkdown: input.contentMarkdown,
+      ...(input.parentId ? { parentId: input.parentId } : {}),
+      ...(input.topic ? { topic: input.topic } : {}),
+      ...(input.department ? { department: input.department } : {}),
+      ...(input.sourceLabel ? { sourceLabel: input.sourceLabel } : {}),
     });
   });
 
@@ -309,18 +370,7 @@ export function buildServer({
   app.post('/api/agent-preview', async (request, reply) => {
     const me = await currentUser(request);
     if (!me || !canManageOwners(me.role)) return reply.code(403).send({ error: 'Forbidden' });
-    let input: { title: string; contentMarkdown: string; commit: boolean };
-    try {
-      input = await readAgentPreviewInput(request);
-    } catch (error) {
-      if (error instanceof Error && error.message === 'Unsupported preview file type') {
-        return reply.code(415).send({ error: error.message });
-      }
-      if (error instanceof ZodError) {
-        return reply.code(400).send({ error: 'Invalid preview request' });
-      }
-      throw error;
-    }
+    const input = await readAgentPreviewInput(request);
     if (!input.contentMarkdown.trim()) return reply.code(422).send({ error: 'Preview input is empty' });
     return store.agentPreview(input);
   });

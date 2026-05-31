@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { DepartmentSchema } from './wiki/enums.js';
 
 export const documentStatuses = [
   'DRAFT',
@@ -104,6 +105,28 @@ export const AgentPreviewRequestSchema = z.object({
 });
 
 export type AgentPreviewRequest = z.infer<typeof AgentPreviewRequestSchema>;
+
+export const IngestRequestSchema = z.object({
+  title: z.string().min(1),
+  contentMarkdown: z.string().optional().default(''),
+  parentId: z.string().nullable().optional(),
+  topic: z.string().min(1).optional(),
+  department: DepartmentSchema.optional(),
+  sourceLabel: z.string().min(1).optional(),
+});
+
+export type IngestRequest = z.infer<typeof IngestRequestSchema>;
+
+/** Builds the `sourceRefs[].note` string recorded for a manual/file ingest. */
+export function ingestSourceNote(input: { topic?: string; department?: string; sourceLabel?: string }): string {
+  return [
+    input.topic ? `topic=${input.topic}` : null,
+    input.department ? `department=${input.department}` : null,
+    input.sourceLabel ? `source=${input.sourceLabel}` : null,
+  ]
+    .filter((part): part is string => part != null)
+    .join('; ');
+}
 
 export const AgentPreviewResultSchema = z.object({
   documentId: z.string(),

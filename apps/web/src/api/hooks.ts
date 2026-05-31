@@ -51,7 +51,16 @@ function useInvalidateAll() {
 }
 
 export function useIngest() {
-  return useMutation({ mutationFn: api.ingest });
+  const invalidate = useInvalidateAll();
+  return useMutation({ mutationFn: api.ingest, onSuccess: invalidate });
+}
+
+export function useIngestFile() {
+  const invalidate = useInvalidateAll();
+  return useMutation({
+    mutationFn: ({ file, meta }: { file: File; meta: Parameters<typeof api.ingestFile>[1] }) => api.ingestFile(file, meta),
+    onSuccess: invalidate,
+  });
 }
 
 export function useApprove() {

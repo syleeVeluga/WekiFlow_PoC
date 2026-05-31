@@ -18,7 +18,7 @@ export function Lnb() {
   const { data: reviews = [] } = useReviews();
   const { data: published = [] } = usePublished();
   const nav = (page: Parameters<typeof go>[0]) => {
-    if (['sources', 'rules', 'history', 'add'].includes(page)) showToast('준비 중입니다.', 'inf');
+    if (['sources', 'rules', 'history'].includes(page)) showToast('준비 중입니다.', 'inf');
     go(page);
   };
 

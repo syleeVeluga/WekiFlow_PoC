@@ -1,10 +1,32 @@
 import { describe, expect, it } from 'vitest';
 import { EventEmitter } from 'node:events';
+import { DepartmentSchema } from '@wf/shared';
 import { buildServer } from './server.js';
 
 async function login(app: ReturnType<typeof buildServer>, email: string, password: string): Promise<string> {
   const res = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { email, password } });
   return res.json().token as string;
+}
+
+function multipartPayload(input: {
+  fields?: Record<string, string>;
+  file?: { name: string; content: string; contentType?: string };
+}) {
+  const boundary = `----wf-${Math.random().toString(16).slice(2)}`;
+  const chunks: string[] = [];
+  for (const [name, value] of Object.entries(input.fields ?? {})) {
+    chunks.push(`--${boundary}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`);
+  }
+  if (input.file) {
+    chunks.push(
+      `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${input.file.name}"\r\nContent-Type: ${input.file.contentType ?? 'text/plain'}\r\n\r\n${input.file.content}\r\n`,
+    );
+  }
+  chunks.push(`--${boundary}--\r\n`);
+  return {
+    payload: Buffer.from(chunks.join(''), 'utf8'),
+    headers: { 'content-type': `multipart/form-data; boundary=${boundary}` },
+  };
 }
 
 describe('@wf/api routes', () => {
@@ -14,12 +36,20 @@ describe('@wf/api routes', () => {
     const ingest = await app.inject({
       method: 'POST',
       url: '/api/ingest',
-      payload: { title: '연차 규정', contentMarkdown: '# 신규 규정' },
+      payload: {
+        title: 'Manual policy',
+        contentMarkdown: '# New policy',
+        topic: '복지',
+        department: DepartmentSchema.options[0]!,
+        sourceLabel: '사내 공지',
+      },
     });
     expect(ingest.statusCode).toBe(200);
     const ingestBody = ingest.json();
     expect(ingestBody.doc.status).toBe('REVIEW');
     expect(ingestBody.job.type).toBe('INGEST');
+    expect(ingestBody.doc.sourceRefs[0].note).toContain('topic=복지');
+    expect(ingestBody.doc.sourceRefs[0].note).toContain('source=사내 공지');
 
     const reviews = await app.inject({ method: 'GET', url: '/api/reviews' });
     expect(reviews.json()).toHaveLength(1);
@@ -45,6 +75,34 @@ describe('@wf/api routes', () => {
     expect(approved.statusCode).toBe(200);
     expect(approved.json().doc.status).toBe('PUBLISHED');
     expect(approved.json().job.type).toBe('EXTRACT_TRIPLETS');
+
+    await app.close();
+  });
+
+  it('ingests uploaded md/txt files and rejects unsupported or empty uploads', async () => {
+    const app = buildServer();
+    const upload = multipartPayload({
+      fields: { title: 'Uploaded policy', topic: '복지', department: DepartmentSchema.options[0]!, sourceLabel: 'policy.md' },
+      file: { name: 'policy.md', content: '# Upload\n\nPolicy body', contentType: 'text/markdown' },
+    });
+
+    const accepted = await app.inject({ method: 'POST', url: '/api/ingest/file', ...upload });
+    expect(accepted.statusCode).toBe(200);
+    expect(accepted.json().doc.status).toBe('REVIEW');
+    expect(accepted.json().doc.contentMarkdown).toContain('Policy body');
+    expect(accepted.json().doc.sourceRefs[0].note).toContain('source=policy.md');
+
+    const unsupported = multipartPayload({
+      fields: { title: 'Future parser', topic: '복지', department: DepartmentSchema.options[0]! },
+      file: { name: 'deck.docx', content: 'not parsed yet' },
+    });
+    expect((await app.inject({ method: 'POST', url: '/api/ingest/file', ...unsupported })).statusCode).toBe(415);
+
+    const empty = multipartPayload({
+      fields: { title: 'Empty text', topic: '복지', department: DepartmentSchema.options[0]! },
+      file: { name: 'empty.txt', content: '   \n' },
+    });
+    expect((await app.inject({ method: 'POST', url: '/api/ingest/file', ...empty })).statusCode).toBe(422);
 
     await app.close();
   });

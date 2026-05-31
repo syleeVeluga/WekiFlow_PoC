@@ -1,6 +1,8 @@
 import { z } from 'zod';
 
 export const DepartmentSchema = z.enum(['총무팀', '인사팀', 'IT팀', '재무팀', '영업팀', '미분류']);
+/** The catch-all department; excluded from pickers that require an explicit assignment. */
+export const UNCLASSIFIED_DEPARTMENT = '미분류' as const;
 export const ChangeTypeSchema = z.enum(['conflict', 'update', 'new']);
 export const CertaintySchema = z.number().int().min(1).max(5);
 export const SourceAuthoritySchema = z.enum(['L1', 'L2', 'L3', 'L4']);

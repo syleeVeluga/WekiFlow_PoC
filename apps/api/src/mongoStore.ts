@@ -8,6 +8,7 @@ import {
   type AgentPreviewResult,
   type AgentPreviewRun,
   type CreateUserBody,
+  type Department,
   type DocumentDTO,
   type ActivityEntry,
   type AiTagSuggestion,
@@ -27,6 +28,7 @@ import {
   canApprove,
   canReview,
   createSeedDigest,
+  createSeedTopics,
   groupKnowledgeByCategory,
   loadEnv,
   normalizeEntityName,
@@ -65,6 +67,9 @@ export class MongoWekiFlowStore implements WekiFlowStore {
   async seed(): Promise<void> {
     const env = loadEnv();
     await this.usersRepo.ensureOwner(env.ADMIN_EMAIL, env.ADMIN_PASSWORD);
+    for (const topic of createSeedTopics()) {
+      await this.dbCollection('topics').updateOne({ id: topic.id }, { $setOnInsert: topic }, { upsert: true });
+    }
   }
 
   private async enqueue(
@@ -103,6 +108,9 @@ export class MongoWekiFlowStore implements WekiFlowStore {
     title: string;
     contentMarkdown: string;
     parentId?: string | null;
+    topic?: string;
+    department?: Department;
+    sourceLabel?: string;
   }): Promise<{ doc: DocumentDTO; job: JobRef }> {
     const doc = await this.docs.createDraft(input);
     const job = await this.enqueue(this.mainQueue, 'INGEST', doc.id);

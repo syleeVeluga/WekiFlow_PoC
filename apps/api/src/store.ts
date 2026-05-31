@@ -6,6 +6,7 @@ import {
   type AgentPreviewRun,
   type AgentStepDTO,
   type DocumentDTO,
+  type Department,
   type AiTagSuggestion,
   type DailyDigest,
   type KnowledgeItem,
@@ -29,6 +30,7 @@ import {
   createSeedReviews,
   createSeedTopics,
   groupKnowledgeByCategory,
+  ingestSourceNote,
   loadEnv,
   normalizeEntityName,
   seedDemoUsers,
@@ -61,6 +63,9 @@ export interface WekiFlowStore {
     title: string;
     contentMarkdown: string;
     parentId?: string | null;
+    topic?: string;
+    department?: Department;
+    sourceLabel?: string;
   }): Promise<{ doc: DocumentDTO; job: JobRef }>;
   reviews(): Promise<DocumentDTO[]>;
   approve(id: string, role: UserRole): Promise<ApproveResult>;
@@ -219,13 +224,16 @@ export class InMemoryWekiFlowStore implements WekiFlowStore {
     title: string;
     contentMarkdown: string;
     parentId?: string | null;
+    topic?: string;
+    department?: Department;
+    sourceLabel?: string;
   }): Promise<{ doc: DocumentDTO; job: JobRef }> {
     const created = this.create({
       title: input.title,
       contentMarkdown: input.contentMarkdown,
       parentId: input.parentId ?? null,
       status: 'PROCESSING',
-      sourceRefs: [{ type: 'manual', ref: 'api://ingest', note: '' }],
+      sourceRefs: [{ type: 'manual', ref: 'api://ingest', note: ingestSourceNote(input) }],
     });
     const job = this.mainQueue.add('INGEST', { documentId: created.id });
     // In-memory path runs the stub main worker inline so route tests stay hermetic.

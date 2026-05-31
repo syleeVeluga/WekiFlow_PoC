@@ -17,7 +17,7 @@ function sdotClass(freshness: KnowledgeFreshness): string {
 }
 
 export function KbPage() {
-  const { kb, selectedCategory, setKb, openDoc, openCategory, modal, setModal, showToast } = useUiStore();
+  const { kb, selectedCategory, setKb, openDoc, openCategory, modal, setModal, go } = useUiStore();
   const query = { person: kb.personF, topic: kb.topicF, tag: kb.tagF, status: kb.statusF, q: kb.query, sort: kb.sort };
   const { data: items = [] } = useKnowledgeItems(query);
   const { data: allItems = [] } = useKnowledgeItems({ person: 'all', topic: 'all', tag: null, status: 'all', q: '', sort: 'uses' });
@@ -105,7 +105,7 @@ export function KbPage() {
               <option value="recent">최근 수정순</option>
               <option value="alpha">가나다순</option>
             </select>
-            <button type="button" className="kb-add" onClick={() => showToast('준비 중입니다', 'inf')}>+ 직접 추가</button>
+            <button type="button" className="kb-add" onClick={() => go('add')}>+ 직접 추가</button>
           </div>
         </div>
         <div className="wiki-content">

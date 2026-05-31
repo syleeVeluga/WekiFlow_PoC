@@ -2,8 +2,10 @@ import { ObjectId, type Db, type Document, type WithId } from 'mongodb';
 import { createHash, randomUUID } from 'node:crypto';
 import {
   chunkMarkdown,
+  ingestSourceNote,
   normalizeEntityName,
   type AgentStepDTO,
+  type Department,
   type DocumentDTO,
   type DocumentStatus,
   type EmbedFn,
@@ -91,6 +93,9 @@ export function createDocumentsRepo(db: Db) {
       title: string;
       contentMarkdown: string;
       parentId?: string | null;
+      topic?: string;
+      department?: Department;
+      sourceLabel?: string;
     }): Promise<DocumentDTO> {
       const now = new Date();
       const id = new ObjectId();
@@ -104,7 +109,7 @@ export function createDocumentsRepo(db: Db) {
         contentMarkdown: input.contentMarkdown,
         draftMarkdown: null,
         version: 1,
-        sourceRefs: [{ type: 'manual', ref: 'api://ingest', note: '' }],
+        sourceRefs: [{ type: 'manual', ref: 'api://ingest', note: ingestSourceNote(input) }],
         createdAt: now,
         updatedAt: now,
       });
