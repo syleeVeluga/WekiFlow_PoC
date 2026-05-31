@@ -1,6 +1,7 @@
 import { ObjectId, type Db, type Document, type WithId } from 'mongodb';
 import { createHash, randomUUID } from 'node:crypto';
 import {
+  buildIngestedKnowledgeItem,
   chunkMarkdown,
   ingestSourceNote,
   normalizeEntityName,
@@ -8,6 +9,7 @@ import {
   type DocumentDTO,
   type DocumentStatus,
   type EmbedFn,
+  type KnowledgeItem,
   type TreeNode,
   type Triplet,
   type User,
@@ -108,6 +110,11 @@ export function createDocumentsRepo(db: Db) {
         contentMarkdown: input.contentMarkdown,
         draftMarkdown: null,
         version: 1,
+        // Persist the assigned topic/workspace as first-class fields (not just the sourceRefs note)
+        // so publish() can materialize a wiki KnowledgeItem under the right category/department.
+        ...(input.topic ? { topic: input.topic } : {}),
+        ...(input.workspace ? { workspace: input.workspace } : {}),
+        ...(input.sourceLabel ? { sourceLabel: input.sourceLabel } : {}),
         sourceRefs: [{ type: 'manual', ref: 'api://ingest', note: ingestSourceNote(input) }],
         createdAt: now,
         updatedAt: now,
@@ -211,13 +218,27 @@ export function createDocumentsRepo(db: Db) {
       if (!oid) return undefined;
       const current = await collection.findOne({ _id: oid });
       if (!current) return undefined;
+      const publishedContent = current.draftMarkdown ?? current.contentMarkdown ?? '';
+      // Materialize (or refresh) the wiki KnowledgeItem so the published doc surfaces in the Document
+      // Tree / KB under its assigned topic. wiki.id mirrors the document _id so getKnowledge/
+      // patchKnowledge/documentByWikiId all resolve by the same key.
+      const wiki = buildIngestedKnowledgeItem({
+        id: oid.toString(),
+        title: String(current.title ?? 'Untitled'),
+        contentMarkdown: publishedContent,
+        ...(typeof current.topic === 'string' ? { category: current.topic } : {}),
+        ...(typeof current.workspace === 'string' ? { workspace: current.workspace } : {}),
+        ...(typeof current.sourceLabel === 'string' ? { sourceLabel: current.sourceLabel } : {}),
+        existing: (current.wiki as KnowledgeItem | undefined) ?? null,
+      });
       const updated = await collection.findOneAndUpdate(
         { _id: oid },
         {
           $set: {
-            contentMarkdown: current.draftMarkdown ?? current.contentMarkdown ?? '',
+            contentMarkdown: publishedContent,
             draftMarkdown: null,
             status: 'PUBLISHED',
+            wiki,
             updatedAt: new Date(),
           },
           $inc: { version: 1 },

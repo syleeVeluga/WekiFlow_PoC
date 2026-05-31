@@ -8,6 +8,7 @@ import type {
   Topic,
   TreeCategory,
 } from './types.js';
+import { DepartmentSchema, type Department } from './enums.js';
 import { SEED_KNOWLEDGE_ITEMS } from './seedKnowledge.js';
 
 export const UNCLASSIFIED_TOPIC_NAME = '미분류' as const;
@@ -260,4 +261,76 @@ export function groupKnowledgeByCategory(items: KnowledgeItem[], topics: Topic[]
   return deriveTopicsFromItems(topics, items.map((item) => item.category))
     .map((topic) => ({ ...topic, items: items.filter((item) => item.category === topic.name) }))
     .filter((topic) => topic.items.length > 0 || topic.name === UNCLASSIFIED_TOPIC_NAME);
+}
+
+/** First meaningful (non-heading, non-list-marker) line of a markdown body, capped for a card summary. */
+function summarizeMarkdown(markdown: string): string {
+  const line = markdown
+    .split('\n')
+    .map((raw) => raw.trim())
+    .find((raw) => raw.length > 0 && !raw.startsWith('#') && !raw.startsWith('[stub'));
+  const text = (line ?? '').replace(/^[-*>\d.)\s]+/, '').trim();
+  if (!text) return '직접 추가된 지식 항목입니다.';
+  return text.length > 140 ? `${text.slice(0, 140)}…` : text;
+}
+
+/**
+ * Materialize a published/ingested document into a wiki {@link KnowledgeItem} so it shows up in the
+ * Document Tree and KB. `category` is the assigned topic (free-form); `workspace` maps to a department
+ * (falls back to 미분류 when it is not one of the known departments). Pass `existing` to update an
+ * already-materialized item in place (re-publish) instead of resetting its counters.
+ */
+export function buildIngestedKnowledgeItem(input: {
+  id: string;
+  title: string;
+  contentMarkdown: string;
+  category?: string;
+  workspace?: string;
+  sourceLabel?: string;
+  authorName?: string;
+  /** ISO timestamp; defaults to now. */
+  at?: string;
+  existing?: KnowledgeItem | null;
+}): KnowledgeItem {
+  const at = input.at ?? new Date().toISOString();
+  const category = input.category?.trim() || UNCLASSIFIED_TOPIC_NAME;
+  const parsedDepartment = DepartmentSchema.safeParse(input.workspace?.trim());
+  const department: Department = parsedDepartment.success ? parsedDepartment.data : UNCLASSIFIED_TOPIC_NAME;
+  const authorName = input.authorName?.trim() || '직접 추가';
+  const sourceLabel = input.sourceLabel?.trim() || '직접 추가';
+  const summary = summarizeMarkdown(input.contentMarkdown);
+
+  if (input.existing) {
+    return {
+      ...input.existing,
+      title: input.title,
+      summary,
+      contentMarkdown: input.contentMarkdown,
+      category,
+      department,
+      freshness: 'latest',
+      modCount: input.existing.modCount + 1,
+      updatedAtLabel: '방금 전',
+      lastChange: { label: '검토 완료', at, by: authorName, source: sourceLabel },
+    };
+  }
+
+  return {
+    id: input.id,
+    documentId: input.id,
+    title: input.title,
+    summary,
+    contentMarkdown: input.contentMarkdown,
+    department,
+    category,
+    freshness: 'latest',
+    usageCount: 0,
+    modCount: 0,
+    sourceLabel,
+    authorName,
+    updatedAtLabel: '방금 전',
+    aiTags: [],
+    origin: { label: '직접 추가', at, by: authorName, source: sourceLabel },
+    lastChange: { label: '검토 완료', at, by: authorName, source: sourceLabel },
+  };
 }

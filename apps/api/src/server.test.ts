@@ -77,6 +77,19 @@ describe('@wf/api routes', () => {
     expect(approved.json().doc.status).toBe('PUBLISHED');
     expect(approved.json().job.type).toBe('EXTRACT_TRIPLETS');
 
+    // Approving materializes a KnowledgeItem so the doc surfaces in the KB + Document Tree under
+    // its assigned topic (the core "knowledge accumulates in the tree" loop).
+    const knowledge = await app.inject({ method: 'GET', url: `/api/knowledge/${ingestBody.doc.id}` });
+    expect(knowledge.statusCode).toBe(200);
+    expect(knowledge.json()).toMatchObject({ id: ingestBody.doc.id, title: 'Manual policy', category: '복지' });
+
+    const treeCategories = await app.inject({ method: 'GET', url: '/api/tree/categories' });
+    const welfare = treeCategories.json().find((category: { name: string }) => category.name === '복지');
+    expect(welfare).toBeTruthy();
+    expect(welfare.items).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: ingestBody.doc.id })]),
+    );
+
     await app.close();
   });
 

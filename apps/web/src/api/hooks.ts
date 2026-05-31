@@ -43,6 +43,9 @@ function useInvalidateAll() {
     void qc.invalidateQueries({ queryKey: queryKeys.tree });
     void qc.invalidateQueries({ queryKey: queryKeys.reviews });
     void qc.invalidateQueries({ queryKey: ['document'] });
+    // The LNB Document Tree + KB read from the wiki/tree-categories family (dataQueryKeys), which is
+    // materialized on approve. Invalidate it too so the new topic/page appears without a manual reload.
+    void qc.invalidateQueries({ queryKey: ['wiki'] });
   };
 }
 

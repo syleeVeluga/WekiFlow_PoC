@@ -20,6 +20,7 @@ import {
   type User,
   type UserRole,
   UNCLASSIFIED_TOPIC_NAME,
+  buildIngestedKnowledgeItem,
   canApprove,
   canReview,
   createSeedActivity,
@@ -119,6 +120,8 @@ export class InMemoryWekiFlowStore implements WekiFlowStore {
   readonly users = new Map<string, User & { password: string }>();
   readonly sessions = new Map<string, string>(); // token -> userId
   readonly agentRuns = new Map<string, AgentPreviewRun>();
+  // Topic/workspace assigned at ingest, consumed on approve to materialize a KnowledgeItem.
+  readonly ingestMeta = new Map<string, { topic?: string; workspace?: string; sourceLabel?: string }>();
 
   private sequence = 0;
   private userSequence = 0;
@@ -235,6 +238,13 @@ export class InMemoryWekiFlowStore implements WekiFlowStore {
       parentId: input.parentId ?? null,
       status: 'PROCESSING',
       sourceRefs: [{ type: 'manual', ref: 'api://ingest', note: ingestSourceNote(input) }],
+    });
+    // Retain the assigned topic/workspace so approve() can materialize a KnowledgeItem (the in-memory
+    // tree/KB read from this.knowledge, so an approved doc must land there to appear in the tree).
+    this.ingestMeta.set(created.id, {
+      ...(input.topic ? { topic: input.topic } : {}),
+      ...(input.workspace ? { workspace: input.workspace } : {}),
+      ...(input.sourceLabel ? { sourceLabel: input.sourceLabel } : {}),
     });
     const job = this.mainQueue.add('INGEST', { documentId: created.id });
     // In-memory path runs the stub main worker inline so route tests stay hermetic.
@@ -362,6 +372,22 @@ export class InMemoryWekiFlowStore implements WekiFlowStore {
       updatedAt: now,
     };
     this.documents.set(id, published);
+    // Materialize (or refresh) the KnowledgeItem so the published doc appears in the tree/KB under
+    // its assigned topic. Seeded docs (already knowledge) keep their existing item.
+    const meta = this.ingestMeta.get(id);
+    if (meta || !this.knowledge.has(id)) {
+      const knowledge = buildIngestedKnowledgeItem({
+        id,
+        title: published.title,
+        contentMarkdown: published.contentMarkdown,
+        ...(meta?.topic ? { category: meta.topic } : {}),
+        ...(meta?.workspace ? { workspace: meta.workspace } : {}),
+        ...(meta?.sourceLabel ? { sourceLabel: meta.sourceLabel } : {}),
+        at: now,
+        existing: this.knowledge.get(id) ?? null,
+      });
+      this.knowledge.set(id, knowledge);
+    }
     const job = this.graphQueue.add('EXTRACT_TRIPLETS', { documentId: id });
     return { ok: true, doc: published, job };
   }

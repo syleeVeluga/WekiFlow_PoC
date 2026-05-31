@@ -15,6 +15,7 @@
     "poc:sandbox": "tsx scripts/poc-sandbox-grep.ts",
     "poc:lightrag": "tsx scripts/poc-lightrag-extract.ts",
     "seed:wiki": "tsx scripts/seed-wiki.ts",
+    "backfill:wiki": "tsx scripts/backfill-wiki.ts",
     "poc:hybrid": "tsx scripts/poc-hybrid-rag.ts",
     "poc:agent": "tsx scripts/poc-main-agent.ts",
     "verify:testing": "corepack pnpm build && corepack pnpm -r typecheck && corepack pnpm -r test && corepack pnpm poc:sandbox && corepack pnpm poc:lightrag && corepack pnpm -r lint",
