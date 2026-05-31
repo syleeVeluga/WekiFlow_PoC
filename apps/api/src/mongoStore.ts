@@ -25,10 +25,12 @@ import {
   type TreeNode,
   type User,
   type UserRole,
+  UNCLASSIFIED_TOPIC_NAME,
   canApprove,
   canReview,
+  createDefaultTopics,
   createSeedDigest,
-  createSeedTopics,
+  deriveTopicsFromItems,
   groupKnowledgeByCategory,
   loadEnv,
   normalizeEntityName,
@@ -67,8 +69,12 @@ export class MongoWekiFlowStore implements WekiFlowStore {
   async seed(): Promise<void> {
     const env = loadEnv();
     await this.usersRepo.ensureOwner(env.ADMIN_EMAIL, env.ADMIN_PASSWORD);
-    for (const topic of createSeedTopics()) {
-      await this.dbCollection('topics').updateOne({ id: topic.id }, { $setOnInsert: topic }, { upsert: true });
+    for (const topic of createDefaultTopics()) {
+      await this.dbCollection('topics').updateOne(
+        { name: topic.name },
+        { $setOnInsert: topic },
+        { upsert: true },
+      );
     }
   }
 
@@ -249,12 +255,13 @@ export class MongoWekiFlowStore implements WekiFlowStore {
   }
 
   async listTopics(): Promise<Topic[]> {
-    const topics = (await this.dbCollection('topics').find({}).toArray()).map((row) => row as unknown as Topic);
+    const stored = (await this.dbCollection('topics').find({}).toArray()).map((row) => row as unknown as Topic);
     const items = await this.listKnowledge({ person: 'all', topic: 'all', tag: null, status: 'all', q: '', sort: 'uses' });
-    return topics.map((topic) => ({ ...topic, count: items.filter((item) => item.category === topic.name).length }));
+    return deriveTopicsFromItems(stored, items.map((item) => item.category)).map((topic) => ({ ...topic, count: items.filter((item) => item.category === topic.name).length }));
   }
 
   async createTopic(name: string): Promise<Topic> {
+    if (name === UNCLASSIFIED_TOPIC_NAME) return createDefaultTopics()[0]!;
     const topic: Topic = { id: `topic-user-${Date.now()}`, name, source: 'user', isUnclassified: false, count: 0 };
     await this.dbCollection('topics').updateOne({ name }, { $setOnInsert: { ...topic, createdAt: new Date() } }, { upsert: true });
     const row = await this.dbCollection('topics').findOne({ name });
@@ -265,7 +272,7 @@ export class MongoWekiFlowStore implements WekiFlowStore {
     const topic = (await this.dbCollection('topics').findOne({ id })) as unknown as Topic | null;
     if (!topic) return { ok: false, reassigned: 0, statusCode: 404, error: 'Not found' };
     if (topic.source === 'system') return { ok: false, reassigned: 0, statusCode: 400, error: 'System topic cannot be deleted' };
-    const result = await this.dbCollection('documents').updateMany({ 'wiki.category': topic.name }, { $set: { 'wiki.category': '미분류' } });
+    const result = await this.dbCollection('documents').updateMany({ 'wiki.category': topic.name }, { $set: { 'wiki.category': UNCLASSIFIED_TOPIC_NAME } });
     await this.dbCollection('topics').deleteOne({ id });
     return { ok: true, reassigned: result.modifiedCount };
   }

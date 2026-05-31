@@ -276,6 +276,10 @@ describe('@wf/api routes', () => {
 
     const topics = await app.inject({ method: 'GET', url: '/api/topics' });
     expect(topics.statusCode).toBe(200);
+    expect(topics.json()).toEqual(expect.arrayContaining([expect.objectContaining({ name: '미분류', isUnclassified: true })]));
+    const treeCategories = await app.inject({ method: 'GET', url: '/api/tree/categories' });
+    expect(treeCategories.statusCode).toBe(200);
+    expect(treeCategories.json()).toEqual(expect.arrayContaining([expect.objectContaining({ name: '미분류' })]));
     const systemTopic = topics.json().find((topic: { source: string }) => topic.source === 'system');
     const deleteSystem = await app.inject({ method: 'DELETE', url: `/api/topics/${systemTopic.id}` });
     expect(deleteSystem.statusCode).toBe(400);

@@ -1,7 +1,13 @@
 .app{display:flex;min-height:100vh}
 .sb{position:fixed;inset:0 auto 0 0;width:var(--sw);background:var(--navy);color:#dbeafe;display:flex;flex-direction:column;padding:18px 14px;z-index:10}
 .sb-logo{display:flex;align-items:center;gap:10px;font-weight:900;font-size:20px;color:#fff;margin-bottom:16px}.sb-logo em{font-style:normal;color:var(--purple-300)}
+.sb-workspace-wrap{position:relative;margin-bottom:14px}
 .sb-workspace,.sb-user{display:flex;align-items:center;gap:10px;border:1px solid var(--navy-line);background:var(--navy-deep);border-radius:var(--r);padding:10px;margin-bottom:14px}
+.sb-workspace{width:100%;margin-bottom:0;color:#dbeafe;text-align:left;cursor:pointer}.sb-workspace>div{flex:1;min-width:0}.sb-workspace strong{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sb-workspace-menu{position:absolute;left:0;right:0;top:calc(100% + 6px);z-index:30;background:#fff;color:var(--ink);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--sh-md);padding:8px;display:grid;gap:8px}
+.sb-workspace-list{display:grid;gap:6px;max-height:220px;overflow:auto}.sb-workspace-row{display:grid;grid-template-columns:26px minmax(0,1fr) 26px 26px;gap:6px;align-items:center}.sb-workspace-row.on input{border-color:var(--primary);background:#f5f3ff}
+.sb-workspace-pick,.sb-workspace-icon,.sb-workspace-create button{height:28px;border:1px solid var(--line);border-radius:6px;background:#fff;color:var(--ink);cursor:pointer}.sb-workspace-icon.danger{color:var(--red)}.sb-workspace-icon:disabled{opacity:.35;cursor:not-allowed}
+.sb-workspace-row input,.sb-workspace-create input{min-width:0;border:1px solid var(--line);border-radius:6px;padding:6px 8px;font-size:12px}.sb-workspace-create{display:grid;grid-template-columns:minmax(0,1fr) 32px;gap:6px}
 .sb-user{margin-top:auto;margin-bottom:0;position:relative}.sb-user small,.sb-workspace small{display:block;color:#94a3b8}
 .sb-user-info{flex:1;min-width:0}.sb-user-info strong{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sb-gear{border:0;background:transparent;color:#cbd5e1;font-size:16px;cursor:pointer;padding:4px;border-radius:6px}.sb-gear:hover{background:#14213f;color:#fff}

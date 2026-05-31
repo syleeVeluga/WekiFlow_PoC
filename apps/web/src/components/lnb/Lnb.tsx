@@ -8,6 +8,90 @@ import { Avatar } from '../common/Primitives.js';
 import { LnbDocumentTree } from './DocumentTree.js';
 import { NavItem } from './NavItem.js';
 
+function WorkspaceSwitcher() {
+  const workspaces = useUiStore((s) => s.workspaces);
+  const activeWorkspaceId = useUiStore((s) => s.activeWorkspaceId);
+  const createWorkspace = useUiStore((s) => s.createWorkspace);
+  const renameWorkspace = useUiStore((s) => s.renameWorkspace);
+  const deleteWorkspace = useUiStore((s) => s.deleteWorkspace);
+  const selectWorkspace = useUiStore((s) => s.selectWorkspace);
+  const showToast = useUiStore((s) => s.showToast);
+  const [open, setOpen] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [draftNames, setDraftNames] = useState<Record<string, string>>({});
+  const active = workspaces.find((workspace) => workspace.id === activeWorkspaceId) ?? workspaces[0]!;
+
+  const saveName = (id: string, currentName: string) => {
+    const nextName = (draftNames[id] ?? currentName).trim();
+    if (!nextName) return;
+    renameWorkspace(id, nextName);
+    showToast('워크스페이스 이름을 변경했습니다.', 'ok');
+  };
+
+  return (
+    <div className="sb-workspace-wrap">
+      <button type="button" className="sb-workspace" onClick={() => setOpen((value) => !value)}>
+        <Avatar name={active.name.slice(0, 1)} />
+        <div><strong>{active.name}</strong><small>{active.subtitle}</small></div>
+        <span>▾</span>
+      </button>
+      {open ? (
+        <div className="sb-workspace-menu">
+          <div className="sb-workspace-list">
+            {workspaces.map((workspace) => {
+              const draftName = draftNames[workspace.id] ?? workspace.name;
+              return (
+                <div className={`sb-workspace-row ${workspace.id === activeWorkspaceId ? 'on' : ''}`} key={workspace.id}>
+                  <button
+                    type="button"
+                    className="sb-workspace-pick"
+                    title="선택"
+                    onClick={() => selectWorkspace(workspace.id)}
+                  >
+                    {workspace.id === activeWorkspaceId ? '✓' : '○'}
+                  </button>
+                  <input
+                    aria-label={`${workspace.name} 이름`}
+                    value={draftName}
+                    onChange={(event) => setDraftNames((names) => ({ ...names, [workspace.id]: event.target.value }))}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') saveName(workspace.id, workspace.name);
+                    }}
+                  />
+                  <button type="button" className="sb-workspace-icon" title="이름 저장" onClick={() => saveName(workspace.id, workspace.name)}>↵</button>
+                  <button
+                    type="button"
+                    className="sb-workspace-icon danger"
+                    title="삭제"
+                    disabled={workspaces.length <= 1}
+                    onClick={() => deleteWorkspace(workspace.id)}
+                  >
+                    ×
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+          <form
+            className="sb-workspace-create"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const trimmed = newName.trim();
+              if (!trimmed) return;
+              createWorkspace(trimmed);
+              setNewName('');
+              showToast('워크스페이스를 추가했습니다.', 'ok');
+            }}
+          >
+            <input value={newName} placeholder="새 워크스페이스" onChange={(event) => setNewName(event.target.value)} />
+            <button type="submit" title="추가" disabled={!newName.trim()}>+</button>
+          </form>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export function Lnb() {
   const activePage = useUiStore((s) => s.activePage);
   const go = useUiStore((s) => s.go);
@@ -30,7 +114,7 @@ export function Lnb() {
   return (
     <aside className="sb">
       <div className="sb-logo"><span>☰</span><span>Wiki<em>Flow</em></span></div>
-      <div className="sb-workspace"><Avatar name="총" /><div><strong>총무팀</strong><small>운영 워크스페이스</small></div><span>▾</span></div>
+      <WorkspaceSwitcher />
       <NavItem page="home" active={activePage} icon="⌂" label="홈" onClick={nav} />
       <NavItem page="review" active={activePage} icon="◰" label="검토" badge={reviews.length} badgeClass="nb-red" onClick={nav} />
       <NavItem page="kb" active={activePage} icon="◈" label="조직 지식" badge={published.length} badgeClass="nb-blue" onClick={nav} />

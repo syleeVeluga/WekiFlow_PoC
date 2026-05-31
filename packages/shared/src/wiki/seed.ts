@@ -10,17 +10,45 @@ import type {
 } from './types.js';
 import { SEED_KNOWLEDGE_ITEMS } from './seedKnowledge.js';
 
-// 디자인 목업(v-wiki.html)의 주제 분류 체계. 순서가 사이드바·트리 노출 순서가 된다.
-const topicNames = ['법인카드', '출장·정산', '사무환경', '복리후생', '근태·휴가', '급여·상여', '채용·온보딩', '장비·소프트웨어', '사내시스템', '보안·권한', '미분류'];
+export const UNCLASSIFIED_TOPIC_NAME = '미분류' as const;
 
-export function createSeedTopics(): Topic[] {
-  return topicNames.map((name, index) => ({
-    id: `topic-${index + 1}`,
-    name,
-    source: 'system',
-    isUnclassified: name === '미분류',
-    count: 0,
-  }));
+export function createDefaultTopics(): Topic[] {
+  return [
+    {
+      id: 'topic-unclassified',
+      name: UNCLASSIFIED_TOPIC_NAME,
+      source: 'system',
+      isUnclassified: true,
+      count: 0,
+    },
+  ];
+}
+
+export function ensureUnclassifiedTopic(topics: Topic[]): Topic[] {
+  let found = false;
+  const normalized = topics.map((topic) => {
+    if (topic.isUnclassified || topic.name === UNCLASSIFIED_TOPIC_NAME) {
+      found = true;
+      return { ...topic, name: UNCLASSIFIED_TOPIC_NAME, source: 'system' as const, isUnclassified: true };
+    }
+    return topic;
+  });
+  return found
+    ? normalized
+    : [...normalized, ...createDefaultTopics()];
+}
+
+// 주제 분류는 미리 시드하지 않는다. 미분류는 항상 존재하고, 나머지 주제는 인제스트·업로드된
+// 문서(지식 항목)의 category 또는 사용자가 직접 추가한 주제에서 파생된다.
+export function deriveTopicsFromItems(topics: Topic[], categories: Iterable<string>): Topic[] {
+  const result = ensureUnclassifiedTopic(topics);
+  const known = new Set(result.map((topic) => topic.name));
+  for (const category of categories) {
+    if (!category || known.has(category)) continue;
+    known.add(category);
+    result.push({ id: `topic-cat-${category}`, name: category, source: 'system', isUnclassified: false, count: 0 });
+  }
+  return result;
 }
 
 export function createSeedKnowledgeItems(): KnowledgeItem[] {
@@ -228,8 +256,8 @@ export function createSeedDigest(pendingReview: number): DailyDigest {
   };
 }
 
-export function groupKnowledgeByCategory(items: KnowledgeItem[], topics = createSeedTopics()): TreeCategory[] {
-  return topics
+export function groupKnowledgeByCategory(items: KnowledgeItem[], topics: Topic[] = []): TreeCategory[] {
+  return deriveTopicsFromItems(topics, items.map((item) => item.category))
     .map((topic) => ({ ...topic, items: items.filter((item) => item.category === topic.name) }))
-    .filter((topic) => topic.items.length > 0 || topic.name === '미분류');
+    .filter((topic) => topic.items.length > 0 || topic.name === UNCLASSIFIED_TOPIC_NAME);
 }

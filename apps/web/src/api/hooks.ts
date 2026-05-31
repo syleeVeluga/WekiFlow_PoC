@@ -16,10 +16,6 @@ export const queryKeys = {
   agentPreview: (id: string) => ['agent-preview', id] as const,
 };
 
-export function useTree(): UseQueryResult<TreeNode[]> {
-  return useQuery({ queryKey: queryKeys.tree, queryFn: api.fetchTree });
-}
-
 /** Published documents, derived from the tree (🔷 조직 지식). */
 export function usePublished(): UseQueryResult<TreeNode[]> {
   return useQuery({

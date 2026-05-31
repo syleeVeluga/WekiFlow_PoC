@@ -20,6 +20,7 @@ import {
   type TreeNode,
   type User,
   type UserRole,
+  UNCLASSIFIED_TOPIC_NAME,
   canApprove,
   canReview,
   createSeedActivity,
@@ -28,7 +29,8 @@ import {
   createSeedKnowledgeItems,
   createSeedMultiSourceGroups,
   createSeedReviews,
-  createSeedTopics,
+  createDefaultTopics,
+  deriveTopicsFromItems,
   groupKnowledgeByCategory,
   ingestSourceNote,
   loadEnv,
@@ -139,7 +141,7 @@ export class InMemoryWekiFlowStore implements WekiFlowStore {
     }
     if (this.documents.size > 0) return;
     const now = new Date().toISOString();
-    for (const topic of createSeedTopics()) this.topics.set(topic.id, topic);
+    for (const topic of createDefaultTopics()) this.topics.set(topic.id, topic);
     for (const item of createSeedKnowledgeItems()) {
       this.knowledge.set(item.id, item);
       this.documents.set(item.id, {
@@ -416,10 +418,11 @@ export class InMemoryWekiFlowStore implements WekiFlowStore {
   async listTopics(): Promise<Topic[]> {
     const counts = new Map<string, number>();
     for (const item of this.knowledge.values()) counts.set(item.category, (counts.get(item.category) ?? 0) + 1);
-    return [...this.topics.values()].map((topic) => ({ ...topic, count: counts.get(topic.name) ?? 0 }));
+    return deriveTopicsFromItems([...this.topics.values()], counts.keys()).map((topic) => ({ ...topic, count: counts.get(topic.name) ?? 0 }));
   }
 
   async createTopic(name: string): Promise<Topic> {
+    if (name === UNCLASSIFIED_TOPIC_NAME) return createDefaultTopics()[0]!;
     const existing = [...this.topics.values()].find((topic) => topic.name === name);
     if (existing) return existing;
     const topic: Topic = { id: `topic-user-${this.topics.size + 1}`, name, source: 'user', isUnclassified: false, count: 0 };
@@ -434,7 +437,7 @@ export class InMemoryWekiFlowStore implements WekiFlowStore {
     let reassigned = 0;
     for (const [itemId, item] of this.knowledge) {
       if (item.category === topic.name) {
-        this.knowledge.set(itemId, { ...item, category: '미분류' });
+        this.knowledge.set(itemId, { ...item, category: UNCLASSIFIED_TOPIC_NAME });
         reassigned += 1;
       }
     }

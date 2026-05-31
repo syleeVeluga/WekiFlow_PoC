@@ -2,8 +2,22 @@ import { create } from 'zustand';
 
 export type ActivePage = 'home' | 'review' | 'kb' | 'doc' | 'sources' | 'rules' | 'history' | 'add' | 'users' | 'agent';
 
+export interface Workspace {
+  id: string;
+  name: string;
+  subtitle: string;
+}
+
+const DEFAULT_WORKSPACE: Workspace = {
+  id: 'workspace-default',
+  name: '총무팀',
+  subtitle: '운영 워크스페이스',
+};
+
 interface UiState {
   activePage: ActivePage;
+  workspaces: Workspace[];
+  activeWorkspaceId: string;
   selectedDocId: string | null;
   selectedCategory: string | null;
   treeOpen: Record<string, boolean>;
@@ -26,6 +40,10 @@ interface UiState {
   modal: { aiTags: boolean; catManager: boolean };
   toast: { msg: string; type: 'ok' | 'warn' | 'inf' } | null;
   go: (page: ActivePage) => void;
+  createWorkspace: (name: string) => void;
+  renameWorkspace: (id: string, name: string) => void;
+  deleteWorkspace: (id: string) => void;
+  selectWorkspace: (id: string) => void;
   openDoc: (id: string, category?: string) => void;
   openCategory: (name: string) => void;
   toggleTree: (id: string) => void;
@@ -43,6 +61,8 @@ interface UiState {
 
 export const useUiStore = create<UiState>((set) => ({
   activePage: 'home',
+  workspaces: [DEFAULT_WORKSPACE],
+  activeWorkspaceId: DEFAULT_WORKSPACE.id,
   selectedDocId: null,
   selectedCategory: null,
   treeOpen: {},
@@ -53,6 +73,33 @@ export const useUiStore = create<UiState>((set) => ({
   modal: { aiTags: false, catManager: false },
   toast: null,
   go: (activePage) => set({ activePage }),
+  createWorkspace: (name) =>
+    set((state) => {
+      const trimmed = name.trim();
+      if (!trimmed) return state;
+      const workspace: Workspace = {
+        id: `workspace-${Date.now()}`,
+        name: trimmed,
+        subtitle: '사용자 워크스페이스',
+      };
+      return { workspaces: [...state.workspaces, workspace], activeWorkspaceId: workspace.id };
+    }),
+  renameWorkspace: (id, name) =>
+    set((state) => {
+      const trimmed = name.trim();
+      if (!trimmed) return state;
+      return { workspaces: state.workspaces.map((workspace) => (workspace.id === id ? { ...workspace, name: trimmed } : workspace)) };
+    }),
+  deleteWorkspace: (id) =>
+    set((state) => {
+      if (state.workspaces.length <= 1) return state;
+      const workspaces = state.workspaces.filter((workspace) => workspace.id !== id);
+      return {
+        workspaces,
+        activeWorkspaceId: state.activeWorkspaceId === id ? workspaces[0]!.id : state.activeWorkspaceId,
+      };
+    }),
+  selectWorkspace: (activeWorkspaceId) => set({ activeWorkspaceId }),
   openDoc: (id, category) =>
     set((state) => ({
       activePage: 'doc',

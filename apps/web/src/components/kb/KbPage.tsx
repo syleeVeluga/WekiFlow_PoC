@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import type { KnowledgeFreshness, KnowledgeItem, Topic } from '@wf/shared';
+import { UNCLASSIFIED_TOPIC_NAME, createDefaultTopics, type KnowledgeFreshness, type KnowledgeItem, type Topic } from '@wf/shared';
 import { useAiTagMutations, useAiTagSuggestions, useKnowledgeItems, useTopics, useTopicMutations } from '../../data/hooks.js';
 import { avColor, catTint } from '../../lib/format.js';
 import { useUiStore } from '../../store.js';
@@ -29,7 +29,10 @@ export function KbPage() {
   for (const item of allItems) for (const tag of item.aiTags) tagCounts.set(tag, (tagCounts.get(tag) ?? 0) + 1);
   const tags = [...tagCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 12);
   const realTopics = topics.filter((topic) => !topic.isUnclassified);
-  const unclassified = topics.find((topic) => topic.isUnclassified);
+  const unclassified = topics.find((topic) => topic.isUnclassified) ?? {
+    ...createDefaultTopics()[0],
+    count: allItems.filter((item) => item.category === UNCLASSIFIED_TOPIC_NAME).length,
+  };
 
   // 통합 보기: 열어둔 카테고리(selectedCategory)와 활성 주제 필터가 일치할 때만 — 사이드바 주제 클릭과 구분.
   const integrated = kb.mode === 'cat' && kb.topicF !== 'all' && selectedCategory === kb.topicF;
@@ -64,11 +67,9 @@ export function KbPage() {
               <span className="wf-cnt">{topic.count}</span>
             </button>
           ))}
-          {unclassified && unclassified.count > 0 ? (
-            <button type="button" className={`wf-row ${kb.topicF === '미분류' ? 'on' : ''}`} onClick={() => setKb({ topicF: '미분류', tagF: null })}>
+          <button type="button" className={`wf-row ${kb.topicF === UNCLASSIFIED_TOPIC_NAME ? 'on' : ''}`} onClick={() => setKb({ topicF: UNCLASSIFIED_TOPIC_NAME, tagF: null })}>
               <span className="wf-dot" style={{ background: 'var(--muted)' }} /><span className="wf-name" style={{ color: 'var(--stone)' }}>미분류</span><span className="wf-cnt">{unclassified.count}</span>
-            </button>
-          ) : null}
+          </button>
         </div>
         <div className="wf-divider" />
         <div className="wf-sec">
@@ -178,7 +179,7 @@ function GroupedView({
   onOpenDoc: (id: string, category?: string) => void;
 }) {
   const groups = topics.map((topic) => ({ topic, list: items.filter((item) => item.category === topic.name) })).filter((group) => group.list.length > 0);
-  const uncList = items.filter((item) => item.category === '미분류');
+  const uncList = items.filter((item) => item.category === UNCLASSIFIED_TOPIC_NAME);
   if (!groups.length && !uncList.length) return <div className="wiki-grid"><EmptyKB /></div>;
   return (
     <>

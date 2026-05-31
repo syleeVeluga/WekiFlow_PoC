@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { ObjectId } from 'mongodb';
 import { closeMongoClient, getDb } from '@wf/db';
 import {
+  createDefaultTopics,
   loadEnv,
   seedDemoUsers,
 } from '@wf/shared';
@@ -33,6 +34,14 @@ for (const user of seedUsers) {
   await db.collection('users').updateOne(
     { email: user.email },
     { $setOnInsert: { _id: stableObjectId(`user:${user.email}`), ...user, createdAt: now } },
+    { upsert: true },
+  );
+}
+
+for (const topic of createDefaultTopics()) {
+  await db.collection('topics').updateOne(
+    { name: topic.name },
+    { $setOnInsert: { ...topic, createdAt: now } },
     { upsert: true },
   );
 }
