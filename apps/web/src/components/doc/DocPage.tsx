@@ -1,7 +1,10 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
+import { useDocument } from '../../api/hooks.js';
 import { useKnowledgeItem, usePatchKnowledge } from '../../data/hooks.js';
 import { useUiStore } from '../../store.js';
+import { isObjectId } from '../../lib/docId.js';
 import { BlockNotePane } from '../blocknote/BlockNotePane.js';
+import { Badge } from '../common/Primitives.js';
 
 const MonacoDiffPane = lazy(async () => {
   const module = await import('../monaco/MonacoDiffPane.js');
@@ -19,7 +22,9 @@ const TAB_LABELS = {
 
 export function DocPage() {
   const selectedDocId = useUiStore((s) => s.selectedDocId);
-  const { data: doc } = useKnowledgeItem(selectedDocId);
+  const isRealDoc = isObjectId(selectedDocId);
+  const { data: realDoc } = useDocument(isRealDoc ? selectedDocId : null);
+  const { data: doc } = useKnowledgeItem(isRealDoc ? null : selectedDocId);
   const { docTab, setDocTab, openCategory, showToast } = useUiStore();
   const patch = usePatchKnowledge();
   const [draft, setDraft] = useState<string | null>(null);
@@ -32,6 +37,25 @@ export function DocPage() {
     if (!doc) return [];
     return [doc.origin, doc.lastChange].filter((item): item is NonNullable<typeof item> => item != null);
   }, [doc]);
+
+  if (isRealDoc) {
+    if (!realDoc) return <section className="pg stub"><h1>문서를 선택하세요</h1></section>;
+    return (
+      <section className="pg doc-page">
+        <div className="topbar">
+          <div>
+            <h1>{realDoc.title}</h1>
+            <p><Badge tone="info">{realDoc.status}</Badge> version {realDoc.version}</p>
+          </div>
+        </div>
+        <div className="card doc-body">
+          <Suspense fallback={<div className="panel">Diff loading</div>}>
+            <MonacoDiffPane original={realDoc.contentMarkdown} modified={realDoc.draftMarkdown ?? realDoc.contentMarkdown} />
+          </Suspense>
+        </div>
+      </section>
+    );
+  }
 
   if (!doc) return <section className="pg stub"><h1>문서를 선택하세요</h1></section>;
   const currentMarkdown = draft ?? doc.contentMarkdown;

@@ -6,12 +6,13 @@ import {
   MergeResultSchema,
   TripletArraySchema,
   type DocumentDTO,
+  type EmbedFn,
   type Triplet,
   type VectorHit,
 } from '@wf/shared';
 import type { SandboxRunner } from '@wf/sandbox';
 
-export type EmbedFn = (texts: string[]) => Promise<number[][]>;
+export type { EmbedFn } from '@wf/shared';
 
 export interface AgentStep {
   tool: string;

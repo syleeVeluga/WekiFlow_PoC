@@ -1,10 +1,84 @@
-import { useState } from 'react';
-import type { MultiSourceGroup, ReviewItem } from '@wf/shared';
+import { lazy, Suspense, useState } from 'react';
+import type { DocumentDTO, MultiSourceGroup, ReviewItem } from '@wf/shared';
 import { canApprove, canReview } from '@wf/shared';
+import { useApprove, useReject, useReviews } from '../../api/hooks.js';
 import { useMultiSource, useMultiSourceActions, useResolveMultiSource, useResolveReview, useReviewBoard } from '../../data/hooks.js';
 import { useAuthStore } from '../../auth/store.js';
 import { useUiStore } from '../../store.js';
 import { Avatar, Badge, Certainty } from '../common/Primitives.js';
+
+const MonacoDiffPane = lazy(async () => {
+  const module = await import('../monaco/MonacoDiffPane.js');
+  return { default: module.MonacoDiffPane };
+});
+
+function Layer1ReviewSection({ items }: { items: DocumentDTO[] }) {
+  const role = useAuthStore((s) => s.user?.role ?? 'VIEWER');
+  const { openDoc, showToast } = useUiStore();
+  const approve = useApprove();
+  const reject = useReject();
+  const [enabled, setEnabled] = useState(false);
+  const canApproveNow = enabled && canApprove(role);
+  const canReviewNow = enabled && canReview(role);
+
+  const act = (action: 'approve' | 'reject', id: string) => {
+    if (action === 'approve') {
+      approve.mutate(
+        { id },
+        {
+          onSuccess: () => showToast('승인했습니다.', 'ok'),
+          onError: (error) => showToast(error instanceof Error ? error.message : '처리에 실패했습니다.', 'warn'),
+        },
+      );
+      return;
+    }
+    reject.mutate(
+      id,
+      {
+        onSuccess: () => showToast('반려했습니다.', 'ok'),
+        onError: (error) => showToast(error instanceof Error ? error.message : '처리에 실패했습니다.', 'warn'),
+      },
+    );
+  };
+
+  return (
+    <section className="layer1-review">
+      <div className="rv-head">
+        <div>
+          <p className="eyebrow">Layer 1</p>
+          <h2>파이프라인 검토</h2>
+        </div>
+        <label className="review-enable">
+          <input type="checkbox" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} />
+          <span>승인 활성화</span>
+        </label>
+      </div>
+      <div className="review-grid">
+        {items.map((doc) => (
+          <article className="card ri-card layer1-card" key={doc.id}>
+            <div className="rv-head">
+              <div>
+                <div className="row">
+                  <Badge tone="info">{doc.status}</Badge>
+                  <button type="button" className="link-btn" onClick={() => openDoc(doc.id)}>문서 열기</button>
+                </div>
+                <h3>{doc.title}</h3>
+              </div>
+              <div className="ri-actions">
+                <button type="button" onClick={() => act('reject', doc.id)} disabled={!canReviewNow || reject.isPending}>반려</button>
+                <button type="button" onClick={() => act('approve', doc.id)} disabled={!canApproveNow || approve.isPending}>승인</button>
+              </div>
+            </div>
+            <Suspense fallback={<div className="panel">Diff loading</div>}>
+              <MonacoDiffPane original={doc.contentMarkdown} modified={doc.draftMarkdown ?? doc.contentMarkdown} />
+            </Suspense>
+          </article>
+        ))}
+        {items.length === 0 ? <div className="empty">파이프라인 검토 대상이 없습니다.</div> : null}
+      </div>
+    </section>
+  );
+}
 
 function ReviewCard({ item }: { item: ReviewItem }) {
   const { review, setReviewDetail, markReviewDone, showToast } = useUiStore();
@@ -209,14 +283,20 @@ export function ReviewDetailPanel() {
 
 export function ReviewPage() {
   const { review } = useUiStore();
+  const { data: layer1Reviews = [] } = useReviews();
   const { data: items = [] } = useReviewBoard();
   const { data: groups = [] } = useMultiSource();
   const visibleItems = items.filter((item) => !item.resolved && !review.rvDone[item.id]);
   const visibleGroups = groups.filter((group) => !group.resolved);
-  const pending = visibleItems.length + visibleGroups.length;
-  const completed = items.length + groups.length - pending;
-  const total = pending + completed;
-  const progress = total === 0 ? 100 : Math.round((completed / total) * 100);
+  const pending = layer1Reviews.length + visibleItems.length + visibleGroups.length;
+  // The progress bar charts the legacy review board, which keeps resolved items as a stable
+  // denominator. Layer 1 reviews leave the dataset on approval (REVIEW → GRAPH_INDEXED), so they
+  // have no completed-count to chart — they're surfaced via `pending` and their own section. Guard
+  // against a false 100% while any work (including Layer 1) is still pending.
+  const legacyTotal = items.length + groups.length;
+  const legacyCompleted = legacyTotal - visibleItems.length - visibleGroups.length;
+  const progress =
+    pending > 0 ? (legacyTotal === 0 ? 0 : Math.round((legacyCompleted / legacyTotal) * 100)) : 100;
 
   return (
     <section className="page">
@@ -228,6 +308,7 @@ export function ReviewPage() {
         <Badge tone="warn">{pending}건</Badge>
       </div>
       <div className="rv-prog"><span style={{ width: `${progress}%` }} /></div>
+      <Layer1ReviewSection items={layer1Reviews} />
       <div className="review-grid">
         {visibleItems.map((item) => <ReviewCard item={item} key={item.id} />)}
         {visibleGroups.map((group) => <MultiSourceCard group={group} key={group.id} />)}

@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { canManageOwners, canManageUsers, roleLabels } from '@wf/shared';
-import { useKnowledgeItems, useMultiSource, useReviewBoard } from '../../data/hooks.js';
+import { usePublished, useReviews } from '../../api/hooks.js';
 import { logout } from '../../api/client.js';
 import { useAuthStore } from '../../auth/store.js';
 import { useUiStore } from '../../store.js';
@@ -15,10 +15,8 @@ export function Lnb() {
   const user = useAuthStore((s) => s.user);
   const clear = useAuthStore((s) => s.clear);
   const [menuOpen, setMenuOpen] = useState(false);
-  const { data: reviews = [] } = useReviewBoard();
-  const { data: multi = [] } = useMultiSource();
-  const { data: knowledge = [] } = useKnowledgeItems({ person: 'all', topic: 'all', tag: null, status: 'all', q: '', sort: 'uses' });
-  const pending = useMemo(() => reviews.length + multi.length, [reviews.length, multi.length]);
+  const { data: reviews = [] } = useReviews();
+  const { data: published = [] } = usePublished();
   const nav = (page: Parameters<typeof go>[0]) => {
     if (['sources', 'rules', 'history', 'add'].includes(page)) showToast('준비 중입니다.', 'inf');
     go(page);
@@ -34,8 +32,8 @@ export function Lnb() {
       <div className="sb-logo"><span>☰</span><span>Wiki<em>Flow</em></span></div>
       <div className="sb-workspace"><Avatar name="총" /><div><strong>총무팀</strong><small>운영 워크스페이스</small></div><span>▾</span></div>
       <NavItem page="home" active={activePage} icon="⌂" label="홈" onClick={nav} />
-      <NavItem page="review" active={activePage} icon="◰" label="검토" badge={pending} badgeClass="nb-red" onClick={nav} />
-      <NavItem page="kb" active={activePage} icon="◈" label="조직 지식" badge={knowledge.length} badgeClass="nb-blue" onClick={nav} />
+      <NavItem page="review" active={activePage} icon="◰" label="검토" badge={reviews.length} badgeClass="nb-red" onClick={nav} />
+      <NavItem page="kb" active={activePage} icon="◈" label="조직 지식" badge={published.length} badgeClass="nb-blue" onClick={nav} />
       <div className="sb-sec-label">System</div>
       <NavItem page="sources" active={activePage} icon="⌁" label="데이터 소스" onClick={nav} />
       <NavItem page="rules" active={activePage} icon="⚙" label="처리 규칙" onClick={nav} />

@@ -8,12 +8,11 @@ import { config as loadDotenv } from 'dotenv';
 import { createDocumentsRepo, createJobsRepo, createSandboxRunsRepo, getDb } from '@wf/db';
 import { MAIN_QUEUE_NAME, createWorker } from '@wf/queue';
 import { DockerSandboxRunner } from '@wf/sandbox';
-import { loadEnv, type DocumentDTO } from '@wf/shared';
-import type { EmbedFn } from '@wf/agent-tools';
+import { loadEnv, type DocumentDTO, type EmbedFn } from '@wf/shared';
 import { createTripletExtractionModels, runGraphPipeline } from '@wf/graph-worker/pipeline';
 import { runMainPipeline } from './pipeline.js';
 
-export { runMainPipeline, indexDocumentChunks, extractMergeResult } from './pipeline.js';
+export { runMainPipeline, extractMergeResult } from './pipeline.js';
 
 loadDotenv({ path: path.resolve(process.cwd(), '../../.env'), quiet: true });
 const env = loadEnv();
@@ -30,7 +29,7 @@ const tripletModels = createTripletExtractionModels(env);
 const embeddingModel = openai.textEmbeddingModel(env.EMBEDDING_MODEL);
 const embed: EmbedFn = async (texts) => (await embedMany({ model: embeddingModel, values: texts })).embeddings;
 
-type MainJob = Job<{ documentId: string }>;
+type MainJob = Job<{ documentId: string; commit?: boolean }>;
 
 /** Sync the document into a per-job temp dir mounted read-only at /docs. */
 async function writeDocSnapshot(snapshotDir: string, doc: DocumentDTO): Promise<void> {
@@ -140,14 +139,70 @@ async function runPreviewJob(job: MainJob, doc: DocumentDTO, jobId: string, docu
   }
 }
 
-const worker = createWorker<{ documentId: string }>(MAIN_QUEUE_NAME, async (job) => {
+async function runCommitPreviewJob(job: MainJob, doc: DocumentDTO, jobId: string, documentId: string) {
+  const attempts = job.attemptsMade + 1;
+  const lifecycle = { queue: MAIN_QUEUE_NAME, type: 'PREVIEW' as const, documentId, title: doc.title };
+  await jobs.recordLifecycle(jobId, { ...lifecycle, status: 'active', attempts });
+  await job.updateProgress(5);
+  const snapshotDir = await mkdtemp(path.join(tmpdir(), 'wf-docs-'));
+  try {
+    await writeDocSnapshot(snapshotDir, doc);
+    const result = await runMainPipeline(documentId, {
+      db,
+      sandbox: createSandbox(jobId),
+      docsSnapshotDir: snapshotDir,
+      jobId,
+      embed,
+      model,
+      embeddingModel: env.EMBEDDING_MODEL,
+      onStep: progressOnStep(job),
+      recordStep: (step) => jobs.appendAgentStep(jobId, { ...step, phase: 'main' }),
+    });
+
+    await job.updateProgress({ type: 'phase', phase: 'graph', progress: 70 });
+    const graphResult = await runGraphPipeline(documentId, {
+      db,
+      models: tripletModels.length > 0 ? tripletModels : [{ label: `openai:${env.AGENT_MODEL}`, model }],
+      persist: false,
+      maxChunks: PREVIEW_MAX_TRIPLET_CHUNKS,
+      recordStep: (step) => jobs.appendAgentStep(jobId, { ...step, phase: 'graph' }),
+    });
+
+    const previewResult = {
+      ...result,
+      originalMarkdown: doc.contentMarkdown,
+      triplets: graphResult.triplets,
+      chunkCount: graphResult.chunkCount,
+      tripletCount: graphResult.tripletCount,
+      committed: true,
+    };
+    await job.updateProgress(100);
+    await jobs.recordLifecycle(jobId, { ...lifecycle, status: 'completed', attempts, result: previewResult });
+    return previewResult;
+  } catch (error) {
+    await jobs.recordLifecycle(jobId, {
+      ...lifecycle,
+      status: 'failed',
+      attempts,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  } finally {
+    await rm(snapshotDir, { recursive: true, force: true });
+  }
+}
+
+const worker = createWorker<{ documentId: string; commit?: boolean }>(MAIN_QUEUE_NAME, async (job) => {
   const { documentId } = job.data;
   const jobId = String(job.id);
   const doc = await docs.getById(documentId);
   if (!doc) throw new Error(`Document not found: ${documentId}`);
-  return job.name === 'PREVIEW'
-    ? runPreviewJob(job, doc, jobId, documentId)
-    : runIngestJob(job, doc, jobId, documentId);
+  if (job.name === 'PREVIEW') {
+    return job.data.commit
+      ? runCommitPreviewJob(job, doc, jobId, documentId)
+      : runPreviewJob(job, doc, jobId, documentId);
+  }
+  return runIngestJob(job, doc, jobId, documentId);
 });
 
 worker.on('failed', (job, err) => {

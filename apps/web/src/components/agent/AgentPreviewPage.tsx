@@ -135,6 +135,7 @@ function ResultPanel({ original, result }: { original: string; result: AgentPrev
         <div className="agent-result-head">
           <h3>Draft diff</h3>
           <Badge tone={result.merged ? 'ok' : 'warn'}>{result.merged ? 'merged' : 'fallback'}</Badge>
+          {result.committed ? <Badge tone="warn">committed</Badge> : null}
         </div>
         <Suspense fallback={<div className="panel">Diff loading</div>}>
           <MonacoDiffPane original={original} modified={result.draftMarkdown} />
@@ -157,6 +158,7 @@ export function AgentPreviewPage() {
   const [title, setTitle] = useState('');
   const [message, setMessage] = useState('');
   const [file, setFile] = useState<File | null>(null);
+  const [commit, setCommit] = useState(false);
   const [jobId, setJobId] = useState<string | null>(null);
   const messageMutation = useAgentPreviewMessage();
   const uploadMutation = useAgentPreviewUpload();
@@ -193,7 +195,7 @@ export function AgentPreviewPage() {
     event.preventDefault();
     try {
       if (file) {
-        const started = await uploadMutation.mutateAsync({ file, ...(title.trim() ? { title: title.trim() } : {}) });
+        const started = await uploadMutation.mutateAsync({ file, commit, ...(title.trim() ? { title: title.trim() } : {}) });
         setJobId(started.jobId);
         return;
       }
@@ -204,6 +206,7 @@ export function AgentPreviewPage() {
       }
       const started = await messageMutation.mutateAsync({
         message: content,
+        commit,
         ...(title.trim() ? { title: title.trim() } : {}),
       });
       setJobId(started.jobId);
@@ -251,6 +254,11 @@ export function AgentPreviewPage() {
               <span>Message</span>
               <textarea value={message} onChange={(event) => setMessage(event.target.value)} rows={8} />
             </label>
+            <label className="agent-commit">
+              <input type="checkbox" checked={commit} onChange={(event) => setCommit(event.target.checked)} />
+              <span>실제 반영</span>
+              {commit ? <Badge tone="warn">영구 저장</Badge> : null}
+            </label>
             <button className="btn-primary" type="submit" disabled={busy}>
               {busy ? 'Starting...' : 'Run preview'}
             </button>
@@ -272,6 +280,7 @@ export function AgentPreviewPage() {
                   <Badge tone={run.status === 'completed' ? 'ok' : run.status === 'failed' ? 'error' : 'info'}>
                     {run.status}
                   </Badge>
+                  {run.result?.committed ? <Badge tone="warn">committed</Badge> : null}
                 </button>
               ))
             )}

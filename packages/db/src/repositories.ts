@@ -1,10 +1,12 @@
 import { ObjectId, type Db, type Document, type WithId } from 'mongodb';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import {
+  chunkMarkdown,
   normalizeEntityName,
   type AgentStepDTO,
   type DocumentDTO,
   type DocumentStatus,
+  type EmbedFn,
   type TreeNode,
   type Triplet,
   type User,
@@ -399,6 +401,38 @@ export function createChunksRepo(db: Db) {
         }));
     },
   };
+}
+
+/**
+ * Chunk + embed approved document content into `chunks` for vector retrieval.
+ * Reuses a content/model signature to avoid repeat embedding calls for unchanged text.
+ */
+export async function indexDocumentChunks(
+  db: Db,
+  embed: EmbedFn,
+  documentId: string,
+  markdown: string,
+  embeddingModel: string,
+): Promise<number> {
+  const chunks = chunkMarkdown(markdown);
+  if (chunks.length === 0) return 0;
+  const repo = createChunksRepo(db);
+  const signature = createHash('sha256').update(`${embeddingModel}\n${markdown}`).digest('hex');
+  if ((await repo.getSignature(documentId)) === signature) return chunks.length;
+  const embeddings = await embed(chunks.map((chunk) => chunk.text));
+  await repo.replaceForDocument(
+    documentId,
+    chunks.map((chunk, index) => ({
+      chunkIndex: chunk.chunkIndex,
+      text: chunk.text,
+      tokens: chunk.tokens,
+      headingPath: chunk.headingPath,
+      embedding: embeddings[index] ?? [],
+      embeddingModel,
+    })),
+    signature,
+  );
+  return chunks.length;
 }
 
 export interface GraphNodeRow {

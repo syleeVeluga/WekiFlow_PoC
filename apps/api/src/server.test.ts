@@ -114,6 +114,28 @@ describe('@wf/api routes', () => {
     expect(detail.statusCode).toBe(200);
     expect(detail.json().result.originalMarkdown).toBe('# Test');
 
+    const committed = await app.inject({
+      method: 'POST',
+      url: '/api/agent-preview',
+      headers: { authorization: `Bearer ${ownerToken}` },
+      payload: { title: 'Committed preview', message: '# Commit me', commit: true },
+    });
+    expect(committed.statusCode).toBe(200);
+
+    const committedDetail = await app.inject({
+      method: 'GET',
+      url: `/api/agent-preview/${committed.json().jobId}`,
+      headers: { authorization: `Bearer ${ownerToken}` },
+    });
+    expect(committedDetail.statusCode).toBe(200);
+    expect(committedDetail.json().result.committed).toBe(true);
+
+    const tree = await app.inject({ method: 'GET', url: '/api/tree' });
+    expect(tree.json()).toEqual(expect.arrayContaining([expect.objectContaining({ id: committed.json().documentId, status: 'REVIEW' })]));
+
+    const layer1Reviews = await app.inject({ method: 'GET', url: '/api/reviews' });
+    expect(layer1Reviews.json()).toEqual(expect.arrayContaining([expect.objectContaining({ id: committed.json().documentId })]));
+
     const badStream = await app.inject({
       method: 'GET',
       url: `/api/agent-preview/${started.json().jobId}/stream?token=bad-token`,

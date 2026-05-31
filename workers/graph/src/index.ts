@@ -1,9 +1,10 @@
 import { openai } from '@ai-sdk/openai';
+import { embedMany } from 'ai';
 import { config as loadDotenv } from 'dotenv';
 import path from 'node:path';
 import { closeMongoClient, createJobsRepo, getDb } from '@wf/db';
 import { GRAPH_QUEUE_NAME, createRedisConnection, createWorker } from '@wf/queue';
-import { loadEnv } from '@wf/shared';
+import { loadEnv, type EmbedFn } from '@wf/shared';
 import { createTripletExtractionModels, runGraphPipeline } from './pipeline.js';
 
 loadDotenv({ path: path.resolve(process.cwd(), '../../.env'), quiet: true });
@@ -12,6 +13,8 @@ const db = await getDb();
 const jobs = createJobsRepo(db);
 const model = openai(env.AGENT_MODEL);
 const tripletModels = createTripletExtractionModels(env);
+const embeddingModel = openai.textEmbeddingModel(env.EMBEDDING_MODEL);
+const embed: EmbedFn = async (texts) => (await embedMany({ model: embeddingModel, values: texts })).embeddings;
 const connection = createRedisConnection();
 
 const worker = createWorker<{ documentId: string }>(GRAPH_QUEUE_NAME, async (job) => {
@@ -31,6 +34,8 @@ const worker = createWorker<{ documentId: string }>(GRAPH_QUEUE_NAME, async (job
     const result = await runGraphPipeline(documentId, {
       db,
       models: tripletModels.length > 0 ? tripletModels : [{ label: `openai:${env.AGENT_MODEL}`, model }],
+      embed,
+      embeddingModel: env.EMBEDDING_MODEL,
       recordStep: (step) => jobs.appendAgentStep(jobId, step),
     });
     await job.updateProgress(100);

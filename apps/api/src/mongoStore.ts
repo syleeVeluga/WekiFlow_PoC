@@ -72,8 +72,9 @@ export class MongoWekiFlowStore implements WekiFlowStore {
     type: JobType,
     documentId: string,
     overrides?: Parameters<Queue['add']>[2],
+    extraData?: Record<string, unknown>,
   ): Promise<JobRef> {
-    const job = await queue.add(type, { documentId }, { ...defaultJobOptions(), ...overrides });
+    const job = await queue.add(type, { documentId, ...extraData }, { ...defaultJobOptions(), ...overrides });
     return {
       id: String(job.id),
       type,
@@ -108,11 +109,17 @@ export class MongoWekiFlowStore implements WekiFlowStore {
     return { doc, job };
   }
 
-  async agentPreview(input: { title: string; contentMarkdown: string }): Promise<{ jobId: string; documentId: string }> {
-    const doc = await this.docs.createPreviewDraft(input);
+  async agentPreview(input: { title: string; contentMarkdown: string; commit?: boolean }): Promise<{ jobId: string; documentId: string }> {
+    const doc = input.commit ? await this.docs.createDraft(input) : await this.docs.createPreviewDraft(input);
     // Previews are interactive and ephemeral: the worker deletes the draft when the job settles, so a
     // retry would only re-run against a deleted document. Run a single attempt and let the user re-run.
-    const job = await this.enqueue(this.mainQueue, 'PREVIEW', doc.id, { attempts: 1 });
+    const job = await this.enqueue(
+      this.mainQueue,
+      'PREVIEW',
+      doc.id,
+      input.commit ? undefined : { attempts: 1 },
+      input.commit ? { commit: true } : undefined,
+    );
     await this.jobs.recordLifecycle(
       job.id,
       {

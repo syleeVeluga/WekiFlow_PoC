@@ -261,7 +261,7 @@ describe('runMainPipeline (agent loop)', () => {
     expect(steps.map((step) => step.tool)).toEqual(['tool_hybrid_retrieve', 'tool_merge']);
     expect(steps[0]).toMatchObject({
       tool: 'tool_hybrid_retrieve',
-      result: { graphPathCount: 1, fusedCount: 2, exactGraphStartMatch: true },
+      result: { graphPathCount: 1, fusedCount: 1, exactGraphStartMatch: true },
     });
   });
 });

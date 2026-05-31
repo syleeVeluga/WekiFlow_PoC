@@ -3,8 +3,8 @@ import { createAnthropic } from '@ai-sdk/anthropic';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { createOpenAI } from '@ai-sdk/openai';
 import type { Db } from 'mongodb';
-import { createDocumentsRepo, upsertTriplets } from '@wf/db';
-import { TripletArraySchema, chunkMarkdown, type DocChunk, type Env, type Triplet } from '@wf/shared';
+import { createDocumentsRepo, indexDocumentChunks, upsertTriplets } from '@wf/db';
+import { TripletArraySchema, chunkMarkdown, type DocChunk, type EmbedFn, type Env, type Triplet } from '@wf/shared';
 
 export const LIGHTRAG_EXTRACT_PROMPT = `You are a knowledge graph extractor.
 Analyze the document chunk and return explicit (Subject)-[Predicate]->(Object) triplets only.
@@ -49,6 +49,8 @@ export interface GraphPipelineContext {
   model?: LanguageModel;
   models?: TripletModel[];
   extractTriplets?: TripletExtractor;
+  embed?: EmbedFn;
+  embeddingModel?: string;
   persist?: boolean;
   maxChunks?: number;
   recordStep?: (step: {
@@ -140,6 +142,11 @@ export async function runGraphPipeline(
 
   const triplets = dedupeTriplets(extracted);
   if (persist) {
+    // Ordering note: triplets → embed → markGraphIndexed. If embed throws, the job fails before
+    // markGraphIndexed, leaving triplets persisted. This is safe to retry: upsertTriplets is keyed
+    // (nodes by normalizedName, edges by subject/predicate/object) with $addToSet/$max, and
+    // indexDocumentChunks skips re-embedding unchanged content via its stored signature — so a retry
+    // is idempotent and recovers the partial state without duplicating data.
     const started = Date.now();
     await upsertTriplets(ctx.db, triplets, documentId);
     await ctx.recordStep?.({
@@ -147,6 +154,24 @@ export async function runGraphPipeline(
       args: { documentId },
       result: { tripletCount: triplets.length },
       tookMs: Date.now() - started,
+    });
+
+    if (!ctx.embed || !ctx.embeddingModel) {
+      throw new Error('Graph pipeline persist requires embed and embeddingModel');
+    }
+    const embedStarted = Date.now();
+    const indexedChunkCount = await indexDocumentChunks(
+      ctx.db,
+      ctx.embed,
+      documentId,
+      doc.contentMarkdown,
+      ctx.embeddingModel,
+    );
+    await ctx.recordStep?.({
+      tool: 'graph_index_chunks',
+      args: { documentId, embeddingModel: ctx.embeddingModel },
+      result: { chunkCount: indexedChunkCount },
+      tookMs: Date.now() - embedStarted,
     });
 
     await documents.markGraphIndexed(documentId);

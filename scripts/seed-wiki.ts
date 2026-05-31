@@ -2,12 +2,6 @@ import { createHash } from 'node:crypto';
 import { ObjectId } from 'mongodb';
 import { closeMongoClient, getDb } from '@wf/db';
 import {
-  createSeedActivity,
-  createSeedAiTagSuggestions,
-  createSeedKnowledgeItems,
-  createSeedMultiSourceGroups,
-  createSeedReviews,
-  createSeedTopics,
   loadEnv,
   seedDemoUsers,
 } from '@wf/shared';
@@ -19,78 +13,14 @@ function stableObjectId(input: string): ObjectId {
 const db = await getDb();
 const now = new Date();
 
-const topics = createSeedTopics();
-for (const topic of topics) {
-  await db.collection('topics').updateOne(
-    { name: topic.name },
-    {
-      $set: { ...topic, updatedAt: now },
-      $setOnInsert: { _id: stableObjectId(`topic:${topic.id}`), createdAt: now },
-    },
-    { upsert: true },
-  );
-}
-
-const topicRows = await db.collection('topics').find({}).toArray();
-const topicIdByName = new Map(topicRows.map((topic) => [String(topic.name), topic._id]));
-
-for (const item of createSeedKnowledgeItems()) {
-  const docObjectId = stableObjectId(`document:${item.id}`);
-  await db.collection('documents').updateOne(
-    { slug: item.id },
-    {
-      $set: {
-        title: item.title,
-        parentId: null,
-        isFolder: false,
-        status: 'PUBLISHED',
-        contentMarkdown: item.contentMarkdown,
-        draftMarkdown: null,
-        version: Math.max(1, item.modCount + 1),
-        sourceRefs: [{ type: 'datasource', ref: `seed://${item.id}`, note: item.sourceLabel }],
-        topicId: topicIdByName.get(item.category) ?? null,
-        department: item.department,
-        freshness: item.freshness,
-        wiki: item,
-        updatedAt: now,
-      },
-      $setOnInsert: { _id: docObjectId, slug: item.id, createdAt: now },
-    },
-    { upsert: true },
-  );
-}
-
-for (const review of createSeedReviews()) {
-  await db.collection('review_items').updateOne(
-    { id: review.id },
-    { $set: { ...review, updatedAt: now }, $setOnInsert: { _id: stableObjectId(`review:${review.id}`), createdAt: now } },
-    { upsert: true },
-  );
-}
-
-for (const group of createSeedMultiSourceGroups()) {
-  await db.collection('multi_source_groups').updateOne(
-    { id: group.id },
-    { $set: { ...group, updatedAt: now }, $setOnInsert: { _id: stableObjectId(`ms:${group.id}`), createdAt: now } },
-    { upsert: true },
-  );
-}
-
-for (const suggestion of createSeedAiTagSuggestions()) {
-  await db.collection('ai_tag_suggestions').updateOne(
-    { id: suggestion.id },
-    { $set: { ...suggestion, updatedAt: now }, $setOnInsert: { _id: stableObjectId(`tag:${suggestion.id}`), createdAt: now } },
-    { upsert: true },
-  );
-}
-
-for (const activity of createSeedActivity()) {
-  await db.collection('activity_log').updateOne(
-    { id: activity.id },
-    { $set: { ...activity, updatedAt: now }, $setOnInsert: { _id: stableObjectId(`activity:${activity.id}`), createdAt: now } },
-    { upsert: true },
-  );
-}
+await db.collection('documents').deleteMany({ 'wiki.id': { $exists: true } });
+await Promise.all([
+  db.collection('topics').deleteMany({}),
+  db.collection('review_items').deleteMany({}),
+  db.collection('multi_source_groups').deleteMany({}),
+  db.collection('ai_tag_suggestions').deleteMany({}),
+  db.collection('activity_log').deleteMany({}),
+]);
 
 // 사용자 시드: 소유자(.env) + 데모 5명. 비밀번호는 이메일과 동일.
 // $setOnInsert만 사용해 재시드 시 UI에서 변경한 역할을 덮어쓰지 않는다.
@@ -109,7 +39,8 @@ for (const user of seedUsers) {
 
 const counts = {
   users: await db.collection('users').countDocuments(),
-  documents: await db.collection('documents').countDocuments({ slug: /^k\d+/ }),
+  documents: await db.collection('documents').countDocuments({ 'wiki.id': { $exists: false } }),
+  wiki_documents: await db.collection('documents').countDocuments({ 'wiki.id': { $exists: true } }),
   topics: await db.collection('topics').countDocuments(),
   review_items: await db.collection('review_items').countDocuments(),
   multi_source_groups: await db.collection('multi_source_groups').countDocuments(),

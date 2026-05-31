@@ -108,10 +108,11 @@ export function agentPreviewMessage(body: AgentPreviewRequest): Promise<{ jobId:
   return request('/agent-preview', { method: 'POST', body: JSON.stringify(body) });
 }
 
-export async function agentPreviewUpload(file: File, title?: string): Promise<{ jobId: string; documentId: string }> {
+export async function agentPreviewUpload(file: File, title?: string, commit = false): Promise<{ jobId: string; documentId: string }> {
   const form = new FormData();
   form.append('file', file);
   if (title?.trim()) form.append('title', title.trim());
+  if (commit) form.append('commit', 'true');
   const headers: Record<string, string> = {};
   if (authToken) headers.authorization = `Bearer ${authToken}`;
   const res = await fetch(`${BASE}/agent-preview`, { method: 'POST', headers, body: form });

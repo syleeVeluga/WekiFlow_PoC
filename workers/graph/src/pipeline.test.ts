@@ -50,6 +50,21 @@ function createMemoryDb(seed: Record<string, Row[]> = {}) {
         async findOne(query: Record<string, unknown>) {
           return rows.find((row) => matches(row, query)) ?? null;
         },
+        find(query: Record<string, unknown> = {}) {
+          return {
+            async toArray() {
+              return rows.filter((row) => matches(row, query));
+            },
+          };
+        },
+        async deleteMany(query: Record<string, unknown>) {
+          const keep = rows.filter((row) => !matches(row, query));
+          rows.length = 0;
+          rows.push(...keep);
+        },
+        async insertMany(docs: Row[]) {
+          rows.push(...docs);
+        },
         async findOneAndUpdate(
           query: Record<string, unknown>,
           update: Record<string, unknown>,
@@ -118,6 +133,8 @@ describe('runGraphPipeline', () => {
           },
         ],
       }),
+      embed: async (texts) => texts.map(() => [1, 0]),
+      embeddingModel: 'text-embedding-3-large',
       recordStep: (step) => {
         steps.push(step);
       },
@@ -139,10 +156,12 @@ describe('runGraphPipeline', () => {
     expect(db.rows('kg_edges')).toHaveLength(1);
     expect(db.rows('kg_edges')[0]!.strength).toBe(0.9);
     expect(db.rows('kg_edges')[0]!.sourceDocIds).toHaveLength(1);
+    expect(db.rows('chunks')).toHaveLength(2);
     expect(steps.map((step) => step.tool)).toEqual([
       'tool_extract_triplets',
       'tool_extract_triplets',
       'graph_upsert_triplets',
+      'graph_index_chunks',
     ]);
   });
 

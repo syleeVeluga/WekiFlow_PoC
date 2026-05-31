@@ -1,8 +1,7 @@
-import { createHash } from 'node:crypto';
 import { ToolLoopAgent, stepCountIs, type LanguageModel } from 'ai';
 import type { Db } from 'mongodb';
-import { createChunksRepo, createDocumentsRepo } from '@wf/db';
-import { MergeResultSchema, chunkMarkdown, type MergeResult } from '@wf/shared';
+import { createDocumentsRepo } from '@wf/db';
+import { MergeResultSchema, type MergeResult } from '@wf/shared';
 import type { SandboxRunner } from '@wf/sandbox';
 import {
   MAIN_AGENT_SYSTEM_PROMPT,
@@ -39,39 +38,6 @@ export interface MainPipelineResult {
   merged: boolean;
 }
 
-/**
- * Chunk + embed the document content into `chunks` so tool_search_vector has something to search.
- * Skips re-embedding (a live model call) when the content + embedding model are unchanged since the
- * last run, keyed by a stored content signature.
- */
-export async function indexDocumentChunks(
-  db: Db,
-  embed: EmbedFn,
-  documentId: string,
-  markdown: string,
-  embeddingModel: string,
-): Promise<number> {
-  const chunks = chunkMarkdown(markdown);
-  if (chunks.length === 0) return 0;
-  const repo = createChunksRepo(db);
-  const signature = createHash('sha256').update(`${embeddingModel}\n${markdown}`).digest('hex');
-  if ((await repo.getSignature(documentId)) === signature) return chunks.length; // unchanged → skip re-embed
-  const embeddings = await embed(chunks.map((chunk) => chunk.text));
-  await repo.replaceForDocument(
-    documentId,
-    chunks.map((chunk, index) => ({
-      chunkIndex: chunk.chunkIndex,
-      text: chunk.text,
-      tokens: chunk.tokens,
-      headingPath: chunk.headingPath,
-      embedding: embeddings[index] ?? [],
-      embeddingModel,
-    })),
-    signature,
-  );
-  return chunks.length;
-}
-
 /** Pull the most recent tool_merge output out of the agent's step history. */
 export function extractMergeResult(
   steps: ReadonlyArray<{ toolResults?: ReadonlyArray<{ toolName: string; output: unknown }> }>,
@@ -99,14 +65,6 @@ export async function runMainPipeline(
   const documents = createDocumentsRepo(ctx.db);
   const doc = await documents.getById(documentId);
   if (!doc) throw new Error(`Document not found: ${documentId}`);
-
-  // Previews never publish their own chunks into the shared vector store: doing so would (a) leak
-  // unsaved preview content into concurrent real ingests' tool_search_vector results and (b) waste an
-  // embedding call on chunks nothing searches. The preview agent still searches existing published
-  // chunks, and the document body is in the prompt + grep-able via /docs.
-  if (!ctx.preview) {
-    await indexDocumentChunks(ctx.db, ctx.embed, documentId, doc.contentMarkdown, ctx.embeddingModel);
-  }
 
   const tools = createMainTools({
     db: ctx.db,

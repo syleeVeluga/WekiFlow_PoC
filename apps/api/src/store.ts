@@ -90,7 +90,7 @@ export interface WekiFlowStore {
   createUser(body: CreateUserBody): Promise<UserResult>;
   updateUserRole(id: string, role: UserRole): Promise<UserResult>;
   deleteUser(id: string): Promise<OkResult>;
-  agentPreview(input: { title: string; contentMarkdown: string }): Promise<{ jobId: string; documentId: string }>;
+  agentPreview(input: { title: string; contentMarkdown: string; commit?: boolean }): Promise<{ jobId: string; documentId: string }>;
   getAgentPreview(jobId: string): Promise<AgentPreviewRun | undefined>;
   listAgentPreviews(): Promise<AgentPreviewRun[]>;
 }
@@ -249,10 +249,22 @@ export class InMemoryWekiFlowStore implements WekiFlowStore {
     return [...this.documents.values()].filter((doc) => doc.status === 'REVIEW');
   }
 
-  async agentPreview(input: { title: string; contentMarkdown: string }): Promise<{ jobId: string; documentId: string }> {
+  async agentPreview(input: { title: string; contentMarkdown: string; commit?: boolean }): Promise<{ jobId: string; documentId: string }> {
     const sequence = this.agentRuns.size + 1;
     const jobId = `preview-${sequence}`;
-    const documentId = `preview-doc-${sequence}`;
+    const committedDraft = `${input.contentMarkdown}\n\n[preview-stub-merged]`;
+    const committedDoc = input.commit
+      ? this.create({
+          title: input.title,
+          contentMarkdown: input.contentMarkdown,
+          status: 'REVIEW',
+          sourceRefs: [{ type: 'manual', ref: 'api://agent-preview', note: '' }],
+        })
+      : null;
+    if (committedDoc) {
+      this.documents.set(committedDoc.id, { ...committedDoc, draftMarkdown: committedDraft });
+    }
+    const documentId = committedDoc?.id ?? `preview-doc-${sequence}`;
     const now = new Date().toISOString();
     const steps: AgentStepDTO[] = [
       {
@@ -283,11 +295,12 @@ export class InMemoryWekiFlowStore implements WekiFlowStore {
     const result: AgentPreviewResult = {
       documentId,
       originalMarkdown: input.contentMarkdown,
-      draftMarkdown: `${input.contentMarkdown}\n\n[preview-stub-merged]`,
+      draftMarkdown: committedDraft,
       changeSummary: 'Preview stub merge completed.',
       merged: true,
       chunkCount: 1,
       tripletCount: 1,
+      ...(input.commit ? { committed: true } : {}),
       triplets: [
         {
           subject: input.title,

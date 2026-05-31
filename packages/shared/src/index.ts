@@ -100,6 +100,7 @@ export type AgentStepDTO = z.infer<typeof AgentStepSchema>;
 export const AgentPreviewRequestSchema = z.object({
   message: z.string().min(1),
   title: z.string().min(1).optional(),
+  commit: z.boolean().optional().default(false),
 });
 
 export type AgentPreviewRequest = z.infer<typeof AgentPreviewRequestSchema>;
@@ -114,6 +115,7 @@ export const AgentPreviewResultSchema = z.object({
   triplets: z.array(TripletSchema),
   chunkCount: z.number().int().nonnegative(),
   tripletCount: z.number().int().nonnegative(),
+  committed: z.boolean().optional(),
 });
 
 export type AgentPreviewResult = z.infer<typeof AgentPreviewResultSchema>;
@@ -177,6 +179,8 @@ export const VerifyResultSchema = z.object({
 });
 
 export type VerifyResult = z.infer<typeof VerifyResultSchema>;
+
+export type EmbedFn = (texts: string[]) => Promise<number[][]>;
 
 export const EnvSchema = z.object({
   NODE_ENV: z.string().default('development'),

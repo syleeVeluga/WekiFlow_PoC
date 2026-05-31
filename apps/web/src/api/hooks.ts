@@ -25,7 +25,7 @@ export function usePublished(): UseQueryResult<TreeNode[]> {
   return useQuery({
     queryKey: queryKeys.tree,
     queryFn: api.fetchTree,
-    select: (nodes) => nodes.filter((n) => n.status === 'PUBLISHED'),
+    select: (nodes) => nodes.filter((n) => n.status === 'PUBLISHED' || n.status === 'GRAPH_INDEXED'),
   });
 }
 
@@ -74,15 +74,23 @@ export function useAgentPreviewMessage() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: api.agentPreviewMessage,
-    onSuccess: () => void qc.invalidateQueries({ queryKey: queryKeys.agentPreviews }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: queryKeys.agentPreviews });
+      void qc.invalidateQueries({ queryKey: queryKeys.tree });
+      void qc.invalidateQueries({ queryKey: queryKeys.reviews });
+    },
   });
 }
 
 export function useAgentPreviewUpload() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ file, title }: { file: File; title?: string }) => api.agentPreviewUpload(file, title),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: queryKeys.agentPreviews }),
+    mutationFn: ({ file, title, commit }: { file: File; title?: string; commit?: boolean }) => api.agentPreviewUpload(file, title, commit),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: queryKeys.agentPreviews });
+      void qc.invalidateQueries({ queryKey: queryKeys.tree });
+      void qc.invalidateQueries({ queryKey: queryKeys.reviews });
+    },
   });
 }
 
@@ -157,6 +165,8 @@ export function useAgentRunStream(jobId: string | null): AgentRunStreamState {
       setState((prev) => ({ ...prev, result: data.result ?? null, progress: 100, done: true, failed: false }));
       void qc.invalidateQueries({ queryKey: queryKeys.agentPreviews });
       void qc.invalidateQueries({ queryKey: queryKeys.agentPreview(jobId) });
+      void qc.invalidateQueries({ queryKey: queryKeys.tree });
+      void qc.invalidateQueries({ queryKey: queryKeys.reviews });
       source.close();
     });
 

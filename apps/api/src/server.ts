@@ -75,22 +75,26 @@ export function buildServer({
     throw new Error('Unsupported preview file type');
   }
 
-  async function readAgentPreviewInput(request: FastifyRequest): Promise<{ title: string; contentMarkdown: string }> {
+  async function readAgentPreviewInput(request: FastifyRequest): Promise<{ title: string; contentMarkdown: string; commit: boolean }> {
     if (request.isMultipart()) {
       let title = '';
       let fileName = '';
       let contentMarkdown = '';
+      let commit = false;
       for await (const part of request.parts()) {
         if (part.type === 'file') {
           fileName = part.filename;
           contentMarkdown = await extractPreviewFile(part.filename, await part.toBuffer());
         } else if (part.fieldname === 'title' && typeof part.value === 'string') {
           title = part.value.trim();
+        } else if (part.fieldname === 'commit' && typeof part.value === 'string') {
+          commit = part.value === 'true';
         }
       }
       return {
         title: title || path.parse(fileName).name || '에이전트 미리보기',
         contentMarkdown,
+        commit,
       };
     }
 
@@ -98,6 +102,7 @@ export function buildServer({
     return {
       title: body.title?.trim() || '에이전트 미리보기',
       contentMarkdown: capPreviewText(body.message),
+      commit: body.commit ?? false,
     };
   }
 
@@ -304,7 +309,7 @@ export function buildServer({
   app.post('/api/agent-preview', async (request, reply) => {
     const me = await currentUser(request);
     if (!me || !canManageOwners(me.role)) return reply.code(403).send({ error: 'Forbidden' });
-    let input: { title: string; contentMarkdown: string };
+    let input: { title: string; contentMarkdown: string; commit: boolean };
     try {
       input = await readAgentPreviewInput(request);
     } catch (error) {
