@@ -104,7 +104,7 @@ export const useUiStore = create<UiState>((set) => ({
     set((state) => ({
       activePage: 'doc',
       selectedDocId: id,
-      selectedCategory: category ?? state.selectedCategory,
+      selectedCategory: category ?? null,
       treeOpen: category ? { ...state.treeOpen, [category]: true } : state.treeOpen,
       docTab: 'edit',
     })),
@@ -125,5 +125,5 @@ export const useUiStore = create<UiState>((set) => ({
   setModal: (patch) => set((state) => ({ modal: { ...state.modal, ...patch } })),
   showToast: (msg, type = 'inf') => set({ toast: { msg, type } }),
   clearToast: () => set({ toast: null }),
-  select: (id) => set({ selectedDocId: id, activePage: 'doc' }),
+  select: (id) => set({ selectedDocId: id, selectedCategory: null, activePage: 'doc' }),
 }));

@@ -1,1 +1,13 @@
 .doc-page .doc-toolbar{display:flex;gap:8px;align-items:center;justify-content:space-between;margin-bottom:14px}.tabs{display:flex;gap:4px;flex-wrap:wrap}.tabs button{border:1px solid var(--line);background:#fff;padding:8px 12px;border-radius:var(--r)}.tabs button.on{background:var(--primary);color:#fff}.doc-body .panel{border:1px solid var(--line);border-radius:var(--r);background:#fff;overflow:hidden}.doc-actions{display:flex;justify-content:flex-end;margin-top:12px}.panel-meta{padding:8px 12px;border-bottom:1px solid var(--line);color:var(--muted);font-size:12px}.markdown-source{min-height:420px;max-height:70vh;margin:0;padding:16px;border:1px solid var(--line);border-radius:var(--r);background:#0f172a;color:#e5e7eb;overflow:auto;white-space:pre-wrap;word-break:break-word}.markdown-source code{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:13px;line-height:1.65}.history-meta{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;color:var(--muted);font-size:12px}.history-meta span{border:1px solid var(--line);border-radius:999px;background:#fff;padding:5px 9px}.learn-box{background:#eef6ff;border:1px solid #bfdbfe;color:#1e40af;border-radius:var(--r);padding:12px;margin-bottom:12px}
+.dp-sec-label{font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:12px}
+.rel-list{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;color:var(--ink);font-size:14px}
+.doc-history{display:flex;flex-direction:column;gap:10px}
+.rev-item{display:flex;align-items:flex-start;gap:10px;width:100%;text-align:left;border:1px solid var(--line);border-radius:var(--r);background:#fff;padding:12px 14px}
+button.rev-item{cursor:pointer}button.rev-item:hover{border-color:var(--primary)}button.rev-item.on{border-color:var(--primary);box-shadow:0 0 0 1px var(--primary)}
+.rev-item.rev-static{cursor:default}
+.rev-dot{flex:none;width:10px;height:10px;border-radius:999px;margin-top:5px}
+.rev-draft{background:var(--orange,#f59e0b)}.rev-current{background:var(--teal,#14b8a6)}
+.rev-body{display:flex;flex-direction:column;gap:2px}
+.rev-action{font-size:14px;font-weight:600;color:var(--ink)}
+.rev-meta{font-size:12px;color:var(--muted)}
+.rev-empty{color:var(--muted);font-size:13px;margin:4px 0 0}

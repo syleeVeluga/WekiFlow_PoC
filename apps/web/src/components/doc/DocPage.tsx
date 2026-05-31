@@ -25,13 +25,19 @@ export function DocPage() {
   const isRealDoc = isObjectId(selectedDocId);
   const { data: realDoc } = useDocument(isRealDoc ? selectedDocId : null);
   const { data: doc } = useKnowledgeItem(isRealDoc ? null : selectedDocId);
-  const { docTab, setDocTab, openCategory, showToast } = useUiStore();
+  const { docTab, setDocTab, openCategory, showToast, selectedCategory } = useUiStore();
   const patch = usePatchKnowledge();
   const [draft, setDraft] = useState<string | null>(null);
+  // Which revision the 변경 기록 tab has expanded into a diff (null = list only). Reset on doc/tab change.
+  const [openRevision, setOpenRevision] = useState<string | null>(null);
 
   useEffect(() => {
     setDraft(doc?.contentMarkdown ?? null);
   }, [doc?.id, doc?.contentMarkdown]);
+
+  useEffect(() => {
+    setOpenRevision(null);
+  }, [selectedDocId, docTab]);
 
   const historyMeta = useMemo(() => {
     if (!doc) return [];
@@ -40,6 +46,7 @@ export function DocPage() {
 
   if (isRealDoc) {
     if (!realDoc) return <section className="pg stub"><h1>문서를 선택하세요</h1></section>;
+    const hasDraft = realDoc.draftMarkdown != null && realDoc.draftMarkdown !== realDoc.contentMarkdown;
     return (
       <section className="pg doc-page">
         <div className="topbar">
@@ -47,11 +54,39 @@ export function DocPage() {
             <h1>{realDoc.title}</h1>
             <p><Badge tone="info">{realDoc.status}</Badge> version {realDoc.version}</p>
           </div>
+          {selectedCategory ? <button className="btn" onClick={() => openCategory(selectedCategory)}>← 카테고리로</button> : null}
         </div>
+        <div className="doc-toolbar"><div className="tabs">{DOC_TABS.map((tab) => <button className={docTab === tab ? 'on' : ''} onClick={() => setDocTab(tab)} key={tab}>{TAB_LABELS[tab]}</button>)}</div><button className="btn" onClick={() => showToast('챗봇 컨텍스트를 전환했습니다.', 'inf')}>챗봇 토글</button></div>
         <div className="card doc-body">
-          <Suspense fallback={<div className="panel">Diff loading</div>}>
-            <MonacoDiffPane original={realDoc.contentMarkdown} modified={realDoc.draftMarkdown ?? realDoc.contentMarkdown} />
-          </Suspense>
+          {docTab === 'edit' ? (
+            <BlockNotePane markdown={realDoc.draftMarkdown ?? realDoc.contentMarkdown} editable={false} />
+          ) : docTab === 'source' ? (
+            <pre className="markdown-source"><code>{realDoc.contentMarkdown}</code></pre>
+          ) : docTab === 'relations' ? (
+            realDoc.sourceRefs.length ? (
+              <ul className="rel-list">{realDoc.sourceRefs.map((ref, index) => <li key={`${ref.type}-${index}`}>{ref.type} · {ref.ref}{ref.note ? ` — ${ref.note}` : ''}</li>)}</ul>
+            ) : <p>연결된 원천이 없습니다.</p>
+          ) : (
+            <div className="doc-history">
+              <div className="dp-sec-label">이 문서의 변경 기록</div>
+              {hasDraft ? (
+                <button type="button" className={`rev-item ${openRevision === 'draft' ? 'on' : ''}`} onClick={() => setOpenRevision(openRevision === 'draft' ? null : 'draft')}>
+                  <span className="rev-dot rev-draft" />
+                  <span className="rev-body"><span className="rev-action">검토 중 초안 (v{realDoc.version + 1} 예정)</span><span className="rev-meta">현재 발행본과 비교하려면 클릭</span></span>
+                </button>
+              ) : null}
+              <div className="rev-item rev-static">
+                <span className="rev-dot rev-current" />
+                <span className="rev-body"><span className="rev-action">현재 발행본 (v{realDoc.version})</span><span className="rev-meta">{realDoc.updatedAt}{realDoc.approvedBy ? ` · 승인: ${realDoc.approvedBy}` : ''}</span></span>
+              </div>
+              {hasDraft ? null : <p className="rev-empty">검토 중인 변경 사항이 없습니다.</p>}
+              {openRevision === 'draft' && hasDraft ? (
+                <Suspense fallback={<div className="panel">Diff loading</div>}>
+                  <MonacoDiffPane original={realDoc.contentMarkdown} modified={realDoc.draftMarkdown!} />
+                </Suspense>
+              ) : null}
+            </div>
+          )}
         </div>
       </section>
     );
