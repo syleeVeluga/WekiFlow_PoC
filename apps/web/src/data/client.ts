@@ -40,6 +40,9 @@ export const dataClient = {
   deleteTopic(id: string): Promise<{ ok: boolean; reassigned: number }> {
     return request(`/topics/${id}`, { method: 'DELETE' });
   },
+  declassifyCategory(name: string): Promise<{ ok: boolean; reassigned: number }> {
+    return request('/topics/declassify', { method: 'POST', body: JSON.stringify({ name }) });
+  },
   listAiTagSuggestions(): Promise<AiTagSuggestion[]> {
     return request('/ai-tag-suggestions');
   },

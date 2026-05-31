@@ -16,6 +16,7 @@ import {
   UpdateUserRoleBodySchema,
   type User,
   canApprove,
+  canEdit,
   canManageOwners,
   canManageUsers,
   canReview,
@@ -245,6 +246,46 @@ export function buildServer({
     return doc;
   });
 
+  // "연결 관계": this doc's extracted facts + other documents sharing the same entities.
+  app.get('/api/documents/:id/connections', async (request) => {
+    const { id } = request.params as { id: string };
+    return store.documentConnections(id);
+  });
+
+  // Soft-delete a page to the trash (편집 권한 이상).
+  app.delete('/api/documents/:id', async (request, reply) => {
+    const me = await currentUser(request);
+    if (!me || !canEdit(me.role)) return reply.code(403).send({ error: 'Forbidden' });
+    const { id } = request.params as { id: string };
+    const doc = await store.trashDocument(id);
+    if (!doc) return reply.code(404).send({ error: 'Not found' });
+    return { ok: true };
+  });
+
+  app.get('/api/trash', async (request, reply) => {
+    const me = await currentUser(request);
+    if (!me || !canEdit(me.role)) return reply.code(403).send({ error: 'Forbidden' });
+    return store.listTrash();
+  });
+
+  app.post('/api/trash/:id/restore', async (request, reply) => {
+    const me = await currentUser(request);
+    if (!me || !canEdit(me.role)) return reply.code(403).send({ error: 'Forbidden' });
+    const { id } = request.params as { id: string };
+    const doc = await store.restoreDocument(id);
+    if (!doc) return reply.code(404).send({ error: 'Not found' });
+    return { ok: true };
+  });
+
+  app.delete('/api/trash/:id', async (request, reply) => {
+    const me = await currentUser(request);
+    if (!me || !canEdit(me.role)) return reply.code(403).send({ error: 'Forbidden' });
+    const { id } = request.params as { id: string };
+    const ok = await store.purgeDocument(id);
+    if (!ok) return reply.code(404).send({ error: 'Not found' });
+    return { ok: true };
+  });
+
   app.post('/api/documents', async (request) => {
     const body = request.body as { title?: string; contentMarkdown?: string; parentId?: string | null };
     return store.createDocument({
@@ -309,6 +350,16 @@ export function buildServer({
   app.delete('/api/topics/:id', async (request, reply) => {
     const { id } = request.params as { id: string };
     const result = await store.deleteTopic(id);
+    if (!result.ok) return reply.code(result.statusCode ?? 400).send({ error: result.error ?? 'Failed' });
+    return result;
+  });
+
+  // Remove a category by name (tree right-click): pages drop to 미분류 (편집 권한 이상).
+  app.post('/api/topics/declassify', async (request, reply) => {
+    const me = await currentUser(request);
+    if (!me || !canEdit(me.role)) return reply.code(403).send({ error: 'Forbidden' });
+    const { name } = request.body as { name?: string };
+    const result = await store.declassifyCategory((name ?? '').trim());
     if (!result.ok) return reply.code(result.statusCode ?? 400).send({ error: result.error ?? 'Failed' });
     return result;
   });

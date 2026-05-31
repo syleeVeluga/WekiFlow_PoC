@@ -85,6 +85,42 @@ export const TripletArraySchema = z.object({
 
 export type Triplet = z.infer<typeof TripletSchema>;
 
+/** A human-readable fact extracted from this document (subject → predicate → object). */
+export const ConnectionFactSchema = z.object({
+  subject: z.string(),
+  predicate: z.string(),
+  object: z.string(),
+  strength: z.number().min(0).max(1),
+});
+export type ConnectionFact = z.infer<typeof ConnectionFactSchema>;
+
+/** Another document that shares entities with the current one, plus how it connects. */
+export const RelatedDocSchema = z.object({
+  documentId: z.string(),
+  title: z.string(),
+  sharedEntities: z.array(z.string()).default([]),
+  via: z
+    .array(z.object({ entity: z.string(), predicate: z.string() }))
+    .default([]),
+});
+export type RelatedDoc = z.infer<typeof RelatedDocSchema>;
+
+/** "연결 관계" payload: this doc's facts + related documents discovered via shared entities. */
+export const DocumentConnectionsSchema = z.object({
+  facts: z.array(ConnectionFactSchema).default([]),
+  relatedDocs: z.array(RelatedDocSchema).default([]),
+});
+export type DocumentConnections = z.infer<typeof DocumentConnectionsSchema>;
+
+/** A document currently in the trash (soft-deleted). */
+export const TrashEntrySchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  category: z.string().optional(),
+  trashedAt: z.string(),
+});
+export type TrashEntry = z.infer<typeof TrashEntrySchema>;
+
 export const AgentStepPhaseSchema = z.enum(['main', 'graph']);
 
 export const AgentStepSchema = z.object({

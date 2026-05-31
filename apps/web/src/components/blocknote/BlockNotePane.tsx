@@ -20,6 +20,7 @@ export function BlockNotePane({
   const applyingMarkdown = useRef(false);
 
   useEffect(() => {
+    if (editor.blocksToMarkdownLossy(editor.document) === markdown) return;
     applyingMarkdown.current = true;
     const blocks = editor.tryParseMarkdownToBlocks(markdown);
     try {

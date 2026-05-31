@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { canApprove, canManageOwners, canManageUsers, roleLabels } from '@wf/shared';
+import { canApprove, canEdit, canManageOwners, canManageUsers, roleLabels } from '@wf/shared';
 import { usePublished, useReviews, useSettings, useUpdateSettings } from '../../api/hooks.js';
 import { logout } from '../../api/client.js';
 import { useAuthStore } from '../../auth/store.js';
@@ -132,6 +132,7 @@ export function Lnb() {
       <NavItem page="sources" active={activePage} icon="⌁" label="데이터 소스" onClick={nav} />
       <NavItem page="rules" active={activePage} icon="⚙" label="처리 규칙" onClick={nav} />
       <NavItem page="history" active={activePage} icon="↺" label="변경 이력" onClick={nav} />
+      {user && canEdit(user.role) ? <NavItem page="trash" active={activePage} icon="🗑" label="휴지통" onClick={nav} /> : null}
       <NavItem page="add" active={activePage} icon="+" label="직접 추가" onClick={nav} />
       <div className="sb-sec-label">Document Tree</div>
       <LnbDocumentTree />

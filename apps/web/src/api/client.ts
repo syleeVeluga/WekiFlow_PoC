@@ -4,10 +4,12 @@ import type {
   AppSettings,
   AuthResult,
   CreateUserBody,
+  DocumentConnections,
   DocumentDTO,
   IngestRequest,
   JobRef,
   LoginBody,
+  TrashEntry,
   TreeNode,
   User,
   UserRole,
@@ -97,6 +99,26 @@ export function fetchDocument(id: string): Promise<DocumentDTO> {
 
 export function fetchReviews(): Promise<DocumentDTO[]> {
   return request<DocumentDTO[]>('/reviews');
+}
+
+export function fetchConnections(id: string): Promise<DocumentConnections> {
+  return request<DocumentConnections>(`/documents/${id}/connections`);
+}
+
+export function trashDocument(id: string): Promise<{ ok: boolean }> {
+  return request(`/documents/${id}`, { method: 'DELETE' });
+}
+
+export function fetchTrash(): Promise<TrashEntry[]> {
+  return request<TrashEntry[]>('/trash');
+}
+
+export function restoreTrash(id: string): Promise<{ ok: boolean }> {
+  return request(`/trash/${id}/restore`, { method: 'POST' });
+}
+
+export function purgeTrash(id: string): Promise<{ ok: boolean }> {
+  return request(`/trash/${id}`, { method: 'DELETE' });
 }
 
 export function ingest(input: IngestRequest): Promise<{ doc: DocumentDTO; job: JobRef }> {

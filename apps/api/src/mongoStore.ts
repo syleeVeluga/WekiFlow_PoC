@@ -1,6 +1,6 @@
 import type { Queue } from 'bullmq';
 import type { Db } from 'mongodb';
-import { createDocumentsRepo, createJobsRepo, createSettingsRepo, createUsersRepo, toDocumentDTO } from '@wf/db';
+import { createDocumentsRepo, createJobsRepo, createSettingsRepo, createUsersRepo, getDocumentConnections, toDocumentDTO } from '@wf/db';
 import { defaultJobOptions } from '@wf/queue';
 import {
   AgentPreviewResultSchema,
@@ -9,7 +9,9 @@ import {
   type AgentPreviewRun,
   type AppSettings,
   type CreateUserBody,
+  type DocumentConnections,
   type DocumentDTO,
+  type TrashEntry,
   type ActivityEntry,
   type AiTagSuggestion,
   type DailyDigest,
@@ -103,6 +105,26 @@ export class MongoWekiFlowStore implements WekiFlowStore {
 
   async getDocument(id: string): Promise<DocumentDTO | undefined> {
     return this.docs.getById(id);
+  }
+
+  async documentConnections(id: string): Promise<DocumentConnections> {
+    return getDocumentConnections(this.db, id);
+  }
+
+  async trashDocument(id: string): Promise<DocumentDTO | undefined> {
+    return this.docs.trash(id);
+  }
+
+  async listTrash(): Promise<TrashEntry[]> {
+    return this.docs.listTrashed();
+  }
+
+  async restoreDocument(id: string): Promise<DocumentDTO | undefined> {
+    return this.docs.restore(id);
+  }
+
+  async purgeDocument(id: string): Promise<boolean> {
+    return this.docs.purge(id);
   }
 
   async createDocument(input: {
@@ -220,7 +242,7 @@ export class MongoWekiFlowStore implements WekiFlowStore {
 
   async listKnowledge(q: KnowledgeQuery): Promise<KnowledgeItem[]> {
     const query = KnowledgeQuerySchema.parse(q);
-    const rows = await this.dbCollection('documents').find({ 'wiki.id': { $exists: true } }).toArray();
+    const rows = await this.dbCollection('documents').find({ 'wiki.id': { $exists: true }, trashed: { $ne: true } }).toArray();
     const items = rows.map((row) => row.wiki as KnowledgeItem);
     const needle = normalizeEntityName(query.q);
     return items
@@ -236,7 +258,7 @@ export class MongoWekiFlowStore implements WekiFlowStore {
   }
 
   async getKnowledge(id: string): Promise<KnowledgeItem | null> {
-    const row = await this.dbCollection('documents').findOne({ 'wiki.id': id });
+    const row = await this.dbCollection('documents').findOne({ 'wiki.id': id, trashed: { $ne: true } });
     return row?.wiki ? (row.wiki as KnowledgeItem) : null;
   }
 
@@ -277,6 +299,17 @@ export class MongoWekiFlowStore implements WekiFlowStore {
     if (topic.source === 'system') return { ok: false, reassigned: 0, statusCode: 400, error: 'System topic cannot be deleted' };
     const result = await this.dbCollection('documents').updateMany({ 'wiki.category': topic.name }, { $set: { 'wiki.category': UNCLASSIFIED_TOPIC_NAME } });
     await this.dbCollection('topics').deleteOne({ id });
+    return { ok: true, reassigned: result.modifiedCount };
+  }
+
+  async declassifyCategory(name: string): Promise<{ ok: boolean; reassigned: number; statusCode?: number; error?: string }> {
+    if (name === UNCLASSIFIED_TOPIC_NAME) return { ok: false, reassigned: 0, statusCode: 400, error: '미분류는 삭제할 수 없습니다.' };
+    const result = await this.dbCollection('documents').updateMany(
+      { 'wiki.category': name },
+      { $set: { 'wiki.category': UNCLASSIFIED_TOPIC_NAME } },
+    );
+    // Drop any persisted topic record with this name (derived/system categories have none — harmless).
+    await this.dbCollection('topics').deleteOne({ name, isUnclassified: { $ne: true } });
     return { ok: true, reassigned: result.modifiedCount };
   }
 

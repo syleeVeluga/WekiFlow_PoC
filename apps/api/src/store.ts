@@ -6,7 +6,9 @@ import {
   type AgentPreviewRun,
   type AgentStepDTO,
   type AppSettings,
+  type DocumentConnections,
   type DocumentDTO,
+  type TrashEntry,
   type AiTagSuggestion,
   type DailyDigest,
   type KnowledgeItem,
@@ -63,6 +65,11 @@ export interface WekiFlowStore {
   seed?(): Promise<void> | void;
   tree(): Promise<TreeNode[]>;
   getDocument(id: string): Promise<DocumentDTO | undefined>;
+  documentConnections(id: string): Promise<DocumentConnections>;
+  trashDocument(id: string): Promise<DocumentDTO | undefined>;
+  listTrash(): Promise<TrashEntry[]>;
+  restoreDocument(id: string): Promise<DocumentDTO | undefined>;
+  purgeDocument(id: string): Promise<boolean>;
   createDocument(input: {
     title: string;
     contentMarkdown?: string;
@@ -85,6 +92,8 @@ export interface WekiFlowStore {
   listTopics(): Promise<Topic[]>;
   createTopic(name: string): Promise<Topic>;
   deleteTopic(id: string): Promise<{ ok: boolean; reassigned: number; statusCode?: number; error?: string }>;
+  /** Remove a category by name: reassign its pages to 미분류 and drop any matching topic record. */
+  declassifyCategory(name: string): Promise<{ ok: boolean; reassigned: number; statusCode?: number; error?: string }>;
   listAiTagSuggestions(): Promise<AiTagSuggestion[]>;
   resolveAiTagSuggestion(id: string, action: 'approve' | 'reject'): Promise<{ ok: boolean }>;
   listRichReviews(): Promise<ReviewItem[]>;
@@ -129,6 +138,7 @@ export class InMemoryWekiFlowStore implements WekiFlowStore {
   readonly users = new Map<string, User & { password: string }>();
   readonly sessions = new Map<string, string>(); // token -> userId
   readonly agentRuns = new Map<string, AgentPreviewRun>();
+  readonly trash = new Map<string, { item: KnowledgeItem; trashedAt: string }>();
   private settingsState: AppSettings = DEFAULT_APP_SETTINGS;
   // Topic/workspace assigned at ingest, consumed on approve to materialize a KnowledgeItem.
   readonly ingestMeta = new Map<string, { topic?: string; workspace?: string; sourceLabel?: string }>();
@@ -191,6 +201,45 @@ export class InMemoryWekiFlowStore implements WekiFlowStore {
 
   async getDocument(id: string): Promise<DocumentDTO | undefined> {
     return this.documents.get(id);
+  }
+
+  async documentConnections(): Promise<DocumentConnections> {
+    // In-memory store has no knowledge graph; the relations view is populated only under Mongo.
+    return { facts: [], relatedDocs: [] };
+  }
+
+  async trashDocument(id: string): Promise<DocumentDTO | undefined> {
+    const item = this.knowledge.get(id);
+    if (item) {
+      this.trash.set(id, { item, trashedAt: new Date().toISOString() });
+      this.knowledge.delete(id);
+    }
+    return this.documents.get(id);
+  }
+
+  async listTrash(): Promise<TrashEntry[]> {
+    return [...this.trash.entries()].map(([id, { item, trashedAt }]) => ({
+      id,
+      title: item.title,
+      category: item.category,
+      trashedAt,
+    }));
+  }
+
+  async restoreDocument(id: string): Promise<DocumentDTO | undefined> {
+    const entry = this.trash.get(id);
+    if (entry) {
+      this.knowledge.set(id, entry.item);
+      this.trash.delete(id);
+    }
+    return this.documents.get(id);
+  }
+
+  async purgeDocument(id: string): Promise<boolean> {
+    const had = this.trash.delete(id);
+    if (!had) return false;
+    this.documents.delete(id);
+    return true;
   }
 
   private create(input: {
@@ -492,6 +541,21 @@ export class InMemoryWekiFlowStore implements WekiFlowStore {
       }
     }
     this.topics.delete(id);
+    return { ok: true, reassigned };
+  }
+
+  async declassifyCategory(name: string): Promise<{ ok: boolean; reassigned: number; statusCode?: number; error?: string }> {
+    if (name === UNCLASSIFIED_TOPIC_NAME) return { ok: false, reassigned: 0, statusCode: 400, error: '미분류는 삭제할 수 없습니다.' };
+    let reassigned = 0;
+    for (const [itemId, item] of this.knowledge) {
+      if (item.category === name) {
+        this.knowledge.set(itemId, { ...item, category: UNCLASSIFIED_TOPIC_NAME });
+        reassigned += 1;
+      }
+    }
+    for (const [topicId, topic] of this.topics) {
+      if (topic.name === name && !topic.isUnclassified) this.topics.delete(topicId);
+    }
     return { ok: true, reassigned };
   }
 

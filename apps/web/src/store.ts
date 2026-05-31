@@ -1,6 +1,14 @@
 import { create } from 'zustand';
 
-export type ActivePage = 'home' | 'review' | 'kb' | 'doc' | 'sources' | 'rules' | 'history' | 'add' | 'users' | 'agent';
+export type ActivePage = 'home' | 'review' | 'kb' | 'doc' | 'sources' | 'rules' | 'history' | 'add' | 'users' | 'agent' | 'trash';
+
+export interface TreeContextMenu {
+  x: number;
+  y: number;
+  kind: 'page' | 'category';
+  id: string;
+  name: string;
+}
 
 export interface Workspace {
   id: string;
@@ -38,6 +46,7 @@ interface UiState {
   };
   docTab: 'edit' | 'source' | 'relations' | 'history';
   modal: { aiTags: boolean; catManager: boolean };
+  contextMenu: TreeContextMenu | null;
   toast: { msg: string; type: 'ok' | 'warn' | 'inf' } | null;
   go: (page: ActivePage) => void;
   createWorkspace: (name: string) => void;
@@ -54,6 +63,8 @@ interface UiState {
   markReviewDone: (id: string) => void;
   setDocTab: (tab: UiState['docTab']) => void;
   setModal: (patch: Partial<UiState['modal']>) => void;
+  openContextMenu: (menu: TreeContextMenu) => void;
+  closeContextMenu: () => void;
   showToast: (msg: string, type?: 'ok' | 'warn' | 'inf') => void;
   clearToast: () => void;
   select: (id: string) => void;
@@ -71,6 +82,7 @@ export const useUiStore = create<UiState>((set) => ({
   review: { tab: 'new', rvDone: {}, detailPanelItemId: null },
   docTab: 'edit',
   modal: { aiTags: false, catManager: false },
+  contextMenu: null,
   toast: null,
   go: (activePage) => set({ activePage }),
   createWorkspace: (name) =>
@@ -123,6 +135,8 @@ export const useUiStore = create<UiState>((set) => ({
   markReviewDone: (id) => set((state) => ({ review: { ...state.review, rvDone: { ...state.review.rvDone, [id]: true } } })),
   setDocTab: (docTab) => set({ docTab }),
   setModal: (patch) => set((state) => ({ modal: { ...state.modal, ...patch } })),
+  openContextMenu: (contextMenu) => set({ contextMenu }),
+  closeContextMenu: () => set({ contextMenu: null }),
   showToast: (msg, type = 'inf') => set({ toast: { msg, type } }),
   clearToast: () => set({ toast: null }),
   select: (id) => set({ selectedDocId: id, selectedCategory: null, activePage: 'doc' }),

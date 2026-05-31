@@ -3,7 +3,7 @@ import { catTint } from '../../lib/format.js';
 import { useUiStore } from '../../store.js';
 
 export function TreeCategory({ category }: { category: TreeCategoryType }) {
-  const { selectedDocId, treeOpen, treeSearch, openDoc, openCategory, toggleTree } = useUiStore();
+  const { selectedDocId, treeOpen, treeSearch, openDoc, openCategory, toggleTree, openContextMenu } = useUiStore();
   const needle = treeSearch.trim().toLowerCase();
   const categoryMatches = category.name.toLowerCase().includes(needle);
   const items = needle
@@ -22,6 +22,10 @@ export function TreeCategory({ category }: { category: TreeCategoryType }) {
           toggleTree(category.name);
           if (!open) openCategory(category.name);
         }}
+        onContextMenu={(event) => {
+          event.preventDefault();
+          openContextMenu({ x: event.clientX, y: event.clientY, kind: 'category', id: category.id, name: category.name });
+        }}
       >
         <span className={`tree-caret ${open ? 'open' : ''}`}>›</span>
         <span className="cat-dot" style={{ background: catTint(category.name) }} />
@@ -36,6 +40,10 @@ export function TreeCategory({ category }: { category: TreeCategoryType }) {
               className={`tree-doc-row ${selectedDocId === item.id ? 'on' : ''}`}
               key={item.id}
               onClick={() => openDoc(item.id, item.category)}
+              onContextMenu={(event) => {
+                event.preventDefault();
+                openContextMenu({ x: event.clientX, y: event.clientY, kind: 'page', id: item.id, name: item.title });
+              }}
             >
               <span>▫</span>
               <span>{item.title}</span>

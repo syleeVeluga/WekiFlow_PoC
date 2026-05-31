@@ -13,6 +13,8 @@ export const queryKeys = {
   tree: ['tree'] as const,
   reviews: ['reviews'] as const,
   document: (id: string) => ['document', id] as const,
+  connections: (id: string) => ['connections', id] as const,
+  trash: ['trash'] as const,
   agentPreviews: ['agent-previews'] as const,
   agentPreview: (id: string) => ['agent-preview', id] as const,
 };
@@ -52,6 +54,51 @@ export function useDocument(id: string | null): UseQueryResult<DocumentDTO> {
     queryKey: queryKeys.document(id ?? ''),
     queryFn: () => api.fetchDocument(id!),
     enabled: id != null,
+  });
+}
+
+export function useConnections(id: string | null) {
+  return useQuery({
+    queryKey: queryKeys.connections(id ?? ''),
+    queryFn: () => api.fetchConnections(id!),
+    enabled: id != null,
+  });
+}
+
+export function useTrash() {
+  return useQuery({ queryKey: queryKeys.trash, queryFn: api.fetchTrash });
+}
+
+export function useTrashDocument() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.trashDocument(id),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: queryKeys.tree });
+      void qc.invalidateQueries({ queryKey: queryKeys.reviews });
+      void qc.invalidateQueries({ queryKey: queryKeys.trash });
+      void qc.invalidateQueries({ queryKey: ['wiki'] });
+    },
+  });
+}
+
+export function useRestoreTrash() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.restoreTrash(id),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: queryKeys.tree });
+      void qc.invalidateQueries({ queryKey: queryKeys.trash });
+      void qc.invalidateQueries({ queryKey: ['wiki'] });
+    },
+  });
+}
+
+export function usePurgeTrash() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.purgeTrash(id),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: queryKeys.trash }),
   });
 }
 

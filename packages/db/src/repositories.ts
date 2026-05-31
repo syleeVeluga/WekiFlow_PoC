@@ -9,11 +9,14 @@ import {
   normalizeEntityName,
   type AgentStepDTO,
   type AppSettings,
+  type ConnectionFact,
+  type DocumentConnections,
   type DocumentDTO,
   type DocumentStatus,
   type EmbedFn,
   type UpdateAppSettings,
   type KnowledgeItem,
+  type RelatedDoc,
   type TreeNode,
   type Triplet,
   type User,
@@ -77,7 +80,7 @@ export function createDocumentsRepo(db: Db) {
 
     async tree(): Promise<TreeNode[]> {
       const docs = await collection
-        .find({ preview: { $ne: true } }, { projection: { title: 1, slug: 1, parentId: 1, isFolder: 1, status: 1 } })
+        .find({ preview: { $ne: true }, trashed: { $ne: true } }, { projection: { title: 1, slug: 1, parentId: 1, isFolder: 1, status: 1 } })
         .toArray();
       return docs.map((doc) => ({
         id: doc._id.toString(),
@@ -90,7 +93,7 @@ export function createDocumentsRepo(db: Db) {
     },
 
     async reviews(): Promise<DocumentDTO[]> {
-      const docs = await collection.find({ status: 'REVIEW', preview: { $ne: true } }).toArray();
+      const docs = await collection.find({ status: 'REVIEW', preview: { $ne: true }, trashed: { $ne: true } }).toArray();
       return docs.map(toDocumentDTO);
     },
 
@@ -272,6 +275,66 @@ export function createDocumentsRepo(db: Db) {
         { returnDocument: 'after' },
       );
       return updated ? toDocumentDTO(updated) : undefined;
+    },
+
+    /** Soft-delete: hide the document from the tree/KB and move it to the trash. */
+    async trash(id: string): Promise<DocumentDTO | undefined> {
+      const oid = toObjectId(id);
+      if (!oid) return undefined;
+      const updated = await collection.findOneAndUpdate(
+        { _id: oid },
+        { $set: { trashed: true, trashedAt: new Date(), updatedAt: new Date() } },
+        { returnDocument: 'after' },
+      );
+      return updated ? toDocumentDTO(updated) : undefined;
+    },
+
+    /** Restore a trashed document back into the tree/KB. */
+    async restore(id: string): Promise<DocumentDTO | undefined> {
+      const oid = toObjectId(id);
+      if (!oid) return undefined;
+      const updated = await collection.findOneAndUpdate(
+        { _id: oid },
+        { $set: { trashed: false, updatedAt: new Date() }, $unset: { trashedAt: '' } },
+        { returnDocument: 'after' },
+      );
+      return updated ? toDocumentDTO(updated) : undefined;
+    },
+
+    /** Trashed documents, newest first. */
+    async listTrashed(): Promise<Array<{ id: string; title: string; category?: string; trashedAt: string }>> {
+      const docs = await collection
+        .find({ trashed: true }, { projection: { title: 1, wiki: 1, trashedAt: 1 } })
+        .sort({ trashedAt: -1 })
+        .toArray();
+      return docs.map((doc) => {
+        const category = (doc.wiki as KnowledgeItem | undefined)?.category;
+        return {
+          id: doc._id.toString(),
+          title: String((doc.wiki as KnowledgeItem | undefined)?.title ?? doc.title ?? 'Untitled'),
+          ...(category ? { category } : {}),
+          trashedAt: toIso(doc.trashedAt),
+        };
+      });
+    },
+
+    /**
+     * Permanent delete (cascade): remove the document, its chunks, and drop this doc from every
+     * knowledge-graph edge's sourceDocIds — deleting edges that no longer back any source.
+     */
+    async purge(id: string): Promise<boolean> {
+      const oid = toObjectId(id);
+      if (!oid) return false;
+      const result = await collection.deleteOne({ _id: oid, trashed: true });
+      if (result.deletedCount === 0) return false;
+
+      const edges = db.collection('kg_edges');
+      await Promise.all([
+        chunks.deleteMany({ documentId: oid }),
+        edges.updateMany({ sourceDocIds: oid }, { $pull: { sourceDocIds: oid } } as Document),
+      ]);
+      await edges.deleteMany({ $or: [{ sourceDocIds: { $size: 0 } }, { sourceDocIds: { $exists: false } }] });
+      return true;
     },
   };
 }
@@ -870,6 +933,96 @@ export function createSandboxRunsRepo(db: Db) {
       await collection.insertOne({ ...run, createdAt: new Date() });
     },
   };
+}
+
+/**
+ * "연결 관계" data for a document: the facts (triplets) it contributed to the knowledge graph,
+ * plus other documents that mention the same entities — so the reader can hop to related sources.
+ * Drives the relations tab instead of a node-link graph view.
+ */
+export async function getDocumentConnections(db: Db, documentId: string): Promise<DocumentConnections> {
+  const oid = toObjectId(documentId);
+  if (!oid) return { facts: [], relatedDocs: [] };
+  const edgeCollection = db.collection('kg_edges');
+  const nodeCollection = db.collection('kg_nodes');
+  const docCollection = db.collection('documents');
+
+  const ownEdges = await edgeCollection.find({ sourceDocIds: oid }).toArray();
+  if (ownEdges.length === 0) return { facts: [], relatedDocs: [] };
+
+  // Resolve every node referenced by this doc's edges to a display name.
+  const nodeIds = new Set<string>();
+  for (const edge of ownEdges) {
+    nodeIds.add(objectIdKey(edge.subjectId));
+    nodeIds.add(objectIdKey(edge.objectId));
+  }
+  const nodeOids = [...nodeIds].filter((k) => ObjectId.isValid(k)).map((k) => new ObjectId(k));
+  const nodeRows = await nodeCollection.find({ _id: { $in: nodeOids } }).toArray();
+  const nodeName = new Map<string, string>();
+  for (const row of nodeRows) nodeName.set(objectIdKey(row._id), String(row.name ?? ''));
+
+  const facts: ConnectionFact[] = ownEdges
+    .map((edge) => ({
+      subject: nodeName.get(objectIdKey(edge.subjectId)) ?? '',
+      predicate: String(edge.predicate ?? ''),
+      object: nodeName.get(objectIdKey(edge.objectId)) ?? '',
+      strength: typeof edge.strength === 'number' ? edge.strength : 0,
+    }))
+    .filter((fact) => fact.subject && fact.object)
+    .sort((a, b) => b.strength - a.strength);
+
+  // Edges from OTHER documents that touch the same entities.
+  const otherEdges = await edgeCollection
+    .find({ $or: [{ subjectId: { $in: nodeOids } }, { objectId: { $in: nodeOids } }] })
+    .toArray();
+
+  const ownKey = oid.toHexString();
+  const byDoc = new Map<string, { entities: Set<string>; via: Map<string, string> }>();
+  for (const edge of otherEdges) {
+    const sharedNodeIds = [edge.subjectId, edge.objectId].map(objectIdKey).filter((k) => nodeIds.has(k));
+    if (sharedNodeIds.length === 0) continue;
+    const sourceDocIds: string[] = Array.isArray(edge.sourceDocIds) ? edge.sourceDocIds.map(objectIdKey) : [];
+    for (const docKey of sourceDocIds) {
+      if (docKey === ownKey) continue;
+      let entry = byDoc.get(docKey);
+      if (!entry) {
+        entry = { entities: new Set(), via: new Map() };
+        byDoc.set(docKey, entry);
+      }
+      for (const nid of sharedNodeIds) {
+        const name = nodeName.get(nid);
+        if (name) {
+          entry.entities.add(name);
+          if (!entry.via.has(name)) entry.via.set(name, String(edge.predicate ?? ''));
+        }
+      }
+    }
+  }
+
+  const relatedDocs: RelatedDoc[] = [];
+  if (byDoc.size > 0) {
+    const docOids = [...byDoc.keys()].filter((k) => ObjectId.isValid(k)).map((k) => new ObjectId(k));
+    const docRows = await docCollection
+      .find({ _id: { $in: docOids }, trashed: { $ne: true } }, { projection: { title: 1, wiki: 1 } })
+      .toArray();
+    const titleById = new Map<string, string>();
+    for (const row of docRows) {
+      titleById.set(row._id.toString(), String((row.wiki as KnowledgeItem | undefined)?.title ?? row.title ?? 'Untitled'));
+    }
+    for (const [docKey, entry] of byDoc) {
+      const title = titleById.get(docKey);
+      if (!title) continue; // dropped: trashed or missing document
+      relatedDocs.push({
+        documentId: docKey,
+        title,
+        sharedEntities: [...entry.entities],
+        via: [...entry.via.entries()].map(([entity, predicate]) => ({ entity, predicate })),
+      });
+    }
+    relatedDocs.sort((a, b) => b.sharedEntities.length - a.sharedEntities.length);
+  }
+
+  return { facts, relatedDocs };
 }
 
 export async function upsertTriplets(db: Db, triplets: Triplet[], sourceDocId: string): Promise<void> {

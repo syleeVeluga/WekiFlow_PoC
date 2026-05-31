@@ -1,6 +1,7 @@
 import { useTreeCategories } from '../../data/hooks.js';
 import { useUiStore } from '../../store.js';
 import { TreeCategory } from './TreeCategory.js';
+import { TreeContextMenu } from './TreeContextMenu.js';
 
 // 미분류를 포함한 분류 목록은 서버(treeCategories → groupKnowledgeByCategory)가 항상 보장한다.
 export function LnbDocumentTree() {
@@ -17,6 +18,7 @@ export function LnbDocumentTree() {
           categories.map((category) => <TreeCategory key={category.id} category={category} />)
         )}
       </div>
+      <TreeContextMenu />
     </>
   );
 }

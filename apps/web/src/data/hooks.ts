@@ -80,7 +80,8 @@ export function useTopicMutations() {
   const qc = useQueryClient();
   const create = useMutation({ mutationFn: dataClient.createTopic, onSuccess: () => invalidateWiki(qc) });
   const remove = useMutation({ mutationFn: dataClient.deleteTopic, onSuccess: () => invalidateWiki(qc) });
-  return { create, remove };
+  const declassify = useMutation({ mutationFn: dataClient.declassifyCategory, onSuccess: () => invalidateWiki(qc) });
+  return { create, remove, declassify };
 }
 
 export function useAiTagMutations() {
