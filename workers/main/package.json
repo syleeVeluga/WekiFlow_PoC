@@ -23,6 +23,7 @@
     "@wf/storage": "workspace:*",
     "ai": "^6.0.193",
     "bullmq": "^5.65.0",
+    "dotenv": "17.4.2",
     "mongodb": "^6.18.0"
   }
 }

@@ -1,7 +1,10 @@
 import { generateObject, type LanguageModel } from 'ai';
+import { createAnthropic } from '@ai-sdk/anthropic';
+import { createGoogleGenerativeAI } from '@ai-sdk/google';
+import { createOpenAI } from '@ai-sdk/openai';
 import type { Db } from 'mongodb';
 import { createDocumentsRepo, upsertTriplets } from '@wf/db';
-import { TripletArraySchema, chunkMarkdown, type DocChunk, type Triplet } from '@wf/shared';
+import { TripletArraySchema, chunkMarkdown, type DocChunk, type Env, type Triplet } from '@wf/shared';
 
 export const LIGHTRAG_EXTRACT_PROMPT = `You are a knowledge graph extractor.
 Analyze the document chunk and return explicit (Subject)-[Predicate]->(Object) triplets only.
@@ -13,11 +16,38 @@ Rules:
 4. Extract only facts directly stated in the text. Do not infer or invent facts.
 5. Prefer concise, stable entity names that can be matched across chunks.`;
 
-export type TripletExtractor = (chunk: DocChunk) => Promise<{ triplets: Triplet[] }>;
+export interface TripletModel {
+  label: string;
+  model: LanguageModel;
+}
+
+export type TripletExtractor = (chunk: DocChunk) => Promise<{ triplets: Triplet[]; modelLabel?: string }>;
+
+export function createTripletExtractionModels(env: Env): TripletModel[] {
+  const models: TripletModel[] = [];
+
+  if (env.GOOGLE_API_KEY) {
+    const google = createGoogleGenerativeAI({ apiKey: env.GOOGLE_API_KEY });
+    models.push({ label: `google:${env.TRIPLET_GOOGLE_MODEL}`, model: google(env.TRIPLET_GOOGLE_MODEL) });
+  }
+
+  if (env.ANTHROPIC_API_KEY) {
+    const anthropic = createAnthropic({ apiKey: env.ANTHROPIC_API_KEY });
+    models.push({ label: `anthropic:${env.TRIPLET_ANTHROPIC_MODEL}`, model: anthropic(env.TRIPLET_ANTHROPIC_MODEL) });
+  }
+
+  if (env.OPENAI_API_KEY) {
+    const openai = createOpenAI({ apiKey: env.OPENAI_API_KEY });
+    models.push({ label: `openai:${env.TRIPLET_OPENAI_FALLBACK_MODEL}`, model: openai(env.TRIPLET_OPENAI_FALLBACK_MODEL) });
+  }
+
+  return models;
+}
 
 export interface GraphPipelineContext {
   db: Db;
   model?: LanguageModel;
+  models?: TripletModel[];
   extractTriplets?: TripletExtractor;
   persist?: boolean;
   maxChunks?: number;
@@ -55,15 +85,26 @@ function dedupeTriplets(triplets: Triplet[]): Triplet[] {
   return [...byKey.values()];
 }
 
-function createDefaultExtractor(model: LanguageModel): TripletExtractor {
+function createDefaultExtractor(models: TripletModel[]): TripletExtractor {
   return async (chunk) => {
-    const { object } = await generateObject({
-      model,
-      schema: TripletArraySchema,
-      system: LIGHTRAG_EXTRACT_PROMPT,
-      prompt: chunk.text,
-    });
-    return object;
+    const errors: string[] = [];
+
+    for (const candidate of models) {
+      try {
+        const { object } = await generateObject({
+          model: candidate.model,
+          schema: TripletArraySchema,
+          system: LIGHTRAG_EXTRACT_PROMPT,
+          prompt: chunk.text,
+        });
+        return { ...object, modelLabel: candidate.label };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        errors.push(`${candidate.label}: ${message}`);
+      }
+    }
+
+    throw new Error(`Triplet extraction failed for all configured models. ${errors.join(' | ')}`);
   };
 }
 
@@ -75,7 +116,8 @@ export async function runGraphPipeline(
   const doc = await documents.getById(documentId);
   if (!doc) throw new Error(`Document not found: ${documentId}`);
 
-  const extractor = ctx.extractTriplets ?? (ctx.model ? createDefaultExtractor(ctx.model) : undefined);
+  const models = ctx.models ?? (ctx.model ? [{ label: 'default', model: ctx.model }] : []);
+  const extractor = ctx.extractTriplets ?? (models.length > 0 ? createDefaultExtractor(models) : undefined);
   if (!extractor) throw new Error('Graph pipeline requires a model or extractTriplets override');
 
   const persist = ctx.persist ?? true;
@@ -85,12 +127,13 @@ export async function runGraphPipeline(
 
   for (const chunk of chunks) {
     const started = Date.now();
-    const parsed = TripletArraySchema.parse(await extractor(chunk));
+    const extraction = await extractor(chunk);
+    const parsed = TripletArraySchema.parse(extraction);
     extracted.push(...parsed.triplets);
     await ctx.recordStep?.({
       tool: 'tool_extract_triplets',
       args: { documentId, chunkIndex: chunk.chunkIndex, headingPath: chunk.headingPath },
-      result: { tripletCount: parsed.triplets.length },
+      result: { tripletCount: parsed.triplets.length, model: extraction.modelLabel },
       tookMs: Date.now() - started,
     });
   }

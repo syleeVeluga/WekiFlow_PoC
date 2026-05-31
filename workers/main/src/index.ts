@@ -4,16 +4,18 @@ import path from 'node:path';
 import type { Job } from 'bullmq';
 import { embedMany } from 'ai';
 import { openai } from '@ai-sdk/openai';
+import { config as loadDotenv } from 'dotenv';
 import { createDocumentsRepo, createJobsRepo, createSandboxRunsRepo, getDb } from '@wf/db';
 import { MAIN_QUEUE_NAME, createWorker } from '@wf/queue';
 import { DockerSandboxRunner } from '@wf/sandbox';
 import { loadEnv, type DocumentDTO } from '@wf/shared';
 import type { EmbedFn } from '@wf/agent-tools';
-import { runGraphPipeline } from '@wf/graph-worker/pipeline';
+import { createTripletExtractionModels, runGraphPipeline } from '@wf/graph-worker/pipeline';
 import { runMainPipeline } from './pipeline.js';
 
 export { runMainPipeline, indexDocumentChunks, extractMergeResult } from './pipeline.js';
 
+loadDotenv({ path: path.resolve(process.cwd(), '../../.env'), quiet: true });
 const env = loadEnv();
 const SANDBOX_IMAGE = 'wekiflow/sandbox:latest';
 const PREVIEW_MAX_TRIPLET_CHUNKS = 24;
@@ -24,6 +26,7 @@ const jobs = createJobsRepo(db);
 const sandboxRuns = createSandboxRunsRepo(db);
 
 const model = openai(env.AGENT_MODEL);
+const tripletModels = createTripletExtractionModels(env);
 const embeddingModel = openai.textEmbeddingModel(env.EMBEDDING_MODEL);
 const embed: EmbedFn = async (texts) => (await embedMany({ model: embeddingModel, values: texts })).embeddings;
 
@@ -107,7 +110,7 @@ async function runPreviewJob(job: MainJob, doc: DocumentDTO, jobId: string, docu
     await job.updateProgress({ type: 'phase', phase: 'graph', progress: 70 });
     const graphResult = await runGraphPipeline(documentId, {
       db,
-      model,
+      models: tripletModels.length > 0 ? tripletModels : [{ label: `openai:${env.AGENT_MODEL}`, model }],
       persist: false,
       maxChunks: PREVIEW_MAX_TRIPLET_CHUNKS,
       recordStep: (step) => jobs.appendAgentStep(jobId, { ...step, phase: 'graph' }),

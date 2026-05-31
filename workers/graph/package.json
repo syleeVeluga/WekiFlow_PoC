@@ -23,10 +23,13 @@
     "dev": "tsx watch src/index.ts"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "3.0.81",
+    "@ai-sdk/google": "3.0.80",
     "@ai-sdk/openai": "^3.0.67",
     "@wf/db": "workspace:*",
     "@wf/queue": "workspace:*",
     "@wf/shared": "workspace:*",
-    "ai": "^6.0.193"
+    "ai": "^6.0.193",
+    "dotenv": "17.4.2"
   }
 }
