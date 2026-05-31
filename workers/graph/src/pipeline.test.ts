@@ -123,12 +123,13 @@ describe('runGraphPipeline', () => {
       },
     });
 
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       documentId: documentId.toHexString(),
       status: 'GRAPH_INDEXED',
       chunkCount: 2,
       tripletCount: 1,
     });
+    expect(result.triplets).toHaveLength(1);
     expect(db.rows('documents')[0]!.status).toBe('GRAPH_INDEXED');
     expect(db.rows('kg_nodes')).toHaveLength(2);
     expect(db.rows('kg_nodes').map((node) => node.normalizedName).sort()).toEqual([
@@ -143,5 +144,60 @@ describe('runGraphPipeline', () => {
       'tool_extract_triplets',
       'graph_upsert_triplets',
     ]);
+  });
+
+  it('returns preview triplets without writing graph rows or changing document status when persist is false', async () => {
+    const documentId = new ObjectId();
+    const db = createMemoryDb({
+      documents: [
+        {
+          _id: documentId,
+          slug: 'policy',
+          title: 'Policy',
+          parentId: null,
+          isFolder: false,
+          status: 'PREVIEW',
+          contentMarkdown: '# A\nNew hires receive 15 annual leave days.',
+          draftMarkdown: null,
+          version: 1,
+          sourceRefs: [],
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      ],
+    });
+    const steps: Array<{ tool: string; args: unknown; result?: unknown }> = [];
+
+    const result = await runGraphPipeline(documentId.toHexString(), {
+      db: db as never,
+      persist: false,
+      extractTriplets: async () => ({
+        triplets: [
+          {
+            subject: 'New Hire',
+            predicate: 'receives',
+            object: 'Annual Leave 15 Days',
+            subjectType: 'PERSON',
+            objectType: 'REGULATION',
+            strength: 0.9,
+          },
+        ],
+      }),
+      recordStep: (step) => {
+        steps.push(step);
+      },
+    });
+
+    expect(result).toMatchObject({
+      documentId: documentId.toHexString(),
+      status: 'PREVIEW',
+      chunkCount: 1,
+      tripletCount: 1,
+    });
+    expect(result.triplets).toHaveLength(1);
+    expect(db.rows('documents')[0]!.status).toBe('PREVIEW');
+    expect(db.rows('kg_nodes')).toHaveLength(0);
+    expect(db.rows('kg_edges')).toHaveLength(0);
+    expect(steps.map((step) => step.tool)).toEqual(['tool_extract_triplets', 'graph_preview_triplets']);
   });
 });

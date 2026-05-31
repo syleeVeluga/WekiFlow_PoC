@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-export type ActivePage = 'home' | 'review' | 'kb' | 'doc' | 'sources' | 'rules' | 'history' | 'add' | 'users';
+export type ActivePage = 'home' | 'review' | 'kb' | 'doc' | 'sources' | 'rules' | 'history' | 'add' | 'users' | 'agent';
 
 interface UiState {
   activePage: ActivePage;

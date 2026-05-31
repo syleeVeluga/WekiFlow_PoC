@@ -16,6 +16,7 @@
     "@ai-sdk/openai": "^3.0.67",
     "@wf/agent-tools": "workspace:*",
     "@wf/db": "workspace:*",
+    "@wf/graph-worker": "workspace:*",
     "@wf/queue": "workspace:*",
     "@wf/sandbox": "workspace:*",
     "@wf/shared": "workspace:*",

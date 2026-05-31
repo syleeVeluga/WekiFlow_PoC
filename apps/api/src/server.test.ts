@@ -74,6 +74,86 @@ describe('@wf/api routes', () => {
     await app.close();
   });
 
+  it('runs owner-only agent preview and streams persisted steps', async () => {
+    const app = buildServer();
+    const ownerToken = await login(app, 'admin01@veluga.io', 'admin01@veluga.io');
+    const reviewerToken = await login(app, 'park.minji@veluga.io', 'park.minji@veluga.io');
+
+    const denied = await app.inject({
+      method: 'POST',
+      url: '/api/agent-preview',
+      headers: { authorization: `Bearer ${reviewerToken}` },
+      payload: { message: '# Test' },
+    });
+    expect(denied.statusCode).toBe(403);
+
+    const started = await app.inject({
+      method: 'POST',
+      url: '/api/agent-preview',
+      headers: { authorization: `Bearer ${ownerToken}` },
+      payload: { title: 'Preview test', message: '# Test' },
+    });
+    expect(started.statusCode).toBe(200);
+    expect(started.json()).toMatchObject({ jobId: 'preview-1', documentId: 'preview-doc-1' });
+
+    const list = await app.inject({
+      method: 'GET',
+      url: '/api/agent-preview',
+      headers: { authorization: `Bearer ${ownerToken}` },
+    });
+    expect(list.statusCode).toBe(200);
+    expect(list.json()).toHaveLength(1);
+
+    // The result carries the original (merged-against) text so the client diff base is correct on
+    // replay/reload, not just for the session that started the run.
+    const detail = await app.inject({
+      method: 'GET',
+      url: `/api/agent-preview/${started.json().jobId}`,
+      headers: { authorization: `Bearer ${ownerToken}` },
+    });
+    expect(detail.statusCode).toBe(200);
+    expect(detail.json().result.originalMarkdown).toBe('# Test');
+
+    const badStream = await app.inject({
+      method: 'GET',
+      url: `/api/agent-preview/${started.json().jobId}/stream?token=bad-token`,
+    });
+    expect(badStream.statusCode).toBe(403);
+
+    const stream = await app.inject({
+      method: 'GET',
+      url: `/api/agent-preview/${started.json().jobId}/stream?token=${ownerToken}`,
+    });
+    expect(stream.statusCode).toBe(200);
+    expect(stream.payload).toContain('event: step');
+    expect(stream.payload).toContain('event: completed');
+
+    await app.close();
+  });
+
+  it('rejects malformed agent preview requests with 400', async () => {
+    const app = buildServer();
+    const ownerToken = await login(app, 'admin01@veluga.io', 'admin01@veluga.io');
+
+    const emptyMessage = await app.inject({
+      method: 'POST',
+      url: '/api/agent-preview',
+      headers: { authorization: `Bearer ${ownerToken}` },
+      payload: { message: '' },
+    });
+    expect(emptyMessage.statusCode).toBe(400);
+
+    const missingMessage = await app.inject({
+      method: 'POST',
+      url: '/api/agent-preview',
+      headers: { authorization: `Bearer ${ownerToken}` },
+      payload: { title: 'No body' },
+    });
+    expect(missingMessage.statusCode).toBe(400);
+
+    await app.close();
+  });
+
   it('serves wiki knowledge, topics, reviews, and multi-source workflow routes', async () => {
     const app = buildServer();
 

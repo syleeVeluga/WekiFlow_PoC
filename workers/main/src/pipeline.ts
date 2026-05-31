@@ -21,6 +21,7 @@ export interface MainPipelineContext {
   embed: EmbedFn;
   model: LanguageModel;
   embeddingModel: string;
+  preview?: boolean;
   /** Hard step cap to prevent runaway loops (default 12). */
   stepLimit?: number;
   /** Progress callback fired after each agent step (wired to SSE). */
@@ -31,7 +32,7 @@ export interface MainPipelineContext {
 
 export interface MainPipelineResult {
   documentId: string;
-  status: 'REVIEW';
+  status: 'REVIEW' | 'PREVIEW';
   draftMarkdown: string;
   changeSummary: string;
   /** False when the agent never produced a tool_merge draft (original kept as a fallback). */
@@ -99,7 +100,13 @@ export async function runMainPipeline(
   const doc = await documents.getById(documentId);
   if (!doc) throw new Error(`Document not found: ${documentId}`);
 
-  await indexDocumentChunks(ctx.db, ctx.embed, documentId, doc.contentMarkdown, ctx.embeddingModel);
+  // Previews never publish their own chunks into the shared vector store: doing so would (a) leak
+  // unsaved preview content into concurrent real ingests' tool_search_vector results and (b) waste an
+  // embedding call on chunks nothing searches. The preview agent still searches existing published
+  // chunks, and the document body is in the prompt + grep-able via /docs.
+  if (!ctx.preview) {
+    await indexDocumentChunks(ctx.db, ctx.embed, documentId, doc.contentMarkdown, ctx.embeddingModel);
+  }
 
   const tools = createMainTools({
     db: ctx.db,
@@ -130,10 +137,14 @@ export async function runMainPipeline(
     changeSummary: `⚠️ 자동 병합 미완료: ${result.text.trim() || '병합 도구가 호출되지 않아 원본을 유지했습니다.'}`,
   };
 
-  await documents.setDraft(documentId, merged.mergedMarkdown); // status -> REVIEW
+  if (ctx.preview) {
+    await documents.setPreviewDraft(documentId, merged.mergedMarkdown);
+  } else {
+    await documents.setDraft(documentId, merged.mergedMarkdown); // status -> REVIEW
+  }
   return {
     documentId,
-    status: 'REVIEW',
+    status: ctx.preview ? 'PREVIEW' : 'REVIEW',
     draftMarkdown: merged.mergedMarkdown,
     changeSummary: merged.changeSummary,
     merged: mergeResult !== undefined,

@@ -1,9 +1,12 @@
 import type { Queue } from 'bullmq';
 import type { Db } from 'mongodb';
-import { createDocumentsRepo, createUsersRepo, toDocumentDTO } from '@wf/db';
+import { createDocumentsRepo, createJobsRepo, createUsersRepo, toDocumentDTO } from '@wf/db';
 import { defaultJobOptions } from '@wf/queue';
 import {
+  AgentPreviewResultSchema,
   KnowledgeQuerySchema,
+  type AgentPreviewResult,
+  type AgentPreviewRun,
   type CreateUserBody,
   type DocumentDTO,
   type ActivityEntry,
@@ -30,8 +33,22 @@ import {
 } from '@wf/shared';
 import type { ApproveResult, LoginResult, OkResult, UserResult, WekiFlowStore } from './store.js';
 
+function normalizePreviewState(state: string | undefined): AgentPreviewRun['status'] {
+  if (state === 'completed') return 'completed';
+  if (state === 'failed') return 'failed';
+  if (state === 'active') return 'active';
+  if (state === 'queued' || state === 'waiting' || state === 'delayed' || state === 'prioritized') return 'queued';
+  return 'unknown';
+}
+
+function parsePreviewResult(value: unknown): AgentPreviewResult | undefined {
+  const parsed = AgentPreviewResultSchema.safeParse(value);
+  return parsed.success ? parsed.data : undefined;
+}
+
 export class MongoWekiFlowStore implements WekiFlowStore {
   private readonly docs: ReturnType<typeof createDocumentsRepo>;
+  private readonly jobs: ReturnType<typeof createJobsRepo>;
   private readonly usersRepo: ReturnType<typeof createUsersRepo>;
 
   constructor(
@@ -40,6 +57,7 @@ export class MongoWekiFlowStore implements WekiFlowStore {
     private readonly graphQueue: Queue,
   ) {
     this.docs = createDocumentsRepo(db);
+    this.jobs = createJobsRepo(db);
     this.usersRepo = createUsersRepo(db);
   }
 
@@ -49,8 +67,13 @@ export class MongoWekiFlowStore implements WekiFlowStore {
     await this.usersRepo.ensureOwner(env.ADMIN_EMAIL, env.ADMIN_PASSWORD);
   }
 
-  private async enqueue(queue: Queue, type: JobType, documentId: string): Promise<JobRef> {
-    const job = await queue.add(type, { documentId }, defaultJobOptions());
+  private async enqueue(
+    queue: Queue,
+    type: JobType,
+    documentId: string,
+    overrides?: Parameters<Queue['add']>[2],
+  ): Promise<JobRef> {
+    const job = await queue.add(type, { documentId }, { ...defaultJobOptions(), ...overrides });
     return {
       id: String(job.id),
       type,
@@ -83,6 +106,72 @@ export class MongoWekiFlowStore implements WekiFlowStore {
     const doc = await this.docs.createDraft(input);
     const job = await this.enqueue(this.mainQueue, 'INGEST', doc.id);
     return { doc, job };
+  }
+
+  async agentPreview(input: { title: string; contentMarkdown: string }): Promise<{ jobId: string; documentId: string }> {
+    const doc = await this.docs.createPreviewDraft(input);
+    // Previews are interactive and ephemeral: the worker deletes the draft when the job settles, so a
+    // retry would only re-run against a deleted document. Run a single attempt and let the user re-run.
+    const job = await this.enqueue(this.mainQueue, 'PREVIEW', doc.id, { attempts: 1 });
+    await this.jobs.recordLifecycle(
+      job.id,
+      {
+        queue: 'main',
+        type: 'PREVIEW',
+        documentId: doc.id,
+        title: doc.title,
+        status: 'queued',
+      },
+      { insertOnly: true },
+    );
+    return { jobId: job.id, documentId: doc.id };
+  }
+
+  async getAgentPreview(jobId: string): Promise<AgentPreviewRun | undefined> {
+    const [record, steps, job] = await Promise.all([
+      this.jobs.getJobRecord(jobId),
+      this.jobs.getAgentSteps(jobId),
+      this.mainQueue.getJob(jobId),
+    ]);
+    const state = job ? await job.getState() : record?.status;
+    // Prefer the live BullMQ return value while the job survives; fall back to the result persisted on
+    // the jobs record so completed runs still resolve after the job is evicted (removeOnComplete).
+    const result = parsePreviewResult(job?.returnvalue) ?? parsePreviewResult(record?.result);
+    const status = normalizePreviewState(state);
+    const documentId = record?.documentId || result?.documentId || '';
+    if (!record && !job && steps.length === 0) return undefined;
+    return {
+      jobId,
+      documentId,
+      ...(record?.title ? { title: record.title } : {}),
+      status,
+      steps,
+      ...(result ? { result } : {}),
+      error: record?.error ?? job?.failedReason ?? null,
+      ...(record?.createdAt ? { createdAt: record.createdAt } : {}),
+      ...(record?.updatedAt ? { updatedAt: record.updatedAt } : {}),
+    };
+  }
+
+  async listAgentPreviews(): Promise<AgentPreviewRun[]> {
+    // Build the list purely from persisted records + a single batched steps query — no per-row BullMQ
+    // round trips. Status/result are read from the jobs record the worker keeps up to date.
+    const records = await this.jobs.listAgentPreviewJobs(30);
+    const stepsByJob = await this.jobs.getAgentStepsBatch(records.map((record) => record.jobId));
+    return records.map((record) => {
+      const result = parsePreviewResult(record.result);
+      return {
+        jobId: record.jobId,
+        documentId: record.documentId || result?.documentId || '',
+        ...(record.title ? { title: record.title } : {}),
+        status: normalizePreviewState(record.status),
+        steps: stepsByJob.get(record.jobId) ?? [],
+        ...(result ? { result } : {}),
+        error: record.error ?? null,
+        ...(record.createdAt ? { createdAt: record.createdAt } : {}),
+        ...(record.updatedAt ? { updatedAt: record.updatedAt } : {}),
+      };
+    });
   }
 
   async reviews(): Promise<DocumentDTO[]> {

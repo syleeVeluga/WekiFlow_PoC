@@ -1,4 +1,15 @@
-import type { AuthResult, CreateUserBody, DocumentDTO, JobRef, LoginBody, TreeNode, User, UserRole } from '@wf/shared';
+import type {
+  AgentPreviewRequest,
+  AgentPreviewRun,
+  AuthResult,
+  CreateUserBody,
+  DocumentDTO,
+  JobRef,
+  LoginBody,
+  TreeNode,
+  User,
+  UserRole,
+} from '@wf/shared';
 
 const BASE = '/api';
 
@@ -7,6 +18,10 @@ let authToken: string | null = null;
 /** Set (or clear) the bearer token attached to every subsequent request. */
 export function setAuthToken(token: string | null): void {
   authToken = token;
+}
+
+export function getAuthToken(): string | null {
+  return authToken;
 }
 
 export class ApiError extends Error {
@@ -87,4 +102,35 @@ export function approve(id: string): Promise<{ ok: true; doc: DocumentDTO; job: 
 
 export function reject(id: string): Promise<DocumentDTO> {
   return request(`/documents/${id}/reject`, { method: 'POST' });
+}
+
+export function agentPreviewMessage(body: AgentPreviewRequest): Promise<{ jobId: string; documentId: string }> {
+  return request('/agent-preview', { method: 'POST', body: JSON.stringify(body) });
+}
+
+export async function agentPreviewUpload(file: File, title?: string): Promise<{ jobId: string; documentId: string }> {
+  const form = new FormData();
+  form.append('file', file);
+  if (title?.trim()) form.append('title', title.trim());
+  const headers: Record<string, string> = {};
+  if (authToken) headers.authorization = `Bearer ${authToken}`;
+  const res = await fetch(`${BASE}/agent-preview`, { method: 'POST', headers, body: form });
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new ApiError(res.status, body.error ?? `Request failed: ${res.status}`);
+  }
+  return res.json() as Promise<{ jobId: string; documentId: string }>;
+}
+
+export function fetchAgentPreview(jobId: string): Promise<AgentPreviewRun> {
+  return request(`/agent-preview/${jobId}`);
+}
+
+export function listAgentPreviews(): Promise<AgentPreviewRun[]> {
+  return request('/agent-preview');
+}
+
+export function agentPreviewStreamUrl(jobId: string): string {
+  const token = encodeURIComponent(authToken ?? '');
+  return `${BASE}/agent-preview/${jobId}/stream?token=${token}`;
 }

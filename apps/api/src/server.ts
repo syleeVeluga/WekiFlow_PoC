@@ -1,7 +1,12 @@
 import cors from '@fastify/cors';
+import multipart from '@fastify/multipart';
 import type { Queue, QueueEvents } from 'bullmq';
 import Fastify, { type FastifyRequest } from 'fastify';
+import path from 'node:path';
+import { extractText, getDocumentProxy } from 'unpdf';
+import { ZodError } from 'zod';
 import {
+  AgentPreviewRequestSchema,
   CreateUserBodySchema,
   KnowledgeQuerySchema,
   LoginBodySchema,
@@ -13,6 +18,10 @@ import {
   canReview,
 } from '@wf/shared';
 import { InMemoryWekiFlowStore, type WekiFlowStore } from './store.js';
+
+const PREVIEW_MAX_UPLOAD_BYTES = 12 * 1024 * 1024;
+const PREVIEW_MAX_CHARS = 120_000;
+const PREVIEW_MAX_PDF_PAGES = 20;
 
 export interface BuildServerOptions {
   store?: WekiFlowStore;
@@ -28,6 +37,7 @@ export function buildServer({
   store.seed?.();
   const app = Fastify({ logger: false });
   void app.register(cors);
+  void app.register(multipart, { limits: { fileSize: PREVIEW_MAX_UPLOAD_BYTES, files: 1 } });
 
   // Resolve the logged-in user from the `Authorization: Bearer <token>` header.
   async function currentUser(request: FastifyRequest): Promise<User | undefined> {
@@ -36,6 +46,64 @@ export function buildServer({
     const token = header.slice('Bearer '.length).trim();
     if (!token) return undefined;
     return store.me(token);
+  }
+
+  async function ownerFromQueryToken(request: FastifyRequest): Promise<User | undefined> {
+    const { token } = request.query as { token?: string };
+    if (!token) return undefined;
+    return store.me(token);
+  }
+
+  function capPreviewText(text: string): string {
+    return text.slice(0, PREVIEW_MAX_CHARS);
+  }
+
+  async function extractPreviewPdf(buffer: Buffer): Promise<string> {
+    const pdf = await getDocumentProxy(new Uint8Array(buffer));
+    try {
+      const { text } = await extractText(pdf, { mergePages: false });
+      return capPreviewText(text.slice(0, PREVIEW_MAX_PDF_PAGES).join('\n\n'));
+    } finally {
+      await pdf.destroy();
+    }
+  }
+
+  async function extractPreviewFile(filename: string, buffer: Buffer): Promise<string> {
+    const ext = path.extname(filename).toLowerCase();
+    if (ext === '.pdf') return extractPreviewPdf(buffer);
+    if (ext === '.md' || ext === '.txt') return capPreviewText(buffer.toString('utf8'));
+    throw new Error('Unsupported preview file type');
+  }
+
+  async function readAgentPreviewInput(request: FastifyRequest): Promise<{ title: string; contentMarkdown: string }> {
+    if (request.isMultipart()) {
+      let title = '';
+      let fileName = '';
+      let contentMarkdown = '';
+      for await (const part of request.parts()) {
+        if (part.type === 'file') {
+          fileName = part.filename;
+          contentMarkdown = await extractPreviewFile(part.filename, await part.toBuffer());
+        } else if (part.fieldname === 'title' && typeof part.value === 'string') {
+          title = part.value.trim();
+        }
+      }
+      return {
+        title: title || path.parse(fileName).name || '에이전트 미리보기',
+        contentMarkdown,
+      };
+    }
+
+    const body = AgentPreviewRequestSchema.parse(request.body);
+    return {
+      title: body.title?.trim() || '에이전트 미리보기',
+      contentMarkdown: capPreviewText(body.message),
+    };
+  }
+
+  function writeSse(res: import('node:http').ServerResponse, event: string, data: unknown) {
+    if (res.writableEnded) return;
+    res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
   }
 
   // --- Auth ---
@@ -231,6 +299,114 @@ export function buildServer({
     const doc = await store.reject(id);
     if (!doc) return reply.code(404).send({ error: 'Not found' });
     return doc;
+  });
+
+  app.post('/api/agent-preview', async (request, reply) => {
+    const me = await currentUser(request);
+    if (!me || !canManageOwners(me.role)) return reply.code(403).send({ error: 'Forbidden' });
+    let input: { title: string; contentMarkdown: string };
+    try {
+      input = await readAgentPreviewInput(request);
+    } catch (error) {
+      if (error instanceof Error && error.message === 'Unsupported preview file type') {
+        return reply.code(415).send({ error: error.message });
+      }
+      if (error instanceof ZodError) {
+        return reply.code(400).send({ error: 'Invalid preview request' });
+      }
+      throw error;
+    }
+    if (!input.contentMarkdown.trim()) return reply.code(422).send({ error: 'Preview input is empty' });
+    return store.agentPreview(input);
+  });
+
+  app.get('/api/agent-preview', async (request, reply) => {
+    const me = await currentUser(request);
+    if (!me || !canManageOwners(me.role)) return reply.code(403).send({ error: 'Forbidden' });
+    return store.listAgentPreviews();
+  });
+
+  app.get('/api/agent-preview/:jobId', async (request, reply) => {
+    const me = await currentUser(request);
+    if (!me || !canManageOwners(me.role)) return reply.code(403).send({ error: 'Forbidden' });
+    const { jobId } = request.params as { jobId: string };
+    const run = await store.getAgentPreview(jobId);
+    if (!run) return reply.code(404).send({ error: 'Not found' });
+    return run;
+  });
+
+  app.get('/api/agent-preview/:jobId/stream', async (request, reply) => {
+    const me = await ownerFromQueryToken(request);
+    if (!me || !canManageOwners(me.role)) return reply.code(403).send({ error: 'Forbidden' });
+    const { jobId } = request.params as { jobId: string };
+
+    reply.hijack();
+    const res = reply.raw;
+    res.writeHead(200, {
+      'content-type': 'text/event-stream',
+      'cache-control': 'no-cache',
+      connection: 'keep-alive',
+    });
+    res.write(': connected\n\n');
+
+    let closed = false;
+    let lastStepIndex = 0;
+    let timer: NodeJS.Timeout | undefined;
+    const heartbeat = setInterval(() => {
+      if (!closed) res.write(': heartbeat\n\n');
+    }, 15_000);
+
+    const closeStream = () => {
+      if (closed) return;
+      closed = true;
+      if (timer) clearTimeout(timer);
+      clearInterval(heartbeat);
+      request.raw.off('close', closeStream);
+      res.end();
+    };
+
+    const emit = async () => {
+      const run = await store.getAgentPreview(jobId);
+      if (closed) return; // client may have disconnected during the await
+      if (!run) {
+        writeSse(res, 'failed', { jobId, error: 'Job not found' });
+        closeStream();
+        return;
+      }
+
+      const nextSteps = run.steps.slice(lastStepIndex);
+      nextSteps.forEach((step, offset) => {
+        writeSse(res, 'step', { jobId, index: lastStepIndex + offset, step });
+      });
+      lastStepIndex = run.steps.length;
+
+      if (run.status === 'completed') {
+        writeSse(res, 'completed', { jobId, result: run.result });
+        closeStream();
+      } else if (run.status === 'failed') {
+        writeSse(res, 'failed', { jobId, error: run.error ?? 'Job failed' });
+        closeStream();
+      }
+    };
+
+    // Single serialized poll loop: each tick waits for the previous emit to finish before scheduling
+    // the next, so emits never overlap (no duplicate writes / racy lastStepIndex).
+    const tick = () => {
+      void emit().then(
+        () => {
+          if (!closed) timer = setTimeout(tick, 500);
+        },
+        (error) => {
+          if (!closed) {
+            writeSse(res, 'failed', { jobId, error: error instanceof Error ? error.message : String(error) });
+          }
+          closeStream();
+        },
+      );
+    };
+
+    request.raw.on('close', closeStream);
+    tick();
   });
 
   app.get('/api/jobs/:id/stream', async (request, reply) => {

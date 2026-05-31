@@ -19,14 +19,22 @@ export interface GraphPipelineContext {
   db: Db;
   model?: LanguageModel;
   extractTriplets?: TripletExtractor;
-  recordStep?: (step: { tool: string; args: unknown; result?: unknown }) => void | Promise<void>;
+  persist?: boolean;
+  maxChunks?: number;
+  recordStep?: (step: {
+    tool: string;
+    args: unknown;
+    result?: unknown;
+    tookMs?: number;
+  }) => void | Promise<void>;
 }
 
 export interface GraphPipelineResult {
   documentId: string;
-  status: 'GRAPH_INDEXED';
+  status: 'GRAPH_INDEXED' | 'PREVIEW';
   chunkCount: number;
   tripletCount: number;
+  triplets: Triplet[];
 }
 
 function dedupeTriplets(triplets: Triplet[]): Triplet[] {
@@ -70,33 +78,48 @@ export async function runGraphPipeline(
   const extractor = ctx.extractTriplets ?? (ctx.model ? createDefaultExtractor(ctx.model) : undefined);
   if (!extractor) throw new Error('Graph pipeline requires a model or extractTriplets override');
 
-  const chunks = chunkMarkdown(doc.contentMarkdown);
+  const persist = ctx.persist ?? true;
+  const allChunks = chunkMarkdown(doc.contentMarkdown);
+  const chunks = allChunks.slice(0, ctx.maxChunks ?? allChunks.length);
   const extracted: Triplet[] = [];
 
   for (const chunk of chunks) {
+    const started = Date.now();
     const parsed = TripletArraySchema.parse(await extractor(chunk));
     extracted.push(...parsed.triplets);
     await ctx.recordStep?.({
       tool: 'tool_extract_triplets',
       args: { documentId, chunkIndex: chunk.chunkIndex, headingPath: chunk.headingPath },
       result: { tripletCount: parsed.triplets.length },
+      tookMs: Date.now() - started,
     });
   }
 
   const triplets = dedupeTriplets(extracted);
-  await upsertTriplets(ctx.db, triplets, documentId);
-  await ctx.recordStep?.({
-    tool: 'graph_upsert_triplets',
-    args: { documentId },
-    result: { tripletCount: triplets.length },
-  });
+  if (persist) {
+    const started = Date.now();
+    await upsertTriplets(ctx.db, triplets, documentId);
+    await ctx.recordStep?.({
+      tool: 'graph_upsert_triplets',
+      args: { documentId },
+      result: { tripletCount: triplets.length },
+      tookMs: Date.now() - started,
+    });
 
-  await documents.markGraphIndexed(documentId);
+    await documents.markGraphIndexed(documentId);
+  } else {
+    await ctx.recordStep?.({
+      tool: 'graph_preview_triplets',
+      args: { documentId, chunkCount: chunks.length, capped: chunks.length < allChunks.length },
+      result: { tripletCount: triplets.length },
+    });
+  }
 
   return {
     documentId,
-    status: 'GRAPH_INDEXED',
+    status: persist ? 'GRAPH_INDEXED' : 'PREVIEW',
     chunkCount: chunks.length,
     tripletCount: triplets.length,
+    triplets,
   };
 }

@@ -2,6 +2,7 @@ import { ObjectId, type Db, type Document, type WithId } from 'mongodb';
 import { randomUUID } from 'node:crypto';
 import {
   normalizeEntityName,
+  type AgentStepDTO,
   type DocumentDTO,
   type DocumentStatus,
   type TreeNode,
@@ -55,6 +56,7 @@ export function toDocumentDTO(raw: WithId<Document>): DocumentDTO {
 
 export function createDocumentsRepo(db: Db) {
   const collection = db.collection('documents');
+  const chunks = db.collection('chunks');
 
   return {
     async getById(id: string): Promise<DocumentDTO | undefined> {
@@ -66,7 +68,7 @@ export function createDocumentsRepo(db: Db) {
 
     async tree(): Promise<TreeNode[]> {
       const docs = await collection
-        .find({}, { projection: { title: 1, slug: 1, parentId: 1, isFolder: 1, status: 1 } })
+        .find({ preview: { $ne: true } }, { projection: { title: 1, slug: 1, parentId: 1, isFolder: 1, status: 1 } })
         .toArray();
       return docs.map((doc) => ({
         id: doc._id.toString(),
@@ -79,7 +81,7 @@ export function createDocumentsRepo(db: Db) {
     },
 
     async reviews(): Promise<DocumentDTO[]> {
-      const docs = await collection.find({ status: 'REVIEW' }).toArray();
+      const docs = await collection.find({ status: 'REVIEW', preview: { $ne: true } }).toArray();
       return docs.map(toDocumentDTO);
     },
 
@@ -101,6 +103,31 @@ export function createDocumentsRepo(db: Db) {
         draftMarkdown: null,
         version: 1,
         sourceRefs: [{ type: 'manual', ref: 'api://ingest', note: '' }],
+        createdAt: now,
+        updatedAt: now,
+      });
+      const doc = await collection.findOne({ _id: result.insertedId });
+      return toDocumentDTO(doc!);
+    },
+
+    async createPreviewDraft(input: {
+      title: string;
+      contentMarkdown: string;
+    }): Promise<DocumentDTO> {
+      const now = new Date();
+      const id = new ObjectId();
+      const result = await collection.insertOne({
+        _id: id,
+        slug: makeDocumentSlug(input.title, id),
+        title: input.title,
+        parentId: null,
+        isFolder: false,
+        status: 'PREVIEW',
+        preview: true,
+        contentMarkdown: input.contentMarkdown,
+        draftMarkdown: null,
+        version: 1,
+        sourceRefs: [{ type: 'manual', ref: 'api://agent-preview', note: '' }],
         createdAt: now,
         updatedAt: now,
       });
@@ -147,6 +174,30 @@ export function createDocumentsRepo(db: Db) {
           },
         },
       );
+    },
+
+    async setPreviewDraft(id: string, draftMarkdown: string) {
+      const oid = toObjectId(id);
+      if (!oid) return;
+      await collection.updateOne(
+        { _id: oid, preview: true },
+        {
+          $set: {
+            draftMarkdown,
+            status: 'PREVIEW',
+            updatedAt: new Date(),
+          },
+        },
+      );
+    },
+
+    async deletePreviewArtifacts(documentId: string): Promise<void> {
+      const oid = toObjectId(documentId);
+      if (!oid) return;
+      await Promise.all([
+        collection.deleteOne({ _id: oid, preview: true }),
+        chunks.deleteMany({ documentId: oid }),
+      ]);
     },
 
     async publish(id: string): Promise<DocumentDTO | undefined> {
@@ -377,6 +428,62 @@ export interface GraphSearchResult {
   exactMatch: boolean;
 }
 
+function toAgentStepDTO(raw: {
+  tool?: unknown;
+  args?: unknown;
+  result?: unknown;
+  tookMs?: unknown;
+  phase?: unknown;
+  createdAt?: unknown;
+}): AgentStepDTO {
+  const step: AgentStepDTO = {
+    tool: String(raw.tool ?? ''),
+    args: raw.args,
+  };
+  if ('result' in raw) step.result = raw.result;
+  if (typeof raw.tookMs === 'number') step.tookMs = raw.tookMs;
+  if (raw.phase === 'main' || raw.phase === 'graph') step.phase = raw.phase;
+  if (raw.createdAt != null) step.createdAt = toIso(raw.createdAt);
+  return step;
+}
+
+export interface JobRecordSummary {
+  jobId: string;
+  documentId: string;
+  title?: string;
+  status: string;
+  error?: string | null;
+  result?: unknown;
+  createdAt?: string;
+  updatedAt?: string;
+  finishedAt?: string | null;
+}
+
+/** Map a raw jobs-collection row into the API-facing summary shape (shared by single + list reads). */
+function mapJobRecord(row: {
+  bullJobId: string;
+  documentId?: ObjectId | string;
+  title?: string;
+  status?: string;
+  error?: string | null;
+  result?: unknown;
+  createdAt?: unknown;
+  updatedAt?: unknown;
+  finishedAt?: unknown;
+}): JobRecordSummary {
+  return {
+    jobId: row.bullJobId,
+    documentId: row.documentId ? objectIdKey(row.documentId) : '',
+    ...(row.title ? { title: row.title } : {}),
+    status: row.status ?? 'unknown',
+    error: row.error ?? null,
+    ...(row.result != null ? { result: row.result } : {}),
+    createdAt: toIso(row.createdAt),
+    updatedAt: toIso(row.updatedAt),
+    finishedAt: row.finishedAt == null ? null : toIso(row.finishedAt),
+  };
+}
+
 function objectIdKey(value: unknown): string {
   return value instanceof ObjectId ? value.toHexString() : String(value);
 }
@@ -536,15 +643,32 @@ export function createJobsRepo(db: Db) {
     queue?: string;
     type?: string;
     documentId?: ObjectId | string;
+    title?: string;
     status?: string;
     attempts?: number;
     error?: string | null;
+    result?: unknown;
+    createdAt?: Date;
+    updatedAt?: Date;
     finishedAt?: Date | null;
-    agentSteps?: Array<{ tool: string; args: unknown; result?: unknown; createdAt: Date }>;
+    agentSteps?: Array<{
+      tool: string;
+      args: unknown;
+      result?: unknown;
+      tookMs?: number;
+      phase?: 'main' | 'graph';
+      createdAt: Date;
+    }>;
   }>('jobs');
 
   return {
-    async appendAgentStep(jobId: string, step: { tool: string; args: unknown; result?: unknown }) {
+    async appendAgentStep(jobId: string, step: {
+      tool: string;
+      args: unknown;
+      result?: unknown;
+      tookMs?: number;
+      phase?: 'main' | 'graph';
+    }) {
       await collection.updateOne(
         { bullJobId: jobId },
         {
@@ -556,34 +680,81 @@ export function createJobsRepo(db: Db) {
       );
     },
 
+    async getAgentSteps(jobId: string): Promise<AgentStepDTO[]> {
+      const row = await collection.findOne({ bullJobId: jobId }, { projection: { agentSteps: 1 } });
+      return (row?.agentSteps ?? []).map(toAgentStepDTO);
+    },
+
+    /** Batch variant of getAgentSteps: one query for many jobs, returned keyed by bullJobId. */
+    async getAgentStepsBatch(jobIds: string[]): Promise<Map<string, AgentStepDTO[]>> {
+      const map = new Map<string, AgentStepDTO[]>();
+      if (jobIds.length === 0) return map;
+      const rows = await collection
+        .find({ bullJobId: { $in: jobIds } }, { projection: { bullJobId: 1, agentSteps: 1 } })
+        .toArray();
+      for (const row of rows) {
+        map.set(row.bullJobId, (row.agentSteps ?? []).map(toAgentStepDTO));
+      }
+      return map;
+    },
+
+    async getJobRecord(jobId: string): Promise<JobRecordSummary | undefined> {
+      const row = await collection.findOne({ bullJobId: jobId });
+      if (!row) return undefined;
+      return mapJobRecord(row);
+    },
+
+    async listAgentPreviewJobs(limit = 30): Promise<JobRecordSummary[]> {
+      const rows = await collection
+        .find({ queue: 'main', type: 'PREVIEW' })
+        .sort({ createdAt: -1 })
+        .limit(Math.min(Math.max(limit, 2), 30))
+        .toArray();
+      return rows.map(mapJobRecord);
+    },
+
     async recordLifecycle(
       jobId: string,
       update: {
         queue: string;
         type: string;
         documentId: string;
-        status: 'active' | 'completed' | 'failed';
+        status: 'queued' | 'active' | 'completed' | 'failed';
         attempts?: number;
         error?: string | null;
+        title?: string;
+        result?: unknown;
       },
+      options?: { insertOnly?: boolean },
     ) {
-      await collection.updateOne(
-        { bullJobId: jobId },
-        {
-          $setOnInsert: { createdAt: new Date() },
-          $set: {
-            queue: update.queue,
-            type: update.type,
-            documentId: toObjectId(update.documentId) ?? update.documentId,
-            status: update.status,
-            attempts: update.attempts ?? 0,
-            error: update.error ?? null,
-            updatedAt: new Date(),
-            finishedAt: update.status === 'active' ? null : new Date(),
-          },
-        },
-        { upsert: true },
-      );
+      const fields: Record<string, unknown> = {
+        queue: update.queue,
+        type: update.type,
+        documentId: toObjectId(update.documentId) ?? update.documentId,
+        status: update.status,
+        attempts: update.attempts ?? 0,
+        error: update.error ?? null,
+        updatedAt: new Date(),
+        finishedAt: update.status === 'completed' || update.status === 'failed' ? new Date() : null,
+      };
+      if (update.title) fields.title = update.title;
+      if (update.result !== undefined) fields.result = update.result;
+      // insertOnly is used for the API-side 'queued' write: it must not clobber a more advanced
+      // status (e.g. 'active') a fast worker may have already written, so everything goes into
+      // $setOnInsert and later worker $set writes win.
+      if (options?.insertOnly) {
+        await collection.updateOne(
+          { bullJobId: jobId },
+          { $setOnInsert: { createdAt: new Date(), ...fields } },
+          { upsert: true },
+        );
+      } else {
+        await collection.updateOne(
+          { bullJobId: jobId },
+          { $setOnInsert: { createdAt: new Date() }, $set: fields },
+          { upsert: true },
+        );
+      }
     },
   };
 }

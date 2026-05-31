@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { canManageUsers, roleLabels } from '@wf/shared';
+import { canManageOwners, canManageUsers, roleLabels } from '@wf/shared';
 import { useKnowledgeItems, useMultiSource, useReviewBoard } from '../../data/hooks.js';
 import { logout } from '../../api/client.js';
 import { useAuthStore } from '../../auth/store.js';
@@ -51,6 +51,9 @@ export function Lnb() {
           <div className="sb-menu" onMouseLeave={() => setMenuOpen(false)}>
             {user && canManageUsers(user.role) ? (
               <button type="button" onClick={() => { setMenuOpen(false); go('users'); }}>사용자 관리</button>
+            ) : null}
+            {user && canManageOwners(user.role) ? (
+              <button type="button" onClick={() => { setMenuOpen(false); go('agent'); }}>에이전트 미리보기</button>
             ) : null}
             <button type="button" onClick={onLogout}>로그아웃</button>
           </div>

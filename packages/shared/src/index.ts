@@ -3,6 +3,7 @@ import { z } from 'zod';
 export const documentStatuses = [
   'DRAFT',
   'PROCESSING',
+  'PREVIEW',
   'REVIEW',
   'PUBLISHED',
   'GRAPH_INDEXED',
@@ -11,7 +12,7 @@ export const documentStatuses = [
 
 export const userRoles = ['OWNER', 'APPROVER', 'REVIEWER', 'EDITOR', 'VIEWER'] as const;
 export const jobQueues = ['main', 'graph'] as const;
-export const jobTypes = ['INGEST', 'MERGE', 'EXTRACT_TRIPLETS'] as const;
+export const jobTypes = ['INGEST', 'MERGE', 'EXTRACT_TRIPLETS', 'PREVIEW'] as const;
 
 export const DocumentStatusSchema = z.enum(documentStatuses);
 export const UserRoleSchema = z.enum(userRoles);
@@ -82,6 +83,56 @@ export const TripletArraySchema = z.object({
 });
 
 export type Triplet = z.infer<typeof TripletSchema>;
+
+export const AgentStepPhaseSchema = z.enum(['main', 'graph']);
+
+export const AgentStepSchema = z.object({
+  tool: z.string(),
+  args: z.unknown(),
+  result: z.unknown().optional(),
+  tookMs: z.number().int().nonnegative().optional(),
+  phase: AgentStepPhaseSchema.optional(),
+  createdAt: z.string().optional(),
+});
+
+export type AgentStepDTO = z.infer<typeof AgentStepSchema>;
+
+export const AgentPreviewRequestSchema = z.object({
+  message: z.string().min(1),
+  title: z.string().min(1).optional(),
+});
+
+export type AgentPreviewRequest = z.infer<typeof AgentPreviewRequestSchema>;
+
+export const AgentPreviewResultSchema = z.object({
+  documentId: z.string(),
+  /** The extracted source text the agent merged against — used as the diff base on the client. */
+  originalMarkdown: z.string(),
+  draftMarkdown: z.string(),
+  changeSummary: z.string(),
+  merged: z.boolean(),
+  triplets: z.array(TripletSchema),
+  chunkCount: z.number().int().nonnegative(),
+  tripletCount: z.number().int().nonnegative(),
+});
+
+export type AgentPreviewResult = z.infer<typeof AgentPreviewResultSchema>;
+
+export const AgentPreviewStatusSchema = z.enum(['queued', 'active', 'completed', 'failed', 'unknown']);
+
+export const AgentPreviewRunSchema = z.object({
+  jobId: z.string(),
+  documentId: z.string(),
+  title: z.string().optional(),
+  status: AgentPreviewStatusSchema,
+  steps: z.array(AgentStepSchema),
+  result: AgentPreviewResultSchema.optional(),
+  error: z.string().nullable().optional(),
+  createdAt: z.string().optional(),
+  updatedAt: z.string().optional(),
+});
+
+export type AgentPreviewRun = z.infer<typeof AgentPreviewRunSchema>;
 
 export const SandboxRunResultSchema = z.object({
   stdout: z.string(),

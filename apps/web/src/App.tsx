@@ -6,6 +6,7 @@ import { KbPage } from './components/kb/KbPage.js';
 import { DocPage } from './components/doc/DocPage.js';
 import { ReviewDetailPanel, ReviewPage } from './components/review/ReviewPage.js';
 import { UsersPage } from './components/users/UsersPage.js';
+import { AgentPreviewPage } from './components/agent/AgentPreviewPage.js';
 import { LoginPage } from './components/auth/LoginPage.js';
 import { Toast } from './components/common/Primitives.js';
 import { fetchMe, setAuthToken } from './api/client.js';
@@ -31,6 +32,7 @@ function ActivePage() {
   if (activePage === 'kb') return <KbPage />;
   if (activePage === 'doc') return <DocPage />;
   if (activePage === 'users') return <UsersPage />;
+  if (activePage === 'agent') return <AgentPreviewPage />;
   if (activePage === 'sources') return <StubPage title="데이터 소스" />;
   if (activePage === 'rules') return <StubPage title="자동화 규칙" />;
   if (activePage === 'history') return <StubPage title="변경 이력" />;

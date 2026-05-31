@@ -2,6 +2,9 @@ import { randomUUID } from 'node:crypto';
 import { InMemoryQueue } from '@wf/queue';
 import {
   type CreateUserBody,
+  type AgentPreviewResult,
+  type AgentPreviewRun,
+  type AgentStepDTO,
   type DocumentDTO,
   type AiTagSuggestion,
   type DailyDigest,
@@ -87,6 +90,9 @@ export interface WekiFlowStore {
   createUser(body: CreateUserBody): Promise<UserResult>;
   updateUserRole(id: string, role: UserRole): Promise<UserResult>;
   deleteUser(id: string): Promise<OkResult>;
+  agentPreview(input: { title: string; contentMarkdown: string }): Promise<{ jobId: string; documentId: string }>;
+  getAgentPreview(jobId: string): Promise<AgentPreviewRun | undefined>;
+  listAgentPreviews(): Promise<AgentPreviewRun[]>;
 }
 
 function stripPassword(user: User & { password: string }): User {
@@ -106,6 +112,7 @@ export class InMemoryWekiFlowStore implements WekiFlowStore {
   readonly activity = createSeedActivity();
   readonly users = new Map<string, User & { password: string }>();
   readonly sessions = new Map<string, string>(); // token -> userId
+  readonly agentRuns = new Map<string, AgentPreviewRun>();
 
   private sequence = 0;
   private userSequence = 0;
@@ -151,14 +158,16 @@ export class InMemoryWekiFlowStore implements WekiFlowStore {
   }
 
   async tree(): Promise<TreeNode[]> {
-    return [...this.documents.values()].map((doc) => ({
-      id: doc.id,
-      parentId: doc.parentId,
-      title: doc.title,
-      slug: doc.slug,
-      isFolder: doc.isFolder,
-      status: doc.status,
-    }));
+    return [...this.documents.values()]
+      .filter((doc) => doc.status !== 'PREVIEW')
+      .map((doc) => ({
+        id: doc.id,
+        parentId: doc.parentId,
+        title: doc.title,
+        slug: doc.slug,
+        isFolder: doc.isFolder,
+        status: doc.status,
+      }));
   }
 
   async getDocument(id: string): Promise<DocumentDTO | undefined> {
@@ -238,6 +247,79 @@ export class InMemoryWekiFlowStore implements WekiFlowStore {
 
   async reviews(): Promise<DocumentDTO[]> {
     return [...this.documents.values()].filter((doc) => doc.status === 'REVIEW');
+  }
+
+  async agentPreview(input: { title: string; contentMarkdown: string }): Promise<{ jobId: string; documentId: string }> {
+    const sequence = this.agentRuns.size + 1;
+    const jobId = `preview-${sequence}`;
+    const documentId = `preview-doc-${sequence}`;
+    const now = new Date().toISOString();
+    const steps: AgentStepDTO[] = [
+      {
+        tool: 'tool_search_vector',
+        phase: 'main',
+        args: { query: input.title, k: 4 },
+        result: { count: 1, topScore: 0.91 },
+        tookMs: 12,
+        createdAt: now,
+      },
+      {
+        tool: 'tool_merge',
+        phase: 'main',
+        args: { documentId, factCount: 1 },
+        result: { changeSummary: 'Preview stub merge completed.' },
+        tookMs: 18,
+        createdAt: now,
+      },
+      {
+        tool: 'tool_extract_triplets',
+        phase: 'graph',
+        args: { documentId, chunkIndex: 0, headingPath: [] },
+        result: { tripletCount: 1 },
+        tookMs: 9,
+        createdAt: now,
+      },
+    ];
+    const result: AgentPreviewResult = {
+      documentId,
+      originalMarkdown: input.contentMarkdown,
+      draftMarkdown: `${input.contentMarkdown}\n\n[preview-stub-merged]`,
+      changeSummary: 'Preview stub merge completed.',
+      merged: true,
+      chunkCount: 1,
+      tripletCount: 1,
+      triplets: [
+        {
+          subject: input.title,
+          predicate: 'previews',
+          object: 'Agent pipeline',
+          subjectType: 'DOCUMENT',
+          objectType: 'PROCESS',
+          strength: 0.8,
+        },
+      ],
+    };
+    this.agentRuns.set(jobId, {
+      jobId,
+      documentId,
+      title: input.title,
+      status: 'completed',
+      steps,
+      result,
+      createdAt: now,
+      updatedAt: now,
+    });
+    return { jobId, documentId };
+  }
+
+  async getAgentPreview(jobId: string): Promise<AgentPreviewRun | undefined> {
+    return this.agentRuns.get(jobId);
+  }
+
+  async listAgentPreviews(): Promise<AgentPreviewRun[]> {
+    return [...this.agentRuns.values()]
+      .sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''))
+      .slice(0, 30);
   }
 
   async approve(id: string, role: UserRole): Promise<ApproveResult> {

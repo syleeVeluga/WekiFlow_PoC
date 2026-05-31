@@ -5,13 +5,15 @@ import {
   useQueryClient,
   type UseQueryResult,
 } from '@tanstack/react-query';
-import type { DocumentDTO, TreeNode } from '@wf/shared';
+import type { AgentPreviewResult, AgentStepDTO, DocumentDTO, TreeNode } from '@wf/shared';
 import * as api from './client.js';
 
 export const queryKeys = {
   tree: ['tree'] as const,
   reviews: ['reviews'] as const,
   document: (id: string) => ['document', id] as const,
+  agentPreviews: ['agent-previews'] as const,
+  agentPreview: (id: string) => ['agent-preview', id] as const,
 };
 
 export function useTree(): UseQueryResult<TreeNode[]> {
@@ -68,10 +70,108 @@ export function useReject() {
   });
 }
 
+export function useAgentPreviewMessage() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: api.agentPreviewMessage,
+    onSuccess: () => void qc.invalidateQueries({ queryKey: queryKeys.agentPreviews }),
+  });
+}
+
+export function useAgentPreviewUpload() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ file, title }: { file: File; title?: string }) => api.agentPreviewUpload(file, title),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: queryKeys.agentPreviews }),
+  });
+}
+
+export function useAgentPreviews() {
+  return useQuery({ queryKey: queryKeys.agentPreviews, queryFn: api.listAgentPreviews });
+}
+
+export function useAgentPreview(jobId: string | null) {
+  return useQuery({
+    queryKey: queryKeys.agentPreview(jobId ?? ''),
+    queryFn: () => api.fetchAgentPreview(jobId!),
+    enabled: jobId != null,
+  });
+}
+
 export interface JobStreamState {
   progress: number;
   done: boolean;
   failed: boolean;
+}
+
+export interface AgentRunStreamState {
+  steps: AgentStepDTO[];
+  progress: number;
+  result: AgentPreviewResult | null;
+  done: boolean;
+  failed: boolean;
+  error: string | null;
+}
+
+const INITIAL_STREAM_STATE: AgentRunStreamState = {
+  steps: [],
+  progress: 0,
+  result: null,
+  done: false,
+  failed: false,
+  error: null,
+};
+
+export function useAgentRunStream(jobId: string | null): AgentRunStreamState {
+  const qc = useQueryClient();
+  const [state, setState] = useState<AgentRunStreamState>(INITIAL_STREAM_STATE);
+  const [trackedJobId, setTrackedJobId] = useState<string | null>(jobId);
+
+  // Reset synchronously when the selected job changes, so we never return the previous job's
+  // steps/result/done for the render that happens before the EventSource effect runs.
+  if (jobId !== trackedJobId) {
+    setTrackedJobId(jobId);
+    setState(jobId ? { ...INITIAL_STREAM_STATE, progress: 8 } : INITIAL_STREAM_STATE);
+  }
+
+  useEffect(() => {
+    if (!jobId) return;
+    const source = new EventSource(api.agentPreviewStreamUrl(jobId));
+
+    source.addEventListener('step', (event) => {
+      const data = JSON.parse((event as MessageEvent).data) as { index: number; step: AgentStepDTO };
+      setState((prev) => {
+        const steps = [...prev.steps];
+        steps[data.index] = data.step;
+        const compact = steps.filter((step): step is AgentStepDTO => step != null);
+        return {
+          ...prev,
+          steps: compact,
+          progress: Math.min(95, 12 + compact.length * 8),
+        };
+      });
+    });
+
+    source.addEventListener('completed', (event) => {
+      const data = JSON.parse((event as MessageEvent).data) as { result?: AgentPreviewResult };
+      setState((prev) => ({ ...prev, result: data.result ?? null, progress: 100, done: true, failed: false }));
+      void qc.invalidateQueries({ queryKey: queryKeys.agentPreviews });
+      void qc.invalidateQueries({ queryKey: queryKeys.agentPreview(jobId) });
+      source.close();
+    });
+
+    source.addEventListener('failed', (event) => {
+      const data = JSON.parse((event as MessageEvent).data) as { error?: string };
+      setState((prev) => ({ ...prev, done: true, failed: true, error: data.error ?? 'Preview failed' }));
+      void qc.invalidateQueries({ queryKey: queryKeys.agentPreviews });
+      void qc.invalidateQueries({ queryKey: queryKeys.agentPreview(jobId) });
+      source.close();
+    });
+
+    return () => source.close();
+  }, [jobId, qc]);
+
+  return state;
 }
 
 /**

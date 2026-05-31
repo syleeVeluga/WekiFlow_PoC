@@ -119,6 +119,67 @@ describe('runMainPipeline (agent loop)', () => {
     expect(steps.map((s) => s.tool)).toContain('tool_merge');
   });
 
+  it('keeps preview drafts in PREVIEW status', async () => {
+    const id = new ObjectId();
+    const db = makeFakeDb([
+      {
+        _id: id,
+        title: 'Preview',
+        slug: 'preview',
+        contentMarkdown: '# Preview',
+        status: 'PREVIEW',
+        preview: true,
+      },
+    ]);
+    const merged = { mergedMarkdown: '# Preview\nMerged', changeSummary: 'Preview merge' };
+    const model = new MockLanguageModelV3({
+      doGenerate: mockValues(
+        {
+          content: [
+            {
+              type: 'tool-call',
+              toolCallId: 'm1',
+              toolName: 'tool_merge',
+              input: JSON.stringify({ facts: [{ source: 'preview', content: 'Merged' }] }),
+            },
+          ],
+          finishReason: 'tool-calls',
+          usage: { inputTokens: { total: 1 }, outputTokens: { total: 1 } },
+          warnings: [],
+        },
+        {
+          content: [{ type: 'text', text: JSON.stringify(merged) }],
+          finishReason: 'stop',
+          usage: { inputTokens: { total: 1 }, outputTokens: { total: 1 } },
+          warnings: [],
+        },
+        {
+          content: [{ type: 'text', text: 'done' }],
+          finishReason: 'stop',
+          usage: { inputTokens: { total: 1 }, outputTokens: { total: 1 } },
+          warnings: [],
+        },
+      ),
+    } as never);
+
+    const result = await runMainPipeline(id.toString(), {
+      db,
+      sandbox: sandboxStub,
+      docsSnapshotDir: '/tmp/docs',
+      jobId: 'job-preview',
+      embed: async (texts) => texts.map(() => [1, 0]),
+      model,
+      embeddingModel: 'text-embedding-3-large',
+      preview: true,
+    });
+
+    expect(result.status).toBe('PREVIEW');
+    expect(result.draftMarkdown).toBe(merged.mergedMarkdown);
+    const persisted = await db.collection('documents').findOne({ _id: id });
+    expect(persisted?.draftMarkdown).toBe(merged.mergedMarkdown);
+    expect(persisted?.status).toBe('PREVIEW');
+  });
+
   it('lets Pipeline A retrieve graph-indexed facts and pass them into merge', async () => {
     const id = new ObjectId();
     const newHire = new ObjectId();
