@@ -99,7 +99,7 @@
 | **트리플 추출 LLM** | 동일 또는 비용 효율 모델 | 구조화 출력(JSON) 신뢰도 중시. |
 | **자동 임베딩** | MongoDB **Automated Embedding**(2026-05 Public Preview) | 임베딩 코드 없이 텍스트 자동 임베딩 — PoC 단순화에 고려. |
 
-> 모델명은 변동성이 크므로 코드에서 **환경변수(`EMBEDDING_MODEL`, `AGENT_MODEL`)로 주입**하고 하드코딩하지 않는다.
+> 모델명은 변동성이 크므로 코드에서 **환경변수(`EMBEDDING_MODEL`, `AGENT_MODEL`)로 주입**하고 하드코딩하지 않는다. Provider API key는 `.env`에만 보관한다(`OPENAI_API_KEY`, 필요 시 `ANTHROPIC_API_KEY`, `GOOGLE_API_KEY`). 현재 워커 구현은 `@ai-sdk/openai`를 사용하므로 live 모델 호출에는 `OPENAI_API_KEY`가 필요하다.
 
 ---
 

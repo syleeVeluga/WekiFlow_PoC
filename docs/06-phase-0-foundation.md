@@ -111,7 +111,7 @@ docker compose up -d
 ### 🛠️ 2.6 `packages/shared` — 타입/상수
 
 - 문서 상태 enum, 잡 타입 enum, zod 스키마(문서/청크/트리플/잡).
-- 환경변수 스키마(zod)로 부팅 시 검증: `MONGODB_URI`, `REDIS_URL`, `MINIO_*`, `OPENAI_API_KEY`, `EMBEDDING_MODEL`, `AGENT_MODEL`, `DOCKER_SOCKET`.
+- 환경변수 스키마(zod)로 부팅 시 검증: `MONGODB_URI`, `REDIS_URL`, `MINIO_*`, `EMBEDDING_MODEL`, `AGENT_MODEL`, provider API key(`OPENAI_API_KEY`, 필요 시 `ANTHROPIC_API_KEY`, `GOOGLE_API_KEY`), `DOCKER_SOCKET`.
 
 ---
 
