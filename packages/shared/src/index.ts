@@ -106,6 +106,19 @@ export const AgentPreviewRequestSchema = z.object({
 
 export type AgentPreviewRequest = z.infer<typeof AgentPreviewRequestSchema>;
 
+export const AppSettingsSchema = z.object({
+  reviewApprovalEnabled: z.boolean().default(false),
+});
+
+export const UpdateAppSettingsSchema = AppSettingsSchema.partial();
+
+export type AppSettings = z.infer<typeof AppSettingsSchema>;
+export type UpdateAppSettings = z.infer<typeof UpdateAppSettingsSchema>;
+
+export const DEFAULT_APP_SETTINGS: AppSettings = {
+  reviewApprovalEnabled: false,
+};
+
 export const IngestRequestSchema = z.object({
   title: z.string().min(1),
   contentMarkdown: z.string().optional().default(''),

@@ -12,8 +12,10 @@ import {
   KnowledgeQuerySchema,
   LoginBodySchema,
   MsResolveBodySchema,
+  UpdateAppSettingsSchema,
   UpdateUserRoleBodySchema,
   type User,
+  canApprove,
   canManageOwners,
   canManageUsers,
   canReview,
@@ -174,6 +176,17 @@ export function buildServer({
     const header = request.headers.authorization;
     if (header?.startsWith('Bearer ')) await store.logout(header.slice('Bearer '.length).trim());
     return { ok: true };
+  });
+
+  app.get('/api/settings', async () => store.settings());
+
+  app.patch('/api/settings', async (request, reply) => {
+    const me = await currentUser(request);
+    if (!me || !canApprove(me.role)) return reply.code(403).send({ error: 'Forbidden' });
+    const body = UpdateAppSettingsSchema.parse(request.body);
+    const result = await store.updateSettings(body, me.role);
+    if (!result.ok) return reply.code(result.statusCode).send({ error: result.error });
+    return result.settings;
   });
 
   // --- User management (소유자 + 승인; 소유자 역할/계정은 소유자만) ---

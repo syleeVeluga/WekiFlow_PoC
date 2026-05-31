@@ -6,6 +6,7 @@ Review is intentionally simple:
 - `검토`: opens the detail panel.
 - `반려`: rejects the item.
 - `승인`: approves the item and triggers graph re-indexing.
+- `검토 승인 활성화`: settings menu toggle; default off. When off, the review page shows an enablement notice instead of the queue unless older Layer 1 review documents still need resolution.
 
 There are no grouped lanes, ranked badges, batch approval lanes, or ranking tabs.
 
@@ -21,6 +22,7 @@ apps/web/src/components/review/
 
 - `useReviewBoard()` loads unresolved review items.
 - `useResolveReview()` handles approve/reject mutations.
+- `useSettings()` loads the review approval gate.
 - LNB review count uses review items only.
 
 ## Definition of Done
@@ -30,4 +32,5 @@ apps/web/src/components/review/
 - [x] Detail panel shows existing content, suggested content, diff, and source thread.
 - [x] Approve/reject goes through the server mutation and invalidates wiki queries.
 - [x] Review count decreases after resolved items leave the queue.
+- [x] Disabled approval gate shows the settings enablement notice.
 - [x] Web typecheck passes.

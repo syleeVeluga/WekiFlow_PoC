@@ -5,8 +5,8 @@ import type { Job } from 'bullmq';
 import { embedMany } from 'ai';
 import { openai } from '@ai-sdk/openai';
 import { config as loadDotenv } from 'dotenv';
-import { createDocumentsRepo, createJobsRepo, createSandboxRunsRepo, getDb } from '@wf/db';
-import { MAIN_QUEUE_NAME, createWorker } from '@wf/queue';
+import { createDocumentsRepo, createJobsRepo, createSandboxRunsRepo, createSettingsRepo, getDb } from '@wf/db';
+import { MAIN_QUEUE_NAME, createGraphQueue, createWorker, defaultJobOptions } from '@wf/queue';
 import { DockerSandboxRunner } from '@wf/sandbox';
 import { loadEnv, type DocumentDTO, type EmbedFn } from '@wf/shared';
 import { createTripletExtractionModels, runGraphPipeline } from '@wf/graph-worker/pipeline';
@@ -23,6 +23,8 @@ const db = await getDb();
 const docs = createDocumentsRepo(db);
 const jobs = createJobsRepo(db);
 const sandboxRuns = createSandboxRunsRepo(db);
+const settings = createSettingsRepo(db);
+const graphQueue = createGraphQueue();
 
 const model = openai(env.AGENT_MODEL);
 const tripletModels = createTripletExtractionModels(env);
@@ -51,7 +53,7 @@ function progressOnStep(job: MainJob) {
   };
 }
 
-/** Normal ingest: run the agent, leave the REVIEW draft + chunks persisted. */
+/** Normal ingest: run the agent, then either hold for REVIEW or auto-publish based on settings. */
 async function runIngestJob(job: MainJob, doc: DocumentDTO, jobId: string, documentId: string) {
   await job.updateProgress(5);
   const snapshotDir = await mkdtemp(path.join(tmpdir(), 'wf-docs-'));
@@ -70,8 +72,15 @@ async function runIngestJob(job: MainJob, doc: DocumentDTO, jobId: string, docum
     });
     if (!result.merged) {
       console.warn(
-        `[main-worker] job ${jobId}: agent produced no merge for ${documentId}; routed to REVIEW with original content.`,
+        `[main-worker] job ${jobId}: agent produced no merge for ${documentId}; using original content.`,
       );
+    }
+    if (!(await settings.get()).reviewApprovalEnabled) {
+      const published = await docs.publish(documentId);
+      if (!published) throw new Error(`Document not found while skipping review: ${documentId}`);
+      await graphQueue.add('EXTRACT_TRIPLETS', { documentId }, defaultJobOptions());
+      await job.updateProgress(100);
+      return { documentId: published.id, status: published.status, merged: result.merged, reviewSkipped: true };
     }
     await job.updateProgress(100);
     return { documentId: result.documentId, status: result.status, merged: result.merged };
@@ -167,6 +176,13 @@ async function runCommitPreviewJob(job: MainJob, doc: DocumentDTO, jobId: string
       maxChunks: PREVIEW_MAX_TRIPLET_CHUNKS,
       recordStep: (step) => jobs.appendAgentStep(jobId, { ...step, phase: 'graph' }),
     });
+    let reviewSkipped = false;
+    if (!(await settings.get()).reviewApprovalEnabled) {
+      const published = await docs.publish(documentId);
+      if (!published) throw new Error(`Document not found while skipping review: ${documentId}`);
+      await graphQueue.add('EXTRACT_TRIPLETS', { documentId }, defaultJobOptions());
+      reviewSkipped = true;
+    }
 
     const previewResult = {
       ...result,
@@ -175,6 +191,7 @@ async function runCommitPreviewJob(job: MainJob, doc: DocumentDTO, jobId: string
       chunkCount: graphResult.chunkCount,
       tripletCount: graphResult.tripletCount,
       committed: true,
+      reviewSkipped,
     };
     await job.updateProgress(100);
     await jobs.recordLifecycle(jobId, { ...lifecycle, status: 'completed', attempts, result: previewResult });
@@ -213,6 +230,7 @@ console.log('WekiFlow main worker started');
 
 async function shutdown() {
   await worker.close();
+  await graphQueue.close();
   process.exit(0);
 }
 

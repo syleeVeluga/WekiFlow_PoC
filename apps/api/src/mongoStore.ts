@@ -1,12 +1,13 @@
 import type { Queue } from 'bullmq';
 import type { Db } from 'mongodb';
-import { createDocumentsRepo, createJobsRepo, createUsersRepo, toDocumentDTO } from '@wf/db';
+import { createDocumentsRepo, createJobsRepo, createSettingsRepo, createUsersRepo, toDocumentDTO } from '@wf/db';
 import { defaultJobOptions } from '@wf/queue';
 import {
   AgentPreviewResultSchema,
   KnowledgeQuerySchema,
   type AgentPreviewResult,
   type AgentPreviewRun,
+  type AppSettings,
   type CreateUserBody,
   type DocumentDTO,
   type ActivityEntry,
@@ -22,6 +23,7 @@ import {
   type Topic,
   type TreeCategory,
   type TreeNode,
+  type UpdateAppSettings,
   type User,
   type UserRole,
   UNCLASSIFIED_TOPIC_NAME,
@@ -34,7 +36,7 @@ import {
   loadEnv,
   normalizeEntityName,
 } from '@wf/shared';
-import type { ApproveResult, LoginResult, OkResult, UserResult, WekiFlowStore } from './store.js';
+import type { ApproveResult, LoginResult, OkResult, SettingsResult, UserResult, WekiFlowStore } from './store.js';
 
 function normalizePreviewState(state: string | undefined): AgentPreviewRun['status'] {
   if (state === 'completed') return 'completed';
@@ -53,6 +55,7 @@ export class MongoWekiFlowStore implements WekiFlowStore {
   private readonly docs: ReturnType<typeof createDocumentsRepo>;
   private readonly jobs: ReturnType<typeof createJobsRepo>;
   private readonly usersRepo: ReturnType<typeof createUsersRepo>;
+  private readonly settingsRepo: ReturnType<typeof createSettingsRepo>;
 
   constructor(
     private readonly db: Db,
@@ -62,6 +65,7 @@ export class MongoWekiFlowStore implements WekiFlowStore {
     this.docs = createDocumentsRepo(db);
     this.jobs = createJobsRepo(db);
     this.usersRepo = createUsersRepo(db);
+    this.settingsRepo = createSettingsRepo(db);
   }
 
   /** 부트 시 소유자 계정을 멱등하게 보장한다(데모 사용자는 scripts/seed-wiki.ts에서 시드). */
@@ -340,6 +344,7 @@ export class MongoWekiFlowStore implements WekiFlowStore {
   }
 
   async homeDigest(): Promise<DailyDigest> {
+    if (!(await this.settingsRepo.get()).reviewApprovalEnabled) return createSeedDigest(0);
     return createSeedDigest((await this.listRichReviews()).length + (await this.listMultiSource()).length);
   }
 
@@ -411,5 +416,23 @@ export class MongoWekiFlowStore implements WekiFlowStore {
     }
     await this.usersRepo.remove(id);
     return { ok: true };
+  }
+
+  async settings(): Promise<AppSettings> {
+    return this.settingsRepo.get();
+  }
+
+  private async publishPendingReviews(): Promise<void> {
+    const pending = await this.docs.reviews();
+    for (const doc of pending) {
+      const published = await this.docs.publish(doc.id);
+      if (published) await this.enqueue(this.graphQueue, 'EXTRACT_TRIPLETS', published.id);
+    }
+  }
+
+  async updateSettings(body: UpdateAppSettings, role: UserRole): Promise<SettingsResult> {
+    if (!canApprove(role)) return { ok: false, statusCode: 403, error: 'Forbidden' };
+    if (body.reviewApprovalEnabled === false) await this.publishPendingReviews();
+    return { ok: true, settings: await this.settingsRepo.update(body) };
   }
 }

@@ -30,3 +30,12 @@ Phase 0 PoC 기본값은 `VECTOR_SEARCH_MODE=app-cosine`이다.
 - `app-cosine` 벡터 검색은 `ai`가 export하는 `cosineSimilarity`로 구현한다.
 
 테스트는 `ai/test`의 `MockLanguageModelV3` + `mockValues(...)`로 LLM을 결정론적으로 스크립트한다. `MockLanguageModelV3({ doGenerate: [...] })`에 **배열**을 직접 넘기면 인덱스 0이 소비되지 않는 오프바이원이 있으므로, 순차 응답은 반드시 `mockValues(...)`로 감싼다.
+
+## 검토 승인 게이트
+
+PoC 기본값은 `reviewApprovalEnabled=false`이다.
+
+- 비활성화 상태에서는 Pipeline A 병합 결과가 `REVIEW`에 대기하지 않고 즉시 `PUBLISHED`로 넘어가며 Graph Queue에 `EXTRACT_TRIPLETS`를 적재한다.
+- 활성화 상태에서 이미 `REVIEW`에 대기 중인 문서가 있을 때 기능을 끄면, 해당 문서들을 즉시 `PUBLISHED`로 전환하고 Graph Queue에 적재한다.
+- 승인 권한(`APPROVER` 이상)을 가진 사용자는 좌측 하단 설정 메뉴에서 `검토 승인 활성화`를 켜고 끌 수 있다.
+- 비활성화 상태의 검토 화면은 검토 목록 대신 권한자가 설정 메뉴에서 활성화해야 한다는 안내 메시지를 표시한다. 단, 이전 데이터에 남아 있는 Layer 1 `REVIEW` 문서는 숨기지 않고 해결할 수 있게 노출한다.

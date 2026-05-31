@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { EventEmitter } from 'node:events';
 import { DepartmentSchema } from '@wf/shared';
 import { buildServer } from './server.js';
+import { InMemoryWekiFlowStore } from './store.js';
 
 async function login(app: ReturnType<typeof buildServer>, email: string, password: string): Promise<string> {
   const res = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { email, password } });
@@ -30,8 +31,13 @@ function multipartPayload(input: {
 }
 
 describe('@wf/api routes', () => {
-  it('ingests into review, blocks unauthorized approve, and enqueues graph on approve', async () => {
-    const app = buildServer();
+  it('skips review by default and uses settings to re-enable approval gates', async () => {
+    const store = new InMemoryWekiFlowStore();
+    const app = buildServer({ store });
+
+    const settings = await app.inject({ method: 'GET', url: '/api/settings' });
+    expect(settings.statusCode).toBe(200);
+    expect(settings.json()).toMatchObject({ reviewApprovalEnabled: false });
 
     const ingest = await app.inject({
       method: 'POST',
@@ -46,14 +52,17 @@ describe('@wf/api routes', () => {
     });
     expect(ingest.statusCode).toBe(200);
     const ingestBody = ingest.json();
-    expect(ingestBody.doc.status).toBe('REVIEW');
+    expect(ingestBody.doc.status).toBe('PUBLISHED');
     expect(ingestBody.job.type).toBe('INGEST');
     expect(ingestBody.doc.sourceRefs[0].note).toContain('topic=복지');
     expect(ingestBody.doc.sourceRefs[0].note).toContain('workspace=총무팀');
     expect(ingestBody.doc.sourceRefs[0].note).toContain('source=사내 공지');
 
     const reviews = await app.inject({ method: 'GET', url: '/api/reviews' });
-    expect(reviews.json()).toHaveLength(1);
+    expect(reviews.json()).toHaveLength(0);
+    expect(store.graphQueue.jobs).toEqual(
+      expect.arrayContaining([expect.objectContaining({ type: 'EXTRACT_TRIPLETS', documentId: ingestBody.doc.id })]),
+    );
 
     const denied = await app.inject({
       method: 'POST',
@@ -67,17 +76,7 @@ describe('@wf/api routes', () => {
     });
     expect(rejectDenied.statusCode).toBe(403);
 
-    const ownerToken = await login(app, 'admin01@veluga.io', 'admin01@veluga.io');
-    const approved = await app.inject({
-      method: 'POST',
-      url: `/api/documents/${ingestBody.doc.id}/approve`,
-      headers: { authorization: `Bearer ${ownerToken}` },
-    });
-    expect(approved.statusCode).toBe(200);
-    expect(approved.json().doc.status).toBe('PUBLISHED');
-    expect(approved.json().job.type).toBe('EXTRACT_TRIPLETS');
-
-    // Approving materializes a KnowledgeItem so the doc surfaces in the KB + Document Tree under
+    // Auto-publishing materializes a KnowledgeItem so the doc surfaces in the KB + Document Tree under
     // its assigned topic (the core "knowledge accumulates in the tree" loop).
     const knowledge = await app.inject({ method: 'GET', url: `/api/knowledge/${ingestBody.doc.id}` });
     expect(knowledge.statusCode).toBe(200);
@@ -89,6 +88,64 @@ describe('@wf/api routes', () => {
     expect(welfare.items).toEqual(
       expect.arrayContaining([expect.objectContaining({ id: ingestBody.doc.id })]),
     );
+
+    const ownerToken = await login(app, 'admin01@veluga.io', 'admin01@veluga.io');
+    const enabled = await app.inject({
+      method: 'PATCH',
+      url: '/api/settings',
+      headers: { authorization: `Bearer ${ownerToken}` },
+      payload: { reviewApprovalEnabled: true },
+    });
+    expect(enabled.statusCode).toBe(200);
+    expect(enabled.json()).toMatchObject({ reviewApprovalEnabled: true });
+
+    const gatedIngest = await app.inject({
+      method: 'POST',
+      url: '/api/ingest',
+      payload: { title: 'Gated policy', contentMarkdown: '# Needs approval', topic: '복지' },
+    });
+    expect(gatedIngest.statusCode).toBe(200);
+    const gatedBody = gatedIngest.json();
+    expect(gatedBody.doc.status).toBe('REVIEW');
+    expect((await app.inject({ method: 'GET', url: '/api/reviews' })).json()).toHaveLength(1);
+
+    const disabled = await app.inject({
+      method: 'PATCH',
+      url: '/api/settings',
+      headers: { authorization: `Bearer ${ownerToken}` },
+      payload: { reviewApprovalEnabled: false },
+    });
+    expect(disabled.statusCode).toBe(200);
+    expect(disabled.json()).toMatchObject({ reviewApprovalEnabled: false });
+    expect((await app.inject({ method: 'GET', url: '/api/reviews' })).json()).toHaveLength(0);
+    expect((await app.inject({ method: 'GET', url: `/api/documents/${gatedBody.doc.id}` })).json().status).toBe('PUBLISHED');
+    expect(store.graphQueue.jobs).toEqual(
+      expect.arrayContaining([expect.objectContaining({ type: 'EXTRACT_TRIPLETS', documentId: gatedBody.doc.id })]),
+    );
+
+    await app.inject({
+      method: 'PATCH',
+      url: '/api/settings',
+      headers: { authorization: `Bearer ${ownerToken}` },
+      payload: { reviewApprovalEnabled: true },
+    });
+    const approvalIngest = await app.inject({
+      method: 'POST',
+      url: '/api/ingest',
+      payload: { title: 'Approval policy', contentMarkdown: '# Approve me', topic: '복지' },
+    });
+    expect(approvalIngest.statusCode).toBe(200);
+    const approvalBody = approvalIngest.json();
+    expect(approvalBody.doc.status).toBe('REVIEW');
+
+    const approved = await app.inject({
+      method: 'POST',
+      url: `/api/documents/${approvalBody.doc.id}/approve`,
+      headers: { authorization: `Bearer ${ownerToken}` },
+    });
+    expect(approved.statusCode).toBe(200);
+    expect(approved.json().doc.status).toBe('PUBLISHED');
+    expect(approved.json().job.type).toBe('EXTRACT_TRIPLETS');
 
     await app.close();
   });
@@ -102,7 +159,7 @@ describe('@wf/api routes', () => {
 
     const accepted = await app.inject({ method: 'POST', url: '/api/ingest/file', ...upload });
     expect(accepted.statusCode).toBe(200);
-    expect(accepted.json().doc.status).toBe('REVIEW');
+    expect(accepted.json().doc.status).toBe('PUBLISHED');
     expect(accepted.json().doc.contentMarkdown).toContain('Policy body');
     expect(accepted.json().doc.sourceRefs[0].note).toContain('source=policy.md');
 
@@ -203,10 +260,10 @@ describe('@wf/api routes', () => {
     expect(committedDetail.json().result.committed).toBe(true);
 
     const tree = await app.inject({ method: 'GET', url: '/api/tree' });
-    expect(tree.json()).toEqual(expect.arrayContaining([expect.objectContaining({ id: committed.json().documentId, status: 'REVIEW' })]));
+    expect(tree.json()).toEqual(expect.arrayContaining([expect.objectContaining({ id: committed.json().documentId, status: 'PUBLISHED' })]));
 
     const layer1Reviews = await app.inject({ method: 'GET', url: '/api/reviews' });
-    expect(layer1Reviews.json()).toEqual(expect.arrayContaining([expect.objectContaining({ id: committed.json().documentId })]));
+    expect(layer1Reviews.json()).not.toEqual(expect.arrayContaining([expect.objectContaining({ id: committed.json().documentId })]));
 
     const badStream = await app.inject({
       method: 'GET',
@@ -344,6 +401,7 @@ describe('@wf/api routes', () => {
     expect((await app.inject({ method: 'POST', url: `/api/reviews/${reviewId}/approve`, headers: reviewerAuth })).statusCode).toBe(403);
     expect((await app.inject({ method: 'POST', url: `/api/reviews/${reviewId}/reject`, headers: reviewerAuth })).statusCode).toBe(200);
     expect((await app.inject({ method: 'GET', url: '/api/users', headers: reviewerAuth })).statusCode).toBe(403);
+    expect((await app.inject({ method: 'PATCH', url: '/api/settings', headers: reviewerAuth, payload: { reviewApprovalEnabled: true } })).statusCode).toBe(403);
 
     await app.close();
   });

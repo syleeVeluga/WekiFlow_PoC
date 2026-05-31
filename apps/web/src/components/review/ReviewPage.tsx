@@ -1,7 +1,7 @@
 import { lazy, Suspense, useState } from 'react';
 import type { DocumentDTO, MultiSourceGroup, ReviewItem } from '@wf/shared';
 import { canApprove, canReview } from '@wf/shared';
-import { useApprove, useReject, useReviews } from '../../api/hooks.js';
+import { useApprove, useReject, useReviews, useSettings } from '../../api/hooks.js';
 import { useMultiSource, useMultiSourceActions, useResolveMultiSource, useResolveReview, useReviewBoard } from '../../data/hooks.js';
 import { useAuthStore } from '../../auth/store.js';
 import { useUiStore } from '../../store.js';
@@ -17,9 +17,8 @@ function Layer1ReviewSection({ items }: { items: DocumentDTO[] }) {
   const { openDoc, showToast } = useUiStore();
   const approve = useApprove();
   const reject = useReject();
-  const [enabled, setEnabled] = useState(false);
-  const canApproveNow = enabled && canApprove(role);
-  const canReviewNow = enabled && canReview(role);
+  const canApproveNow = canApprove(role);
+  const canReviewNow = canReview(role);
 
   const act = (action: 'approve' | 'reject', id: string) => {
     if (action === 'approve') {
@@ -48,10 +47,6 @@ function Layer1ReviewSection({ items }: { items: DocumentDTO[] }) {
           <p className="eyebrow">Layer 1</p>
           <h2>파이프라인 검토</h2>
         </div>
-        <label className="review-enable">
-          <input type="checkbox" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} />
-          <span>승인 활성화</span>
-        </label>
       </div>
       <div className="review-grid">
         {items.map((doc) => (
@@ -283,12 +278,17 @@ export function ReviewDetailPanel() {
 
 export function ReviewPage() {
   const { review } = useUiStore();
+  const { data: settings, isLoading: isSettingsLoading } = useSettings();
   const { data: layer1Reviews = [] } = useReviews();
   const { data: items = [] } = useReviewBoard();
   const { data: groups = [] } = useMultiSource();
+  const reviewApprovalEnabled = settings?.reviewApprovalEnabled ?? false;
   const visibleItems = items.filter((item) => !item.resolved && !review.rvDone[item.id]);
   const visibleGroups = groups.filter((group) => !group.resolved);
-  const pending = layer1Reviews.length + visibleItems.length + visibleGroups.length;
+  const showPendingQueues = reviewApprovalEnabled || layer1Reviews.length > 0;
+  const pending = showPendingQueues
+    ? layer1Reviews.length + (reviewApprovalEnabled ? visibleItems.length + visibleGroups.length : 0)
+    : 0;
   // The progress bar charts the legacy review board, which keeps resolved items as a stable
   // denominator. Layer 1 reviews leave the dataset on approval (REVIEW → GRAPH_INDEXED), so they
   // have no completed-count to chart — they're surfaced via `pending` and their own section. Guard
@@ -307,13 +307,26 @@ export function ReviewPage() {
         </div>
         <Badge tone="warn">{pending}건</Badge>
       </div>
+      {isSettingsLoading ? (
+        <div className="empty">검토 설정을 불러오는 중입니다.</div>
+      ) : !showPendingQueues ? (
+        <div className="review-disabled">
+          <Badge tone="info">비활성화</Badge>
+          <h2>검토 승인 기능이 꺼져 있습니다.</h2>
+          <p>승인 권한을 가진 사용자가 설정 메뉴에서 검토 승인 활성화를 켜야 이 메뉴에서 검토할 수 있습니다.</p>
+          <p className="muted">현재는 파이프라인 결과가 검토 단계에서 멈추지 않고 바로 게시 단계로 넘어갑니다.</p>
+        </div>
+      ) : (
+        <>
       <div className="rv-prog"><span style={{ width: `${progress}%` }} /></div>
       <Layer1ReviewSection items={layer1Reviews} />
       <div className="review-grid">
-        {visibleItems.map((item) => <ReviewCard item={item} key={item.id} />)}
-        {visibleGroups.map((group) => <MultiSourceCard group={group} key={group.id} />)}
+        {reviewApprovalEnabled ? visibleItems.map((item) => <ReviewCard item={item} key={item.id} />) : null}
+        {reviewApprovalEnabled ? visibleGroups.map((group) => <MultiSourceCard group={group} key={group.id} />) : null}
         {pending === 0 ? <div className="empty">신규 검토 대상이 없습니다.</div> : null}
       </div>
+        </>
+      )}
     </section>
   );
 }

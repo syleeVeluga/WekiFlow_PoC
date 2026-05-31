@@ -9,6 +9,7 @@ import type { AgentPreviewResult, AgentStepDTO, DocumentDTO, TreeNode } from '@w
 import * as api from './client.js';
 
 export const queryKeys = {
+  settings: ['settings'] as const,
   tree: ['tree'] as const,
   reviews: ['reviews'] as const,
   document: (id: string) => ['document', id] as const,
@@ -27,6 +28,23 @@ export function usePublished(): UseQueryResult<TreeNode[]> {
 
 export function useReviews(): UseQueryResult<DocumentDTO[]> {
   return useQuery({ queryKey: queryKeys.reviews, queryFn: api.fetchReviews });
+}
+
+export function useSettings() {
+  return useQuery({ queryKey: queryKeys.settings, queryFn: api.fetchSettings });
+}
+
+export function useUpdateSettings() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: api.updateSettings,
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: queryKeys.settings });
+      void qc.invalidateQueries({ queryKey: queryKeys.reviews });
+      void qc.invalidateQueries({ queryKey: queryKeys.tree });
+      void qc.invalidateQueries({ queryKey: ['wiki'] });
+    },
+  });
 }
 
 export function useDocument(id: string | null): UseQueryResult<DocumentDTO> {

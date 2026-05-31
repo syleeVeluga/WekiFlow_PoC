@@ -1,6 +1,7 @@
 import type {
   AgentPreviewRequest,
   AgentPreviewRun,
+  AppSettings,
   AuthResult,
   CreateUserBody,
   DocumentDTO,
@@ -10,6 +11,7 @@ import type {
   TreeNode,
   User,
   UserRole,
+  UpdateAppSettings,
 } from '@wf/shared';
 
 const BASE = '/api';
@@ -59,6 +61,14 @@ export function fetchMe(): Promise<User> {
 
 export function logout(): Promise<{ ok: boolean }> {
   return request('/auth/logout', { method: 'POST' });
+}
+
+export function fetchSettings(): Promise<AppSettings> {
+  return request('/settings');
+}
+
+export function updateSettings(body: UpdateAppSettings): Promise<AppSettings> {
+  return request('/settings', { method: 'PATCH', body: JSON.stringify(body) });
 }
 
 export function listUsers(): Promise<User[]> {

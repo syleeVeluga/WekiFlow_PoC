@@ -5,6 +5,7 @@ import {
   type AgentPreviewResult,
   type AgentPreviewRun,
   type AgentStepDTO,
+  type AppSettings,
   type DocumentDTO,
   type AiTagSuggestion,
   type DailyDigest,
@@ -15,10 +16,12 @@ import {
   type ReviewItem,
   type Topic,
   type TreeCategory,
+  type UpdateAppSettings,
   type JobRef,
   type TreeNode,
   type User,
   type UserRole,
+  DEFAULT_APP_SETTINGS,
   UNCLASSIFIED_TOPIC_NAME,
   buildIngestedKnowledgeItem,
   canApprove,
@@ -51,6 +54,10 @@ export type UserResult =
   | { ok: false; statusCode: number; error: string };
 
 export type OkResult = { ok: true } | { ok: false; statusCode: number; error: string };
+
+export type SettingsResult =
+  | { ok: true; settings: AppSettings }
+  | { ok: false; statusCode: number; error: string };
 
 export interface WekiFlowStore {
   seed?(): Promise<void> | void;
@@ -97,6 +104,8 @@ export interface WekiFlowStore {
   createUser(body: CreateUserBody): Promise<UserResult>;
   updateUserRole(id: string, role: UserRole): Promise<UserResult>;
   deleteUser(id: string): Promise<OkResult>;
+  settings(): Promise<AppSettings>;
+  updateSettings(body: UpdateAppSettings, role: UserRole): Promise<SettingsResult>;
   agentPreview(input: { title: string; contentMarkdown: string; commit?: boolean }): Promise<{ jobId: string; documentId: string }>;
   getAgentPreview(jobId: string): Promise<AgentPreviewRun | undefined>;
   listAgentPreviews(): Promise<AgentPreviewRun[]>;
@@ -120,6 +129,7 @@ export class InMemoryWekiFlowStore implements WekiFlowStore {
   readonly users = new Map<string, User & { password: string }>();
   readonly sessions = new Map<string, string>(); // token -> userId
   readonly agentRuns = new Map<string, AgentPreviewRun>();
+  private settingsState: AppSettings = DEFAULT_APP_SETTINGS;
   // Topic/workspace assigned at ingest, consumed on approve to materialize a KnowledgeItem.
   readonly ingestMeta = new Map<string, { topic?: string; workspace?: string; sourceLabel?: string }>();
 
@@ -248,11 +258,11 @@ export class InMemoryWekiFlowStore implements WekiFlowStore {
     });
     const job = this.mainQueue.add('INGEST', { documentId: created.id });
     // In-memory path runs the stub main worker inline so route tests stay hermetic.
-    this.applyStubMainWorker(created.id);
+    await this.applyStubMainWorker(created.id);
     return { doc: this.documents.get(created.id)!, job };
   }
 
-  applyStubMainWorker(id: string) {
+  async applyStubMainWorker(id: string) {
     const doc = this.documents.get(id);
     if (!doc) return;
     const now = new Date().toISOString();
@@ -262,6 +272,9 @@ export class InMemoryWekiFlowStore implements WekiFlowStore {
       draftMarkdown: `${doc.contentMarkdown}\n\n[stub-merged-by-main-worker]`,
       updatedAt: now,
     });
+    if (!this.settingsState.reviewApprovalEnabled) {
+      await this.publishDocument(id);
+    }
   }
 
   async reviews(): Promise<DocumentDTO[]> {
@@ -282,6 +295,9 @@ export class InMemoryWekiFlowStore implements WekiFlowStore {
       : null;
     if (committedDoc) {
       this.documents.set(committedDoc.id, { ...committedDoc, draftMarkdown: committedDraft });
+      if (!this.settingsState.reviewApprovalEnabled) {
+        await this.publishDocument(committedDoc.id);
+      }
     }
     const documentId = committedDoc?.id ?? `preview-doc-${sequence}`;
     const now = new Date().toISOString();
@@ -358,6 +374,15 @@ export class InMemoryWekiFlowStore implements WekiFlowStore {
     if (!canApprove(role)) {
       return { ok: false, statusCode: 403, error: 'Forbidden' };
     }
+    return this.publishDocument(id);
+  }
+
+  private async publishPendingReviews(): Promise<void> {
+    const ids = [...this.documents.values()].filter((doc) => doc.status === 'REVIEW').map((doc) => doc.id);
+    for (const id of ids) await this.publishDocument(id);
+  }
+
+  private async publishDocument(id: string): Promise<ApproveResult> {
     const doc = this.documents.get(id);
     if (!doc) {
       return { ok: false, statusCode: 404, error: 'Not found' };
@@ -543,6 +568,7 @@ export class InMemoryWekiFlowStore implements WekiFlowStore {
   }
 
   async homeDigest(): Promise<DailyDigest> {
+    if (!this.settingsState.reviewApprovalEnabled) return createSeedDigest(0);
     const pendingReview = (await this.listRichReviews()).length + (await this.listMultiSource()).length;
     return createSeedDigest(pendingReview);
   }
@@ -610,5 +636,19 @@ export class InMemoryWekiFlowStore implements WekiFlowStore {
     this.users.delete(id);
     for (const [token, userId] of this.sessions) if (userId === id) this.sessions.delete(token);
     return { ok: true };
+  }
+
+  async settings(): Promise<AppSettings> {
+    return this.settingsState;
+  }
+
+  async updateSettings(body: UpdateAppSettings, role: UserRole): Promise<SettingsResult> {
+    if (!canApprove(role)) return { ok: false, statusCode: 403, error: 'Forbidden' };
+    if (body.reviewApprovalEnabled === false) await this.publishPendingReviews();
+    this.settingsState =
+      body.reviewApprovalEnabled === undefined
+        ? this.settingsState
+        : { ...this.settingsState, reviewApprovalEnabled: body.reviewApprovalEnabled };
+    return { ok: true, settings: this.settingsState };
   }
 }

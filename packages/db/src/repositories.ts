@@ -3,12 +3,16 @@ import { createHash, randomUUID } from 'node:crypto';
 import {
   buildIngestedKnowledgeItem,
   chunkMarkdown,
+  AppSettingsSchema,
+  DEFAULT_APP_SETTINGS,
   ingestSourceNote,
   normalizeEntityName,
   type AgentStepDTO,
+  type AppSettings,
   type DocumentDTO,
   type DocumentStatus,
   type EmbedFn,
+  type UpdateAppSettings,
   type KnowledgeItem,
   type TreeNode,
   type Triplet,
@@ -362,6 +366,37 @@ export function createUsersRepo(db: Db) {
 
     async deleteSession(token: string): Promise<void> {
       await sessions.deleteOne({ token });
+    },
+  };
+}
+
+export function createSettingsRepo(db: Db) {
+  const collection = db.collection<{
+    _id: string;
+    reviewApprovalEnabled?: boolean;
+    createdAt?: Date;
+    updatedAt?: Date;
+  }>('app_settings');
+  const id = 'global';
+
+  return {
+    async get(): Promise<AppSettings> {
+      const row = await collection.findOne({ _id: id });
+      return AppSettingsSchema.parse({ ...DEFAULT_APP_SETTINGS, ...(row ?? {}) });
+    },
+
+    async update(patch: UpdateAppSettings): Promise<AppSettings> {
+      const set: { reviewApprovalEnabled?: boolean; updatedAt: Date } = { updatedAt: new Date() };
+      if (patch.reviewApprovalEnabled !== undefined) set.reviewApprovalEnabled = patch.reviewApprovalEnabled;
+      await collection.updateOne(
+        { _id: id },
+        {
+          $setOnInsert: { createdAt: new Date() },
+          $set: set,
+        },
+        { upsert: true },
+      );
+      return this.get();
     },
   };
 }
