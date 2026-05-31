@@ -111,6 +111,8 @@ export const IngestRequestSchema = z.object({
   contentMarkdown: z.string().optional().default(''),
   parentId: z.string().nullable().optional(),
   topic: z.string().min(1).optional(),
+  workspace: z.string().min(1).optional(),
+  /** Legacy ingest clients may still send department; new direct-add UI sends workspace. */
   department: DepartmentSchema.optional(),
   sourceLabel: z.string().min(1).optional(),
 });
@@ -118,10 +120,11 @@ export const IngestRequestSchema = z.object({
 export type IngestRequest = z.infer<typeof IngestRequestSchema>;
 
 /** Builds the `sourceRefs[].note` string recorded for a manual/file ingest. */
-export function ingestSourceNote(input: { topic?: string; department?: string; sourceLabel?: string }): string {
+export function ingestSourceNote(input: { topic?: string; workspace?: string; department?: string; sourceLabel?: string }): string {
+  const workspace = input.workspace ?? input.department;
   return [
     input.topic ? `topic=${input.topic}` : null,
-    input.department ? `department=${input.department}` : null,
+    workspace ? `workspace=${workspace}` : null,
     input.sourceLabel ? `source=${input.sourceLabel}` : null,
   ]
     .filter((part): part is string => part != null)

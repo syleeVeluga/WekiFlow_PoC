@@ -99,6 +99,7 @@ export async function ingestFile(file: File, meta: Omit<IngestRequest, 'contentM
   form.append('title', meta.title);
   if (meta.parentId) form.append('parentId', meta.parentId);
   if (meta.topic) form.append('topic', meta.topic);
+  if (meta.workspace) form.append('workspace', meta.workspace);
   if (meta.department) form.append('department', meta.department);
   if (meta.sourceLabel) form.append('sourceLabel', meta.sourceLabel);
   const headers: Record<string, string> = {};

@@ -40,7 +40,7 @@ describe('@wf/api routes', () => {
         title: 'Manual policy',
         contentMarkdown: '# New policy',
         topic: '복지',
-        department: DepartmentSchema.options[0]!,
+        workspace: '총무팀',
         sourceLabel: '사내 공지',
       },
     });
@@ -49,6 +49,7 @@ describe('@wf/api routes', () => {
     expect(ingestBody.doc.status).toBe('REVIEW');
     expect(ingestBody.job.type).toBe('INGEST');
     expect(ingestBody.doc.sourceRefs[0].note).toContain('topic=복지');
+    expect(ingestBody.doc.sourceRefs[0].note).toContain('workspace=총무팀');
     expect(ingestBody.doc.sourceRefs[0].note).toContain('source=사내 공지');
 
     const reviews = await app.inject({ method: 'GET', url: '/api/reviews' });

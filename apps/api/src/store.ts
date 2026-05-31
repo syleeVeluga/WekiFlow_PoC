@@ -6,7 +6,6 @@ import {
   type AgentPreviewRun,
   type AgentStepDTO,
   type DocumentDTO,
-  type Department,
   type AiTagSuggestion,
   type DailyDigest,
   type KnowledgeItem,
@@ -66,7 +65,7 @@ export interface WekiFlowStore {
     contentMarkdown: string;
     parentId?: string | null;
     topic?: string;
-    department?: Department;
+    workspace?: string;
     sourceLabel?: string;
   }): Promise<{ doc: DocumentDTO; job: JobRef }>;
   reviews(): Promise<DocumentDTO[]>;
@@ -227,7 +226,7 @@ export class InMemoryWekiFlowStore implements WekiFlowStore {
     contentMarkdown: string;
     parentId?: string | null;
     topic?: string;
-    department?: Department;
+    workspace?: string;
     sourceLabel?: string;
   }): Promise<{ doc: DocumentDTO; job: JobRef }> {
     const created = this.create({

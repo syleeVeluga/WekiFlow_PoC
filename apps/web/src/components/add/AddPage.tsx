@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import { DepartmentSchema, UNCLASSIFIED_DEPARTMENT, type Department, type Topic } from '@wf/shared';
+import type { Topic } from '@wf/shared';
 import { useIngest, useIngestFile } from '../../api/hooks.js';
 import { useTopics, useTopicMutations } from '../../data/hooks.js';
 import { useUiStore } from '../../store.js';
 
-const departments = DepartmentSchema.options.filter((department): department is Department => department !== UNCLASSIFIED_DEPARTMENT);
 const uploadAccept = '.pdf,.docx,.pptx,.xlsx,.md,.txt';
 const supportedUploadExt = new Set(['.pdf', '.md', '.txt']);
 const futureUploadExt = new Set(['.docx', '.pptx', '.xlsx']);
@@ -76,6 +75,8 @@ function TopicList({
 export function AddPage() {
   const go = useUiStore((state) => state.go);
   const showToast = useUiStore((state) => state.showToast);
+  const workspaces = useUiStore((state) => state.workspaces);
+  const activeWorkspaceId = useUiStore((state) => state.activeWorkspaceId);
   const { data: topics = [] } = useTopics();
   const topicMutations = useTopicMutations();
   const ingest = useIngest();
@@ -89,15 +90,21 @@ export function AddPage() {
   const [newTopicName, setNewTopicName] = useState('');
   const [quickTopicName, setQuickTopicName] = useState('');
   const [title, setTitle] = useState('');
-  const [department, setDepartment] = useState<Department>(departments[0]!);
+  const [workspaceId, setWorkspaceId] = useState(activeWorkspaceId);
   const [mode, setMode] = useState<InputMode>('file');
   const [manualContent, setManualContent] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const [source, setSource] = useState('');
 
+  const selectedWorkspace = workspaces.find((workspace) => workspace.id === workspaceId) ?? workspaces[0];
+
   useEffect(() => {
     if (!selectedTopic && assignableTopics[0]) setSelectedTopic(assignableTopics[0].name);
   }, [assignableTopics, selectedTopic]);
+
+  useEffect(() => {
+    setWorkspaceId(activeWorkspaceId);
+  }, [activeWorkspaceId]);
 
   const fileError = file && futureUploadExt.has(fileExt(file)) ? 'DOCX/PPTX/XLSX 파일 추출은 추후 지원 예정입니다.' : null;
   const unsupportedFile = file && !supportedUploadExt.has(fileExt(file)) && !futureUploadExt.has(fileExt(file));
@@ -106,7 +113,7 @@ export function AddPage() {
     ingestFile.isPending ||
     !selectedTopic ||
     !title.trim() ||
-    !department ||
+    !selectedWorkspace ||
     (mode === 'manual' ? !manualContent.trim() : mode === 'file' ? !file || Boolean(fileError) || Boolean(unsupportedFile) : true);
   const mutationError = ingest.error ?? ingestFile.error;
 
@@ -148,7 +155,7 @@ export function AddPage() {
     const meta = {
       title: title.trim(),
       topic: selectedTopic,
-      department,
+      workspace: selectedWorkspace.name,
       ...(sourceRef ? { sourceLabel: sourceRef } : {}),
     };
 
@@ -260,10 +267,10 @@ export function AddPage() {
               <input value={title} placeholder="예: 법인카드 사용 기준" onChange={(event) => setTitle(event.target.value)} />
             </label>
             <label>
-              <span>부서 *</span>
-              <select value={department} onChange={(event) => setDepartment(event.target.value as Department)}>
-                {departments.map((item) => (
-                  <option key={item} value={item}>{item}</option>
+              <span>워크스페이스 *</span>
+              <select value={selectedWorkspace?.id ?? ''} onChange={(event) => setWorkspaceId(event.target.value)}>
+                {workspaces.map((workspace) => (
+                  <option key={workspace.id} value={workspace.id}>{workspace.name}</option>
                 ))}
               </select>
             </label>

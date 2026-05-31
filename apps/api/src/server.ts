@@ -146,7 +146,7 @@ export function buildServer({
       title: fields.title || path.parse(fileName).name || 'Uploaded document',
       contentMarkdown,
       topic: fields.topic || undefined,
-      department: fields.department || undefined,
+      workspace: fields.workspace || fields.department || undefined,
       sourceLabel: fields.sourceLabel || fileName || undefined,
     });
   }
@@ -243,12 +243,13 @@ export function buildServer({
 
   app.post('/api/ingest', async (request) => {
     const body = IngestRequestSchema.parse(request.body);
+    const workspace = body.workspace ?? body.department;
     return store.ingest({
       title: body.title,
       contentMarkdown: body.contentMarkdown,
       parentId: body.parentId ?? null,
       ...(body.topic ? { topic: body.topic } : {}),
-      ...(body.department ? { department: body.department } : {}),
+      ...(workspace ? { workspace } : {}),
       ...(body.sourceLabel ? { sourceLabel: body.sourceLabel } : {}),
     });
   });
@@ -261,7 +262,7 @@ export function buildServer({
       contentMarkdown: input.contentMarkdown,
       ...(input.parentId ? { parentId: input.parentId } : {}),
       ...(input.topic ? { topic: input.topic } : {}),
-      ...(input.department ? { department: input.department } : {}),
+      ...(input.workspace ? { workspace: input.workspace } : {}),
       ...(input.sourceLabel ? { sourceLabel: input.sourceLabel } : {}),
     });
   });

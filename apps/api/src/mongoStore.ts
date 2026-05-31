@@ -8,7 +8,6 @@ import {
   type AgentPreviewResult,
   type AgentPreviewRun,
   type CreateUserBody,
-  type Department,
   type DocumentDTO,
   type ActivityEntry,
   type AiTagSuggestion,
@@ -115,7 +114,7 @@ export class MongoWekiFlowStore implements WekiFlowStore {
     contentMarkdown: string;
     parentId?: string | null;
     topic?: string;
-    department?: Department;
+    workspace?: string;
     sourceLabel?: string;
   }): Promise<{ doc: DocumentDTO; job: JobRef }> {
     const doc = await this.docs.createDraft(input);

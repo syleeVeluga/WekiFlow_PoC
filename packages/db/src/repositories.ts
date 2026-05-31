@@ -5,7 +5,6 @@ import {
   ingestSourceNote,
   normalizeEntityName,
   type AgentStepDTO,
-  type Department,
   type DocumentDTO,
   type DocumentStatus,
   type EmbedFn,
@@ -94,7 +93,7 @@ export function createDocumentsRepo(db: Db) {
       contentMarkdown: string;
       parentId?: string | null;
       topic?: string;
-      department?: Department;
+      workspace?: string;
       sourceLabel?: string;
     }): Promise<DocumentDTO> {
       const now = new Date();
