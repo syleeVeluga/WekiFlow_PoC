@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import type { Topic } from '@wf/shared';
+import { UNCLASSIFIED_TOPIC_NAME, type Topic } from '@wf/shared';
 import { useIngest, useIngestFile } from '../../api/hooks.js';
 import { useTopics, useTopicMutations } from '../../data/hooks.js';
 import { useUiStore } from '../../store.js';
+import { TopicChipGrid } from '../common/TopicChipGrid.js';
 
 const uploadAccept = '.pdf,.docx,.pptx,.xlsx,.md,.txt';
 const supportedUploadExt = new Set(['.pdf', '.md', '.txt']);
@@ -86,9 +87,8 @@ export function AddPage() {
   const userTopics = assignableTopics.filter((topic) => topic.source === 'user');
   const systemTopics = assignableTopics.filter((topic) => topic.source === 'system');
 
-  const [selectedTopic, setSelectedTopic] = useState('');
+  const [selectedTopic, setSelectedTopic] = useState<string>(UNCLASSIFIED_TOPIC_NAME);
   const [newTopicName, setNewTopicName] = useState('');
-  const [quickTopicName, setQuickTopicName] = useState('');
   const [title, setTitle] = useState('');
   const [workspaceId, setWorkspaceId] = useState(activeWorkspaceId);
   const [mode, setMode] = useState<InputMode>('file');
@@ -99,10 +99,6 @@ export function AddPage() {
   const selectedWorkspace = workspaces.find((workspace) => workspace.id === workspaceId) ?? workspaces[0];
 
   useEffect(() => {
-    if (!selectedTopic && assignableTopics[0]) setSelectedTopic(assignableTopics[0].name);
-  }, [assignableTopics, selectedTopic]);
-
-  useEffect(() => {
     setWorkspaceId(activeWorkspaceId);
   }, [activeWorkspaceId]);
 
@@ -111,7 +107,6 @@ export function AddPage() {
   const submitDisabled =
     ingest.isPending ||
     ingestFile.isPending ||
-    !selectedTopic ||
     !title.trim() ||
     !selectedWorkspace ||
     (mode === 'manual' ? !manualContent.trim() : mode === 'file' ? !file || Boolean(fileError) || Boolean(unsupportedFile) : true);
@@ -132,7 +127,6 @@ export function AddPage() {
       onSuccess: (topic) => {
         setSelectedTopic(topic.name);
         setNewTopicName('');
-        setQuickTopicName('');
         showToast('주제를 추가했습니다.', 'ok');
       },
     });
@@ -141,7 +135,7 @@ export function AddPage() {
   const deleteTopic = (topic: Topic) => {
     topicMutations.remove.mutate(topic.id, {
       onSuccess: () => {
-        if (selectedTopic === topic.name) setSelectedTopic(systemTopics[0]?.name ?? '');
+        if (selectedTopic === topic.name) setSelectedTopic(systemTopics[0]?.name ?? UNCLASSIFIED_TOPIC_NAME);
         showToast('주제를 삭제했습니다.', 'ok');
       },
     });
@@ -219,38 +213,19 @@ export function AddPage() {
         <section className="add-card">
           <div className="add-card-head">
             <div>
-              <p className="eyebrow">Required</p>
+              <p className="eyebrow">Optional</p>
               <h1>주제 배정</h1>
             </div>
-            <span className="add-required">필수</span>
+            <span className="add-optional">선택</span>
           </div>
-          <p className="add-help">검토할 콘텐츠가 들어갈 주제를 하나 선택합니다. 새 주제는 생성 후 자동 선택됩니다.</p>
-          <div className="add-chip-grid">
-            {assignableTopics.map((topic) => (
-              <button
-                type="button"
-                key={topic.id}
-                className={`add-chip ${selectedTopic === topic.name ? 'on' : ''}`}
-                onClick={() => setSelectedTopic(topic.name)}
-              >
-                {topic.name}
-              </button>
-            ))}
-            <label className="add-chip add-chip-new">
-              <span>+ 새 주제</span>
-              <input
-                value={quickTopicName}
-                placeholder="입력 후 Enter"
-                onChange={(event) => setQuickTopicName(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter') {
-                    event.preventDefault();
-                    createTopic(quickTopicName);
-                  }
-                }}
-              />
-            </label>
-          </div>
+          <p className="add-help">검토할 콘텐츠가 들어갈 주제를 선택합니다. 선택하지 않으면 미분류로 배정되며, 나중에 페이지에서 변경할 수 있습니다.</p>
+          <TopicChipGrid
+            topics={topics}
+            selected={selectedTopic}
+            onSelect={setSelectedTopic}
+            onCreate={createTopic}
+            createPending={topicMutations.create.isPending}
+          />
         </section>
 
         <section className="add-card">

@@ -51,6 +51,14 @@ export function usePatchKnowledge() {
   });
 }
 
+export function useSetKnowledgeCategory() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, category }: { id: string; category: string }) => dataClient.setKnowledgeCategory(id, category),
+    onSuccess: () => invalidateWiki(qc),
+  });
+}
+
 export function useResolveReview() {
   const qc = useQueryClient();
   return useMutation({

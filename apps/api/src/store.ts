@@ -89,6 +89,12 @@ export interface WekiFlowStore {
   listKnowledge(q: KnowledgeQuery): Promise<KnowledgeItem[]>;
   getKnowledge(id: string): Promise<KnowledgeItem | null>;
   patchKnowledge(id: string, body: { contentMarkdown: string }): Promise<KnowledgeItem | null>;
+  /**
+   * Reassign a single page's topic. Empty/blank → 미분류. Trimming/defaulting is owned here, not by
+   * callers. A reassignment is metadata, not a content edit, so it intentionally does NOT bump
+   * modCount or append a lastChange/history entry (unlike patchKnowledge).
+   */
+  setKnowledgeCategory(id: string, category: string): Promise<KnowledgeItem | null>;
   listTopics(): Promise<Topic[]>;
   createTopic(name: string): Promise<Topic>;
   deleteTopic(id: string): Promise<{ ok: boolean; reassigned: number; statusCode?: number; error?: string }>;
@@ -511,6 +517,15 @@ export class InMemoryWekiFlowStore implements WekiFlowStore {
     this.knowledge.set(id, updated);
     const doc = this.documents.get(id);
     if (doc) this.documents.set(id, { ...doc, contentMarkdown: updated.contentMarkdown, version: doc.version + 1 });
+    return updated;
+  }
+
+  async setKnowledgeCategory(id: string, category: string): Promise<KnowledgeItem | null> {
+    const current = this.knowledge.get(id);
+    if (!current) return null;
+    const next = category.trim() || UNCLASSIFIED_TOPIC_NAME;
+    const updated = { ...current, category: next };
+    this.knowledge.set(id, updated);
     return updated;
   }
 

@@ -340,6 +340,17 @@ export function buildServer({
     return item;
   });
 
+  // Reassign a page's topic (헤더 주제 변경): empty/blank → 미분류 (편집 권한 이상).
+  app.patch('/api/knowledge/:id/category', async (request, reply) => {
+    const me = await currentUser(request);
+    if (!me || !canEdit(me.role)) return reply.code(403).send({ error: 'Forbidden' });
+    const { id } = request.params as { id: string };
+    const { category } = request.body as { category?: string };
+    const item = await store.setKnowledgeCategory(id, category ?? '');
+    if (!item) return reply.code(404).send({ error: 'Not found' });
+    return item;
+  });
+
   app.get('/api/topics', async () => store.listTopics());
 
   app.post('/api/topics', async (request) => {

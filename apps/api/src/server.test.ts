@@ -364,6 +364,52 @@ describe('@wf/api routes', () => {
     await app.close();
   });
 
+  it('reassigns a page topic via PATCH /knowledge/:id/category and defaults blank to 미분류', async () => {
+    const app = buildServer();
+
+    const target = (await app.inject({ method: 'GET', url: '/api/knowledge' })).json()[0];
+
+    // 익명/뷰어는 분류 변경 불가 (편집 권한 이상).
+    const denied = await app.inject({
+      method: 'PATCH',
+      url: `/api/knowledge/${target.id}/category`,
+      payload: { category: '복지' },
+    });
+    expect(denied.statusCode).toBe(403);
+
+    const ownerToken = await login(app, 'admin01@veluga.io', 'admin01@veluga.io');
+    const auth = { authorization: `Bearer ${ownerToken}` };
+
+    const moved = await app.inject({
+      method: 'PATCH',
+      url: `/api/knowledge/${target.id}/category`,
+      headers: auth,
+      payload: { category: '복지' },
+    });
+    expect(moved.statusCode).toBe(200);
+    expect(moved.json()).toMatchObject({ id: target.id, category: '복지' });
+
+    // 빈 값은 미분류로 정규화.
+    const cleared = await app.inject({
+      method: 'PATCH',
+      url: `/api/knowledge/${target.id}/category`,
+      headers: auth,
+      payload: { category: '   ' },
+    });
+    expect(cleared.statusCode).toBe(200);
+    expect(cleared.json().category).toBe('미분류');
+
+    const missing = await app.inject({
+      method: 'PATCH',
+      url: '/api/knowledge/does-not-exist/category',
+      headers: auth,
+      payload: { category: '복지' },
+    });
+    expect(missing.statusCode).toBe(404);
+
+    await app.close();
+  });
+
   it('authenticates, gates user management, and separates 검토(review) from 승인(approve)', async () => {
     const app = buildServer();
 

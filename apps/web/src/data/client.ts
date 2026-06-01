@@ -31,6 +31,9 @@ export const dataClient = {
   patchKnowledge(id: string, contentMarkdown: string): Promise<KnowledgeItem> {
     return request(`/knowledge/${id}`, { method: 'PATCH', body: JSON.stringify({ contentMarkdown }) });
   },
+  setKnowledgeCategory(id: string, category: string): Promise<KnowledgeItem> {
+    return request(`/knowledge/${id}/category`, { method: 'PATCH', body: JSON.stringify({ category }) });
+  },
   listTopics(): Promise<Topic[]> {
     return request('/topics');
   },

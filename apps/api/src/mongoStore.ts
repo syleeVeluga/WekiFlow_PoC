@@ -279,6 +279,17 @@ export class MongoWekiFlowStore implements WekiFlowStore {
     return updated;
   }
 
+  async setKnowledgeCategory(id: string, category: string): Promise<KnowledgeItem | null> {
+    const current = await this.getKnowledge(id);
+    if (!current) return null;
+    const next = category.trim() || UNCLASSIFIED_TOPIC_NAME;
+    await this.dbCollection('documents').updateOne(
+      { 'wiki.id': id },
+      { $set: { 'wiki.category': next, updatedAt: new Date() } },
+    );
+    return { ...current, category: next };
+  }
+
   async listTopics(): Promise<Topic[]> {
     const stored = (await this.dbCollection('topics').find({}).toArray()).map((row) => row as unknown as Topic);
     const items = await this.listKnowledge({ person: 'all', topic: 'all', tag: null, status: 'all', q: '', sort: 'uses' });

@@ -1,12 +1,13 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
-import { canEdit } from '@wf/shared';
+import { canEdit, type KnowledgeItem } from '@wf/shared';
 import { useConnections, useDocument } from '../../api/hooks.js';
-import { useKnowledgeItem, usePatchKnowledge } from '../../data/hooks.js';
+import { useKnowledgeItem, usePatchKnowledge, useSetKnowledgeCategory, useTopicMutations, useTopics } from '../../data/hooks.js';
 import { useAuthStore } from '../../auth/store.js';
 import { useUiStore } from '../../store.js';
 import { isObjectId } from '../../lib/docId.js';
 import { BlockNotePane } from '../blocknote/BlockNotePane.js';
-import { Badge } from '../common/Primitives.js';
+import { Badge, Modal } from '../common/Primitives.js';
+import { TopicChipGrid } from '../common/TopicChipGrid.js';
 
 const MonacoDiffPane = lazy(async () => {
   const module = await import('../monaco/MonacoDiffPane.js');
@@ -92,6 +93,8 @@ export function DocPage() {
   const [draft, setDraft] = useState<string | null>(null);
   // Which revision the 변경 기록 tab has expanded into a diff (null = list only). Reset on doc/tab change.
   const [openRevision, setOpenRevision] = useState<string | null>(null);
+  // Whether the 주제 변경 modal is open (editable wiki pages only).
+  const [catOpen, setCatOpen] = useState(false);
 
   useEffect(() => {
     setDraft(doc?.contentMarkdown ?? null);
@@ -99,6 +102,7 @@ export function DocPage() {
 
   useEffect(() => {
     setOpenRevision(null);
+    setCatOpen(false);
   }, [selectedDocId, docTab]);
 
   const historyMeta = useMemo(() => {
@@ -119,7 +123,8 @@ export function DocPage() {
 
     return (
       <section className="pg doc-page">
-        <div className="topbar"><div><h1>{doc.title}</h1><p>{doc.category} · {doc.department}</p></div><button className="btn" onClick={() => openCategory(doc.category)}>← 카테고리로</button></div>
+        <div className="topbar"><div><h1>{doc.title}</h1><p>{editable ? <button type="button" className="doc-cat-edit" title="주제 변경" onClick={() => setCatOpen(true)}>{doc.category} <span className="doc-cat-edit-ic">✎</span></button> : doc.category} · {doc.department}</p></div><button className="btn" onClick={() => openCategory(doc.category)}>← 카테고리로</button></div>
+        {catOpen ? <CategoryPickerModal item={doc} onClose={() => setCatOpen(false)} /> : null}
         <div className="doc-toolbar"><div className="tabs">{DOC_TABS.map((tab) => <button className={docTab === tab ? 'on' : ''} onClick={() => setDocTab(tab)} key={tab}>{TAB_LABELS[tab]}</button>)}</div><button className="btn" onClick={() => showToast('챗봇 컨텍스트를 전환했습니다.', 'inf')}>챗봇 토글</button></div>
         <div className="card doc-body">
           {docTab === 'edit' ? (
@@ -199,4 +204,43 @@ export function DocPage() {
   }
 
   return <section className="pg stub"><h1>문서를 선택하세요</h1></section>;
+}
+
+/** 주제 변경 모달: 기존 주제 선택 · 미분류로 되돌리기 · 새 주제 인라인 생성. */
+function CategoryPickerModal({ item, onClose }: { item: KnowledgeItem; onClose: () => void }) {
+  const { data: topics = [] } = useTopics();
+  const topicMutations = useTopicMutations();
+  const setCategory = useSetKnowledgeCategory();
+  const showToast = useUiStore((s) => s.showToast);
+
+  const assign = (category: string) => {
+    if (setCategory.isPending) return;
+    setCategory.mutate(
+      { id: item.id, category },
+      {
+        onSuccess: () => {
+          showToast('주제를 변경했습니다.', 'ok');
+          onClose();
+        },
+      },
+    );
+  };
+
+  const createAndAssign = (name: string) => {
+    topicMutations.create.mutate(name, { onSuccess: (topic) => assign(topic.name) });
+  };
+
+  return (
+    <Modal title="주제 변경" onClose={onClose}>
+      <p className="add-help">이 페이지를 배정할 주제를 선택하거나 새 주제를 만듭니다.</p>
+      <TopicChipGrid
+        topics={topics}
+        selected={item.category}
+        onSelect={assign}
+        onCreate={createAndAssign}
+        createPending={topicMutations.create.isPending}
+        disabled={setCategory.isPending}
+      />
+    </Modal>
+  );
 }

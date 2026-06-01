@@ -21,6 +21,7 @@
 .add-card{background:#fff;border:1px solid var(--line);border-radius:var(--r);padding:18px;display:grid;gap:14px}
 .add-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
 .add-required{font-size:12px;color:var(--red);font-weight:700}
+.add-optional{font-size:12px;color:var(--muted);font-weight:700}
 .add-chip-grid{display:flex;flex-wrap:wrap;gap:8px}
 .add-chip{min-height:36px;border:1px solid var(--line);border-radius:999px;background:#fff;color:var(--ink);padding:7px 12px;font-weight:700}
 .add-chip:hover,.add-chip.on{border-color:var(--primary);background:#f5f3ff;color:var(--primary)}
