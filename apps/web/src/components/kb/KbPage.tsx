@@ -1,9 +1,9 @@
-import type { ReactNode } from 'react';
 import { UNCLASSIFIED_TOPIC_NAME, createDefaultTopics, type KnowledgeFreshness, type KnowledgeItem, type Topic } from '@wf/shared';
 import { useAiTagMutations, useAiTagSuggestions, useKnowledgeItems, useTopics, useTopicMutations } from '../../data/hooks.js';
 import { avColor, catTint } from '../../lib/format.js';
 import { useUiStore } from '../../store.js';
 import { Modal } from '../common/Primitives.js';
+import { BlockNotePane } from '../blocknote/BlockNotePane.js';
 
 const STATUS = [
   { key: 'all', label: '전체', color: undefined },
@@ -247,36 +247,11 @@ function IntegratedView({
             <span className="intg-doc-meta-item">📍 {doc.sourceLabel}</span>
             <span className="intg-doc-meta-item">📊 참조 {doc.usageCount}회</span>
           </div>
-          <IntgBody markdown={doc.contentMarkdown} />
+          <div className="intg-doc-body"><BlockNotePane markdown={doc.contentMarkdown} editable={false} bare /></div>
         </article>
       ))}
     </div>
   );
-}
-
-// 신뢰된 시드 본문을 ■ 헤더 / • · - · ①·N. 목록 / 문단으로 렌더(목업 fmtBody 이식). # 제목 줄은 별도 표기되어 생략.
-function IntgBody({ markdown }: { markdown: string }) {
-  const nodes: ReactNode[] = [];
-  let list: string[] = [];
-  let key = 0;
-  const flush = () => {
-    if (list.length) {
-      const current = list;
-      nodes.push(<ul key={`u${key++}`}>{current.map((text, i) => <li key={i}>{text}</li>)}</ul>);
-      list = [];
-    }
-  };
-  for (const raw of markdown.split(/\r?\n/)) {
-    const line = raw.trim();
-    if (!line) { flush(); continue; }
-    if (line.startsWith('#')) continue;
-    if (line.startsWith('■')) { flush(); nodes.push(<h4 key={`h${key++}`}>{line.replace(/^■\s*/, '')}</h4>); }
-    else if (line.startsWith('•') || line.startsWith('-')) list.push(line.replace(/^[•-]\s*/, ''));
-    else if (/^[①②③④⑤⑥⑦⑧⑨⑩]/.test(line) || /^\d+\./.test(line)) list.push(line);
-    else { flush(); nodes.push(<p key={`p${key++}`}>{line}</p>); }
-  }
-  flush();
-  return <div className="intg-doc-body">{nodes}</div>;
 }
 
 function EmptyKB() {

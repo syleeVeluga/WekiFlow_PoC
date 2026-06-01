@@ -118,11 +118,10 @@
 .intg-doc-meta{display:flex;align-items:center;gap:14px;font-size:12px;color:var(--stone);margin-bottom:18px;flex-wrap:wrap}
 .intg-doc-meta-item{display:flex;align-items:center;gap:5px}
 .intg-doc-body{font-size:14px;color:var(--charcoal);line-height:1.75}
-.intg-doc-body h4{font-size:15px;font-weight:600;color:var(--ink);margin:16px 0 8px}
-.intg-doc-body p{margin-bottom:10px}
-.intg-doc-body ul{margin:6px 0 12px 4px;list-style:none;padding:0}
-.intg-doc-body li{padding-left:18px;position:relative;margin-bottom:5px}
-.intg-doc-body li::before{content:'•';position:absolute;left:4px;color:var(--muted)}
+/* read-only BlockNote 미리보기: 에디터 거터/패딩·배경을 제거해 미리보기 카드에 맞춤 */
+.intg-doc-body .bn-container,.intg-doc-body .bn-editor{background:transparent}
+.intg-doc-body .bn-editor{padding-inline:0}
+.intg-doc-body .bn-block-outer:first-child .bn-block-content{padding-top:0}
 
 /* shared list row (also used by HomePage + KB modals — keep) */
 .filter-row{display:flex;align-items:center;gap:8px;justify-content:space-between;border:1px solid var(--line);background:#fff;border-radius:var(--r);padding:8px}

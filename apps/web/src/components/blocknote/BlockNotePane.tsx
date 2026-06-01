@@ -11,10 +11,12 @@ export function BlockNotePane({
   markdown,
   editable,
   onMarkdownChange,
+  bare = false,
 }: {
   markdown: string;
   editable: boolean;
   onMarkdownChange?: (markdown: string) => void;
+  bare?: boolean;
 }) {
   const editor = useCreateBlockNote();
   const applyingMarkdown = useRef(false);
@@ -37,6 +39,10 @@ export function BlockNotePane({
     if (applyingMarkdown.current) return;
     onMarkdownChange?.(editor.blocksToMarkdownLossy(editor.document));
   }, [editor, onMarkdownChange]);
+
+  if (bare) {
+    return <RuntimeBlockNoteView editor={editor} editable={editable} onChange={handleChange} theme="light" />;
+  }
 
   return (
     <section className="panel" data-editor="blocknote" aria-label="BlockNote editor">

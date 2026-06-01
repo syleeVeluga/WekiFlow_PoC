@@ -45,7 +45,3 @@ export function srcLevel(channel: string): SourceAuthority {
   if (channel.includes('Slack') || channel.includes('#')) return 'L3';
   return 'L4';
 }
-
-export function bodyBlocks(markdown: string) {
-  return markdown.split(/\r?\n/).filter((line) => line.trim().length > 0);
-}
