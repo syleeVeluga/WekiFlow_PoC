@@ -10,6 +10,14 @@ export async function ensureIndexes(db: Db): Promise<void> {
     db.collection('documents').createIndex({ topicId: 1 }),
     db.collection('documents').createIndex({ department: 1 }),
     db.collection('documents').createIndex({ freshness: 1 }),
+    db.collection('documents').createIndex(
+      { 'ingestion.idempotencyScope': 1 },
+      {
+        unique: true,
+        partialFilterExpression: { 'ingestion.idempotencyScope': { $type: 'string' } },
+      },
+    ),
+    db.collection('documents').createIndex({ 'ingestion.workspaceId': 1, 'ingestion.sourceName': 1 }),
     db.collection('chunks').createIndex({ documentId: 1, chunkIndex: 1 }, { unique: true }),
     db.collection('kg_nodes').createIndex({ normalizedName: 1 }, { unique: true }),
     db.collection('kg_nodes').createIndex({ type: 1 }),

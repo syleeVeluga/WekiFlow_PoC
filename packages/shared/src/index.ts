@@ -26,10 +26,27 @@ export type JobQueue = z.infer<typeof JobQueueSchema>;
 export type JobType = z.infer<typeof JobTypeSchema>;
 
 export const SourceRefSchema = z.object({
-  type: z.enum(['upload', 'datasource', 'manual']),
+  type: z.enum(['upload', 'datasource', 'manual', 'api']),
   ref: z.string(),
   note: z.string().default(''),
 });
+
+export type SourceRef = z.infer<typeof SourceRefSchema>;
+
+export const IngestionInfoSchema = z.object({
+  userId: z.string().min(1).optional(),
+  workspaceId: z.string().min(1).optional(),
+  sourceName: z.string().min(1).optional(),
+  idempotencyKey: z.string().min(1).optional(),
+  idempotencyScope: z.string().min(1).optional(),
+  contentType: z.string().min(1).optional(),
+  sourceLabel: z.string().min(1).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+  jobId: z.string().min(1).optional(),
+  receivedAt: z.string().optional(),
+});
+
+export type IngestionInfo = z.infer<typeof IngestionInfoSchema>;
 
 export const DocumentSchema = z.object({
   id: z.string(),
@@ -42,6 +59,7 @@ export const DocumentSchema = z.object({
   draftMarkdown: z.string().nullable(),
   version: z.number().int().min(1),
   sourceRefs: z.array(SourceRefSchema).default([]),
+  ingestion: IngestionInfoSchema.optional(),
   createdBy: z.string().optional(),
   approvedBy: z.string().nullable().optional(),
   createdAt: z.string(),
@@ -174,13 +192,56 @@ export const IngestRequestSchema = z.object({
 
 export type IngestRequest = z.infer<typeof IngestRequestSchema>;
 
+export const ExternalIngestionRequestSchema = z.object({
+  sourceName: z.string().min(1).max(200),
+  idempotencyKey: z.string().min(1).max(512).optional(),
+  contentType: z.string().min(1).default('text/plain'),
+  titleHint: z.string().min(1).optional(),
+  topic: z.string().min(1).optional(),
+  sourceLabel: z.string().min(1).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+  rawPayload: z.object({
+    text: z.string().min(1),
+  }),
+});
+
+export type ExternalIngestionRequest = z.infer<typeof ExternalIngestionRequestSchema>;
+
+export function buildIngestionIdempotencyScope(input: {
+  userId?: string | undefined;
+  workspaceId?: string | undefined;
+  sourceName?: string | undefined;
+  idempotencyKey?: string | undefined;
+}): string | undefined {
+  // The scope is owner-bound (userId) so two callers can reuse the same idempotencyKey without
+  // colliding — a replay must never surface another user's document.
+  const userId = input.userId?.trim();
+  const workspaceId = input.workspaceId?.trim();
+  const sourceName = input.sourceName?.trim();
+  const idempotencyKey = input.idempotencyKey?.trim();
+  return userId && workspaceId && sourceName && idempotencyKey
+    ? [userId, workspaceId, sourceName, idempotencyKey].join('\u0000')
+    : undefined;
+}
+
 /** Builds the `sourceRefs[].note` string recorded for a manual/file ingest. */
-export function ingestSourceNote(input: { topic?: string; workspace?: string; department?: string; sourceLabel?: string }): string {
+export function ingestSourceNote(input: {
+  topic?: string;
+  workspace?: string;
+  department?: string;
+  sourceLabel?: string;
+  sourceName?: string;
+  idempotencyKey?: string;
+  contentType?: string;
+}): string {
   const workspace = input.workspace ?? input.department;
   return [
     input.topic ? `topic=${input.topic}` : null,
     workspace ? `workspace=${workspace}` : null,
     input.sourceLabel ? `source=${input.sourceLabel}` : null,
+    input.sourceName ? `sourceName=${input.sourceName}` : null,
+    input.idempotencyKey ? `idempotencyKey=${input.idempotencyKey}` : null,
+    input.contentType ? `contentType=${input.contentType}` : null,
   ]
     .filter((part): part is string => part != null)
     .join('; ');
@@ -286,6 +347,12 @@ export const EnvSchema = z.object({
   GOOGLE_API_KEY: z.string().optional(),
   DOCKER_SOCKET: z.string().default('//./pipe/docker_engine'),
   VECTOR_SEARCH_MODE: z.enum(['app-cosine', 'atlas']).default('app-cosine'),
+  MAIN_WORKER_CONCURRENCY: z.coerce.number().int().positive().default(2),
+  GRAPH_WORKER_CONCURRENCY: z.coerce.number().int().positive().default(2),
+  MAIN_QUEUE_RATE_MAX: z.coerce.number().int().nonnegative().default(30),
+  MAIN_QUEUE_RATE_DURATION_MS: z.coerce.number().int().positive().default(60_000),
+  GRAPH_QUEUE_RATE_MAX: z.coerce.number().int().nonnegative().default(60),
+  GRAPH_QUEUE_RATE_DURATION_MS: z.coerce.number().int().positive().default(60_000),
   ADMIN_EMAIL: z.string().default('admin01@veluga.io'),
   ADMIN_PASSWORD: z.string().default('admin01@veluga.io'),
 });

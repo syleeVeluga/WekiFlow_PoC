@@ -38,7 +38,8 @@ import {
   loadEnv,
   normalizeEntityName,
 } from '@wf/shared';
-import type { ApproveResult, LoginResult, OkResult, SettingsResult, UserResult, WekiFlowStore } from './store.js';
+import { buildReplayedIngestResult } from './store.js';
+import type { ApproveResult, IngestInput, IngestResult, LoginResult, OkResult, SettingsResult, UserResult, WekiFlowStore } from './store.js';
 
 function normalizePreviewState(state: string | undefined): AgentPreviewRun['status'] {
   if (state === 'completed') return 'completed';
@@ -135,17 +136,34 @@ export class MongoWekiFlowStore implements WekiFlowStore {
     return this.docs.createDocument(input);
   }
 
-  async ingest(input: {
-    title: string;
-    contentMarkdown: string;
-    parentId?: string | null;
-    topic?: string;
-    workspace?: string;
-    sourceLabel?: string;
-  }): Promise<{ doc: DocumentDTO; job: JobRef }> {
-    const doc = await this.docs.createDraft(input);
+  private ingestionLookup(input: IngestInput) {
+    const { userId, workspaceId, sourceName, idempotencyKey } = input.ingestion ?? {};
+    if (!userId || !workspaceId || !sourceName || !idempotencyKey) return undefined;
+    return { userId, workspaceId, sourceName, idempotencyKey };
+  }
+
+  async ingest(input: IngestInput): Promise<IngestResult> {
+    const lookup = this.ingestionLookup(input);
+    if (lookup) {
+      const existing = await this.docs.findByIngestionKey(lookup);
+      if (existing) return buildReplayedIngestResult(existing);
+    }
+
+    let doc: DocumentDTO;
+    try {
+      doc = await this.docs.createDraft(input);
+    } catch (error) {
+      // Lost the race to a concurrent identical request: the unique idempotencyScope index rejected
+      // the insert (11000), so the winner's document already exists — replay it instead of failing.
+      if ((error as { code?: number }).code === 11000 && lookup) {
+        const existing = await this.docs.findByIngestionKey(lookup);
+        if (existing) return buildReplayedIngestResult(existing);
+      }
+      throw error;
+    }
     const job = await this.enqueue(this.mainQueue, 'INGEST', doc.id);
-    return { doc, job };
+    const updated = doc.ingestion ? await this.docs.setIngestionJobId(doc.id, job.id) : undefined;
+    return { doc: updated ?? doc, job };
   }
 
   async agentPreview(input: { title: string; contentMarkdown: string; commit?: boolean }): Promise<{ jobId: string; documentId: string }> {

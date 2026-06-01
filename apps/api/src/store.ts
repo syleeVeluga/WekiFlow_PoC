@@ -20,10 +20,13 @@ import {
   type TreeCategory,
   type UpdateAppSettings,
   type JobRef,
+  type IngestionInfo,
+  type SourceRef,
   type TreeNode,
   type User,
   type UserRole,
   DEFAULT_APP_SETTINGS,
+  buildIngestionIdempotencyScope,
   UNCLASSIFIED_TOPIC_NAME,
   buildIngestedKnowledgeItem,
   canApprove,
@@ -61,6 +64,41 @@ export type SettingsResult =
   | { ok: true; settings: AppSettings }
   | { ok: false; statusCode: number; error: string };
 
+export interface IngestInput {
+  title: string;
+  contentMarkdown: string;
+  parentId?: string | null;
+  topic?: string;
+  workspace?: string;
+  sourceLabel?: string;
+  sourceName?: string;
+  idempotencyKey?: string;
+  contentType?: string;
+  sourceType?: SourceRef['type'];
+  sourceRef?: string;
+  ingestion?: IngestionInfo;
+}
+
+/** Synthesizes the result returned when an idempotent ingest replays an existing document. */
+export function buildReplayedIngestResult(doc: DocumentDTO): IngestResult {
+  return {
+    doc,
+    job: {
+      id: doc.ingestion?.jobId ?? `replayed-${doc.id}`,
+      type: 'INGEST',
+      documentId: doc.id,
+      createdAt: doc.createdAt,
+    },
+    replayed: true,
+  };
+}
+
+export interface IngestResult {
+  doc: DocumentDTO;
+  job: JobRef;
+  replayed?: boolean;
+}
+
 export interface WekiFlowStore {
   seed?(): Promise<void> | void;
   tree(): Promise<TreeNode[]>;
@@ -75,14 +113,7 @@ export interface WekiFlowStore {
     contentMarkdown?: string;
     parentId?: string | null;
   }): Promise<DocumentDTO>;
-  ingest(input: {
-    title: string;
-    contentMarkdown: string;
-    parentId?: string | null;
-    topic?: string;
-    workspace?: string;
-    sourceLabel?: string;
-  }): Promise<{ doc: DocumentDTO; job: JobRef }>;
+  ingest(input: IngestInput): Promise<IngestResult>;
   reviews(): Promise<DocumentDTO[]>;
   approve(id: string, role: UserRole): Promise<ApproveResult>;
   reject(id: string): Promise<DocumentDTO | undefined>;
@@ -254,6 +285,7 @@ export class InMemoryWekiFlowStore implements WekiFlowStore {
     parentId?: string | null;
     status: DocumentDTO['status'];
     sourceRefs: DocumentDTO['sourceRefs'];
+    ingestion?: IngestionInfo;
   }): DocumentDTO {
     const now = new Date().toISOString();
     const id = `doc-${++this.sequence + 1}`;
@@ -268,6 +300,7 @@ export class InMemoryWekiFlowStore implements WekiFlowStore {
       draftMarkdown: null,
       version: 1,
       sourceRefs: input.sourceRefs,
+      ...(input.ingestion ? { ingestion: input.ingestion } : {}),
       createdAt: now,
       updatedAt: now,
     };
@@ -289,20 +322,38 @@ export class InMemoryWekiFlowStore implements WekiFlowStore {
     });
   }
 
-  async ingest(input: {
-    title: string;
-    contentMarkdown: string;
-    parentId?: string | null;
-    topic?: string;
-    workspace?: string;
-    sourceLabel?: string;
-  }): Promise<{ doc: DocumentDTO; job: JobRef }> {
-    const created = this.create({
+  private findByIngestionScope(scope: string): DocumentDTO | undefined {
+    return [...this.documents.values()].find((doc) => doc.ingestion?.idempotencyScope === scope);
+  }
+
+  async ingest(input: IngestInput): Promise<IngestResult> {
+    const idempotencyScope = buildIngestionIdempotencyScope(input.ingestion ?? {});
+    if (idempotencyScope) {
+      const existing = this.findByIngestionScope(idempotencyScope);
+      if (existing) return buildReplayedIngestResult(existing);
+    }
+
+    let created = this.create({
       title: input.title,
       contentMarkdown: input.contentMarkdown,
       parentId: input.parentId ?? null,
       status: 'PROCESSING',
-      sourceRefs: [{ type: 'manual', ref: 'api://ingest', note: ingestSourceNote(input) }],
+      sourceRefs: [
+        {
+          type: input.sourceType ?? 'manual',
+          ref: input.sourceRef ?? 'api://ingest',
+          note: ingestSourceNote(input),
+        },
+      ],
+      ...(input.ingestion
+        ? {
+            ingestion: {
+              ...input.ingestion,
+              ...(idempotencyScope ? { idempotencyScope } : {}),
+              receivedAt: new Date().toISOString(),
+            },
+          }
+        : {}),
     });
     // Retain the assigned topic/workspace so approve() can materialize a KnowledgeItem (the in-memory
     // tree/KB read from this.knowledge, so an approved doc must land there to appear in the tree).
@@ -312,6 +363,10 @@ export class InMemoryWekiFlowStore implements WekiFlowStore {
       ...(input.sourceLabel ? { sourceLabel: input.sourceLabel } : {}),
     });
     const job = this.mainQueue.add('INGEST', { documentId: created.id });
+    if (created.ingestion) {
+      created = { ...created, ingestion: { ...created.ingestion, jobId: job.id } };
+      this.documents.set(created.id, created);
+    }
     // In-memory path runs the stub main worker inline so route tests stay hermetic.
     await this.applyStubMainWorker(created.id);
     return { doc: this.documents.get(created.id)!, job };

@@ -2,6 +2,7 @@ import { ObjectId, type Db, type Document, type WithId } from 'mongodb';
 import { createHash, randomUUID } from 'node:crypto';
 import {
   buildIngestedKnowledgeItem,
+  buildIngestionIdempotencyScope,
   chunkMarkdown,
   AppSettingsSchema,
   DEFAULT_APP_SETTINGS,
@@ -14,9 +15,11 @@ import {
   type DocumentDTO,
   type DocumentStatus,
   type EmbedFn,
+  type IngestionInfo,
   type UpdateAppSettings,
   type KnowledgeItem,
   type RelatedDoc,
+  type SourceRef,
   type TreeNode,
   type Triplet,
   type User,
@@ -47,7 +50,26 @@ function toIso(value: unknown): string {
   return new Date(0).toISOString();
 }
 
+function toIngestionInfo(value: unknown): IngestionInfo | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const raw = value as Record<string, unknown>;
+  const info: IngestionInfo = {};
+  if (typeof raw.workspaceId === 'string') info.workspaceId = raw.workspaceId;
+  if (typeof raw.sourceName === 'string') info.sourceName = raw.sourceName;
+  if (typeof raw.idempotencyKey === 'string') info.idempotencyKey = raw.idempotencyKey;
+  if (typeof raw.idempotencyScope === 'string') info.idempotencyScope = raw.idempotencyScope;
+  if (typeof raw.contentType === 'string') info.contentType = raw.contentType;
+  if (typeof raw.sourceLabel === 'string') info.sourceLabel = raw.sourceLabel;
+  if (raw.metadata && typeof raw.metadata === 'object' && !Array.isArray(raw.metadata)) {
+    info.metadata = raw.metadata as Record<string, unknown>;
+  }
+  if (typeof raw.jobId === 'string') info.jobId = raw.jobId;
+  if (raw.receivedAt != null) info.receivedAt = toIso(raw.receivedAt);
+  return Object.keys(info).length > 0 ? info : undefined;
+}
+
 export function toDocumentDTO(raw: WithId<Document>): DocumentDTO {
+  const ingestion = toIngestionInfo(raw.ingestion);
   return {
     id: raw._id.toString(),
     slug: String(raw.slug ?? ''),
@@ -59,6 +81,7 @@ export function toDocumentDTO(raw: WithId<Document>): DocumentDTO {
     draftMarkdown: raw.draftMarkdown == null ? null : String(raw.draftMarkdown),
     version: typeof raw.version === 'number' ? raw.version : 1,
     sourceRefs: Array.isArray(raw.sourceRefs) ? raw.sourceRefs : [],
+    ...(ingestion ? { ingestion } : {}),
     createdBy: raw.createdBy ? String(raw.createdBy) : undefined,
     approvedBy: raw.approvedBy == null ? undefined : String(raw.approvedBy),
     createdAt: toIso(raw.createdAt),
@@ -104,9 +127,23 @@ export function createDocumentsRepo(db: Db) {
       topic?: string;
       workspace?: string;
       sourceLabel?: string;
+      sourceName?: string;
+      idempotencyKey?: string;
+      contentType?: string;
+      sourceType?: SourceRef['type'];
+      sourceRef?: string;
+      ingestion?: IngestionInfo;
     }): Promise<DocumentDTO> {
       const now = new Date();
       const id = new ObjectId();
+      const idempotencyScope = buildIngestionIdempotencyScope(input.ingestion ?? {});
+      const ingestion = input.ingestion
+        ? {
+            ...input.ingestion,
+            ...(idempotencyScope ? { idempotencyScope } : {}),
+            receivedAt: now,
+          }
+        : undefined;
       const result = await collection.insertOne({
         _id: id,
         slug: makeDocumentSlug(input.title, id),
@@ -122,12 +159,39 @@ export function createDocumentsRepo(db: Db) {
         ...(input.topic ? { topic: input.topic } : {}),
         ...(input.workspace ? { workspace: input.workspace } : {}),
         ...(input.sourceLabel ? { sourceLabel: input.sourceLabel } : {}),
-        sourceRefs: [{ type: 'manual', ref: 'api://ingest', note: ingestSourceNote(input) }],
+        ...(input.sourceName ? { sourceName: input.sourceName } : {}),
+        ...(input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : {}),
+        ...(input.contentType ? { contentType: input.contentType } : {}),
+        ...(ingestion ? { ingestion } : {}),
+        sourceRefs: [{ type: input.sourceType ?? 'manual', ref: input.sourceRef ?? 'api://ingest', note: ingestSourceNote(input) }],
         createdAt: now,
         updatedAt: now,
       });
       const doc = await collection.findOne({ _id: result.insertedId });
       return toDocumentDTO(doc!);
+    },
+
+    async findByIngestionKey(input: {
+      userId: string;
+      workspaceId: string;
+      sourceName: string;
+      idempotencyKey: string;
+    }): Promise<DocumentDTO | undefined> {
+      const idempotencyScope = buildIngestionIdempotencyScope(input);
+      if (!idempotencyScope) return undefined;
+      const doc = await collection.findOne({ 'ingestion.idempotencyScope': idempotencyScope });
+      return doc ? toDocumentDTO(doc) : undefined;
+    },
+
+    async setIngestionJobId(id: string, jobId: string): Promise<DocumentDTO | undefined> {
+      const oid = toObjectId(id);
+      if (!oid) return undefined;
+      const updated = await collection.findOneAndUpdate(
+        { _id: oid },
+        { $set: { 'ingestion.jobId': jobId, updatedAt: new Date() } },
+        { returnDocument: 'after' },
+      );
+      return updated ? toDocumentDTO(updated) : undefined;
     },
 
     async createPreviewDraft(input: {

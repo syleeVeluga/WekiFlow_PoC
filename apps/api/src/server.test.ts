@@ -12,15 +12,17 @@ async function login(app: ReturnType<typeof buildServer>, email: string, passwor
 function multipartPayload(input: {
   fields?: Record<string, string>;
   file?: { name: string; content: string; contentType?: string };
+  files?: Array<{ name: string; content: string; contentType?: string }>;
 }) {
   const boundary = `----wf-${Math.random().toString(16).slice(2)}`;
   const chunks: string[] = [];
   for (const [name, value] of Object.entries(input.fields ?? {})) {
     chunks.push(`--${boundary}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`);
   }
-  if (input.file) {
+  const files = input.files ?? (input.file ? [input.file] : []);
+  for (const file of files) {
     chunks.push(
-      `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${input.file.name}"\r\nContent-Type: ${input.file.contentType ?? 'text/plain'}\r\n\r\n${input.file.content}\r\n`,
+      `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${file.name}"\r\nContent-Type: ${file.contentType ?? 'text/plain'}\r\n\r\n${file.content}\r\n`,
     );
   }
   chunks.push(`--${boundary}--\r\n`);
@@ -176,6 +178,135 @@ describe('@wf/api routes', () => {
     expect((await app.inject({ method: 'POST', url: '/api/ingest/file', ...empty })).statusCode).toBe(422);
 
     await app.close();
+  });
+
+  it('ingests multiple uploaded files as separate documents and rejects invalid batches atomically', async () => {
+    const store = new InMemoryWekiFlowStore();
+    const app = buildServer({ store });
+
+    const upload = multipartPayload({
+      fields: { topic: '복지', department: DepartmentSchema.options[0]! },
+      files: [
+        { name: 'policy-a.md', content: '# A\n\nBody A', contentType: 'text/markdown' },
+        { name: 'policy-b.txt', content: 'Body B', contentType: 'text/plain' },
+      ],
+    });
+    const accepted = await app.inject({ method: 'POST', url: '/api/ingest/files', ...upload });
+    expect(accepted.statusCode).toBe(200);
+    expect(accepted.json().items).toHaveLength(2);
+    expect(accepted.json().items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ fileName: 'policy-a.md' }),
+        expect.objectContaining({ fileName: 'policy-b.txt' }),
+      ]),
+    );
+    expect(accepted.json().items[0].doc.status).toBe('PUBLISHED');
+
+    const beforeDocuments = store.documents.size;
+    const beforeJobs = store.mainQueue.jobs.length;
+    const invalid = multipartPayload({
+      files: [
+        { name: 'valid.md', content: '# Valid' },
+        { name: 'deck.docx', content: 'not parsed yet' },
+      ],
+    });
+    expect((await app.inject({ method: 'POST', url: '/api/ingest/files', ...invalid })).statusCode).toBe(415);
+    expect(store.documents.size).toBe(beforeDocuments);
+    expect(store.mainQueue.jobs).toHaveLength(beforeJobs);
+
+    await app.close();
+  });
+
+  it('accepts external JSON ingestions with metadata and replays idempotent requests', async () => {
+    const store = new InMemoryWekiFlowStore();
+    const app = buildServer({ store });
+    const ownerToken = await login(app, 'admin01@veluga.io', 'admin01@veluga.io');
+
+    const anonymous = await app.inject({
+      method: 'POST',
+      url: '/api/workspaces/workspace-default/ingestions',
+      payload: {
+        sourceName: 'my-agent',
+        rawPayload: { text: '# Denied' },
+      },
+    });
+    expect(anonymous.statusCode).toBe(403);
+
+    const payload = {
+      sourceName: 'my-agent',
+      idempotencyKey: 'unique-key-for-this-doc',
+      contentType: 'text/markdown',
+      titleHint: 'Document Title',
+      metadata: { sentFrom: 'ci', repository: 'policy-repo' },
+      rawPayload: { text: '# Heading\n\nContent here' },
+    };
+    const first = await app.inject({
+      method: 'POST',
+      url: '/api/workspaces/workspace-default/ingestions',
+      headers: { authorization: `Bearer ${ownerToken}` },
+      payload,
+    });
+    expect(first.statusCode).toBe(200);
+    expect(first.json()).toMatchObject({ replayed: false });
+    const jobCount = store.mainQueue.jobs.length;
+
+    const doc = await app.inject({ method: 'GET', url: `/api/documents/${first.json().documentId}` });
+    expect(doc.statusCode).toBe(200);
+    expect(doc.json().sourceRefs[0]).toMatchObject({ type: 'api' });
+    expect(doc.json().ingestion).toMatchObject({
+      workspaceId: 'workspace-default',
+      sourceName: 'my-agent',
+      idempotencyKey: 'unique-key-for-this-doc',
+      contentType: 'text/markdown',
+      metadata: { sentFrom: 'ci', repository: 'policy-repo' },
+    });
+
+    const replay = await app.inject({
+      method: 'POST',
+      url: '/api/workspaces/workspace-default/ingestions',
+      headers: { authorization: `Bearer ${ownerToken}` },
+      payload,
+    });
+    expect(replay.statusCode).toBe(200);
+    expect(replay.json()).toMatchObject({ documentId: first.json().documentId, replayed: true });
+    expect(store.mainQueue.jobs).toHaveLength(jobCount);
+
+    await app.close();
+  });
+
+  it('rate-limits external ingestions and guards queue backlog', async () => {
+    const rateLimited = buildServer({ externalRateLimit: { max: 1, windowMs: 60_000 } });
+    const ownerToken = await login(rateLimited, 'admin01@veluga.io', 'admin01@veluga.io');
+    const auth = { authorization: `Bearer ${ownerToken}` };
+    const payload = (key: string) => ({
+      sourceName: 'limited-agent',
+      idempotencyKey: key,
+      rawPayload: { text: `# ${key}` },
+    });
+
+    expect((await rateLimited.inject({ method: 'POST', url: '/api/workspaces/workspace-default/ingestions', headers: auth, payload: payload('one') })).statusCode).toBe(200);
+    const limited = await rateLimited.inject({ method: 'POST', url: '/api/workspaces/workspace-default/ingestions', headers: auth, payload: payload('two') });
+    expect(limited.statusCode).toBe(429);
+    expect(limited.headers['retry-after']).toBeTruthy();
+    await rateLimited.close();
+
+    const busy = buildServer({
+      jobQueue: {
+        async getJobCounts() {
+          return { waiting: 1_000, delayed: 0, prioritized: 0, active: 0 };
+        },
+      } as never,
+    });
+    const busyToken = await login(busy, 'admin01@veluga.io', 'admin01@veluga.io');
+    const rejected = await busy.inject({
+      method: 'POST',
+      url: '/api/workspaces/workspace-default/ingestions',
+      headers: { authorization: `Bearer ${busyToken}` },
+      payload: { sourceName: 'backlog-agent', rawPayload: { text: '# Queue busy' } },
+    });
+    expect(rejected.statusCode).toBe(503);
+    expect(rejected.headers['retry-after']).toBe(String(60));
+    await busy.close();
   });
 
   it('emits the current job state when SSE starts after completion', async () => {

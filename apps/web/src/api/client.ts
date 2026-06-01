@@ -125,23 +125,40 @@ export function ingest(input: IngestRequest): Promise<{ doc: DocumentDTO; job: J
   return request('/ingest', { method: 'POST', body: JSON.stringify(input) });
 }
 
-export async function ingestFile(file: File, meta: Omit<IngestRequest, 'contentMarkdown'>): Promise<{ doc: DocumentDTO; job: JobRef }> {
-  const form = new FormData();
-  form.append('file', file);
-  form.append('title', meta.title);
+export type IngestFileMeta = Partial<Omit<IngestRequest, 'contentMarkdown' | 'title'>> & { title?: string };
+
+function appendIngestFileMeta(form: FormData, meta: IngestFileMeta) {
+  if (meta.title?.trim()) form.append('title', meta.title.trim());
   if (meta.parentId) form.append('parentId', meta.parentId);
   if (meta.topic) form.append('topic', meta.topic);
   if (meta.workspace) form.append('workspace', meta.workspace);
   if (meta.department) form.append('department', meta.department);
   if (meta.sourceLabel) form.append('sourceLabel', meta.sourceLabel);
+}
+
+async function multipartRequest<T>(path: string, form: FormData): Promise<T> {
   const headers: Record<string, string> = {};
   if (authToken) headers.authorization = `Bearer ${authToken}`;
-  const res = await fetch(`${BASE}/ingest/file`, { method: 'POST', headers, body: form });
+  const res = await fetch(`${BASE}${path}`, { method: 'POST', headers, body: form });
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as { error?: string };
     throw new ApiError(res.status, body.error ?? `Request failed: ${res.status}`);
   }
-  return res.json() as Promise<{ doc: DocumentDTO; job: JobRef }>;
+  return res.json() as Promise<T>;
+}
+
+export async function ingestFile(file: File, meta: IngestFileMeta): Promise<{ doc: DocumentDTO; job: JobRef }> {
+  const form = new FormData();
+  form.append('file', file);
+  appendIngestFileMeta(form, meta);
+  return multipartRequest('/ingest/file', form);
+}
+
+export async function ingestFiles(files: File[], meta: IngestFileMeta): Promise<{ items: Array<{ doc: DocumentDTO; job: JobRef; fileName: string }> }> {
+  const form = new FormData();
+  for (const file of files) form.append('file', file);
+  appendIngestFileMeta(form, meta);
+  return multipartRequest('/ingest/files', form);
 }
 
 export function approve(id: string): Promise<{ ok: true; doc: DocumentDTO; job: JobRef }> {
@@ -161,14 +178,7 @@ export async function agentPreviewUpload(file: File, title?: string, commit = fa
   form.append('file', file);
   if (title?.trim()) form.append('title', title.trim());
   if (commit) form.append('commit', 'true');
-  const headers: Record<string, string> = {};
-  if (authToken) headers.authorization = `Bearer ${authToken}`;
-  const res = await fetch(`${BASE}/agent-preview`, { method: 'POST', headers, body: form });
-  if (!res.ok) {
-    const body = (await res.json().catch(() => ({}))) as { error?: string };
-    throw new ApiError(res.status, body.error ?? `Request failed: ${res.status}`);
-  }
-  return res.json() as Promise<{ jobId: string; documentId: string }>;
+  return multipartRequest('/agent-preview', form);
 }
 
 export function fetchAgentPreview(jobId: string): Promise<AgentPreviewRun> {

@@ -127,6 +127,14 @@ export function useIngestFile() {
   });
 }
 
+export function useIngestFiles() {
+  const invalidate = useInvalidateAll();
+  return useMutation({
+    mutationFn: ({ files, meta }: { files: File[]; meta: Parameters<typeof api.ingestFiles>[1] }) => api.ingestFiles(files, meta),
+    onSuccess: invalidate,
+  });
+}
+
 export function useApprove() {
   const invalidate = useInvalidateAll();
   return useMutation({

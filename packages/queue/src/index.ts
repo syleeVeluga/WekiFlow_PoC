@@ -31,15 +31,31 @@ export function defaultJobOptions(): JobsOptions {
   };
 }
 
+export interface WorkerRuntimeOptions {
+  concurrency?: number;
+  limiter?: { max: number; duration: number };
+}
+
+function workerRuntimeOptions(queueName: typeof MAIN_QUEUE_NAME | typeof GRAPH_QUEUE_NAME, options: WorkerRuntimeOptions = {}) {
+  const env = loadEnv();
+  const concurrency =
+    options.concurrency ?? (queueName === MAIN_QUEUE_NAME ? env.MAIN_WORKER_CONCURRENCY : env.GRAPH_WORKER_CONCURRENCY);
+  const rateMax = queueName === MAIN_QUEUE_NAME ? env.MAIN_QUEUE_RATE_MAX : env.GRAPH_QUEUE_RATE_MAX;
+  const rateDuration = queueName === MAIN_QUEUE_NAME ? env.MAIN_QUEUE_RATE_DURATION_MS : env.GRAPH_QUEUE_RATE_DURATION_MS;
+  const limiter = options.limiter ?? (rateMax > 0 ? { max: rateMax, duration: rateDuration } : undefined);
+  return limiter ? { concurrency, limiter } : { concurrency };
+}
+
 export function createWorker<T>(
   queueName: typeof MAIN_QUEUE_NAME | typeof GRAPH_QUEUE_NAME,
   processor: Processor<T>,
   connection = createRedisConnection(),
+  options: WorkerRuntimeOptions = {},
 ) {
   return new Worker(queueName, processor, {
     connection,
     prefix: queueName === MAIN_QUEUE_NAME ? 'wf:main' : 'wf:graph',
-    concurrency: 2,
+    ...workerRuntimeOptions(queueName, options),
   });
 }
 

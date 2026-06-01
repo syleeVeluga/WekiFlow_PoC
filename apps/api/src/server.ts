@@ -1,13 +1,14 @@
 import cors from '@fastify/cors';
 import multipart from '@fastify/multipart';
 import type { Queue, QueueEvents } from 'bullmq';
-import Fastify, { type FastifyRequest } from 'fastify';
+import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import path from 'node:path';
 import { extractText, getDocumentProxy } from 'unpdf';
-import { ZodError } from 'zod';
+import { z, ZodError } from 'zod';
 import {
   AgentPreviewRequestSchema,
   CreateUserBodySchema,
+  ExternalIngestionRequestSchema,
   IngestRequestSchema,
   KnowledgeQuerySchema,
   LoginBodySchema,
@@ -21,10 +22,16 @@ import {
   canManageUsers,
   canReview,
 } from '@wf/shared';
-import { InMemoryWekiFlowStore, type WekiFlowStore } from './store.js';
+import { InMemoryWekiFlowStore, type IngestInput, type IngestResult, type WekiFlowStore } from './store.js';
 
 // Shared cap for both upload routes (/api/ingest/file and /api/agent-preview).
 const INGEST_MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
+const INGEST_MAX_FILES = 20;
+const INGEST_MAX_REQUEST_BYTES = 100 * 1024 * 1024;
+const EXTERNAL_RATE_LIMIT_MAX = 60;
+const EXTERNAL_RATE_LIMIT_WINDOW_MS = 60_000;
+const QUEUE_BACKLOG_LIMIT = 1_000;
+const BACKLOG_RETRY_AFTER_SECONDS = 60;
 const PREVIEW_MAX_CHARS = 120_000;
 const PREVIEW_MAX_PDF_PAGES = 20;
 
@@ -36,21 +43,87 @@ class UploadError extends Error {
   }
 }
 
+interface UploadedTextFile {
+  fileName: string;
+  contentMarkdown: string;
+  contentType: string;
+  size: number;
+}
+
+export interface FixedWindowRateLimiter {
+  hit(key: string, limit: number, windowMs: number): Promise<{ allowed: boolean; retryAfterMs: number }>;
+}
+
+type RedisLike = {
+  incr(key: string): Promise<number>;
+  pexpire(key: string, ms: number): Promise<unknown>;
+  pttl(key: string): Promise<number>;
+};
+
+class InMemoryFixedWindowRateLimiter implements FixedWindowRateLimiter {
+  private readonly buckets = new Map<string, { count: number; resetAt: number }>();
+
+  async hit(key: string, limit: number, windowMs: number): Promise<{ allowed: boolean; retryAfterMs: number }> {
+    const now = Date.now();
+    const current = this.buckets.get(key);
+    const bucket = current && current.resetAt > now ? current : { count: 0, resetAt: now + windowMs };
+    bucket.count += 1;
+    this.buckets.set(key, bucket);
+    return {
+      allowed: bucket.count <= limit,
+      retryAfterMs: Math.max(0, bucket.resetAt - now),
+    };
+  }
+}
+
+class RedisFixedWindowRateLimiter implements FixedWindowRateLimiter {
+  constructor(private readonly client: Promise<unknown>) {}
+
+  async hit(key: string, limit: number, windowMs: number): Promise<{ allowed: boolean; retryAfterMs: number }> {
+    const redis = (await this.client) as RedisLike;
+    const count = await redis.incr(key);
+    let ttl = await redis.pttl(key);
+    // Self-heal a key with no expiry: if a crash landed between INCR and PEXPIRE on a prior request,
+    // pttl is -1 and the bucket would otherwise stay wedged above the limit forever.
+    if (ttl < 0) {
+      await redis.pexpire(key, windowMs);
+      ttl = windowMs;
+    }
+    return { allowed: count <= limit, retryAfterMs: ttl };
+  }
+}
+
 export interface BuildServerOptions {
   store?: WekiFlowStore;
   jobQueue?: Queue;
   jobEvents?: QueueEvents;
+  rateLimiter?: FixedWindowRateLimiter;
+  externalRateLimit?: { max: number; windowMs: number };
+  maxQueueBacklog?: number;
 }
 
 export function buildServer({
   store = new InMemoryWekiFlowStore(),
   jobQueue,
   jobEvents,
+  rateLimiter,
+  externalRateLimit = { max: EXTERNAL_RATE_LIMIT_MAX, windowMs: EXTERNAL_RATE_LIMIT_WINDOW_MS },
+  maxQueueBacklog = QUEUE_BACKLOG_LIMIT,
 }: BuildServerOptions = {}) {
   store.seed?.();
   const app = Fastify({ logger: false });
   void app.register(cors);
-  void app.register(multipart, { limits: { fileSize: INGEST_MAX_UPLOAD_BYTES, files: 1 } });
+  void app.register(multipart, { limits: { fileSize: INGEST_MAX_UPLOAD_BYTES, files: INGEST_MAX_FILES } });
+  // Resolved lazily on the first rate-limit check. Reading `jobQueue.client` eagerly here would open
+  // the Redis connection at build time even for routes/tests that never rate-limit.
+  let resolvedLimiter = rateLimiter;
+  function getLimiter(): FixedWindowRateLimiter {
+    if (!resolvedLimiter) {
+      const client = (jobQueue as { client?: Promise<unknown> } | undefined)?.client;
+      resolvedLimiter = client ? new RedisFixedWindowRateLimiter(client) : new InMemoryFixedWindowRateLimiter();
+    }
+    return resolvedLimiter;
+  }
 
   // Map known error shapes to client-facing statuses; everything else is a 500.
   app.setErrorHandler((error, _request, reply) => {
@@ -106,30 +179,74 @@ export function buildServer({
     throw new UploadError('Unsupported file type', 415);
   }
 
-  // Drains a multipart request, extracting the single file's text and trimmed field values.
+  // Drains a multipart request, extracting uploaded file text and trimmed field values.
   async function collectUploadParts(
     request: FastifyRequest,
-  ): Promise<{ fileName: string; contentMarkdown: string; fields: Record<string, string> }> {
-    let fileName = '';
-    let contentMarkdown = '';
+    options: { maxFiles?: number } = {},
+  ): Promise<{ files: UploadedTextFile[]; fields: Record<string, string> }> {
+    const maxFiles = options.maxFiles ?? 1;
+    const files: UploadedTextFile[] = [];
     const fields: Record<string, string> = {};
+    let totalBytes = 0;
     for await (const part of request.parts()) {
       if (part.type === 'file') {
-        fileName = part.filename;
-        contentMarkdown = await extractPreviewFile(part.filename, await part.toBuffer());
+        if (files.length >= maxFiles) throw new UploadError('Too many files', 413);
+        const buffer = await part.toBuffer();
+        totalBytes += buffer.byteLength;
+        if (totalBytes > INGEST_MAX_REQUEST_BYTES) throw new UploadError('Upload request is too large', 413);
+        files.push({
+          fileName: part.filename,
+          contentType: part.mimetype || 'application/octet-stream',
+          contentMarkdown: await extractPreviewFile(part.filename, buffer),
+          size: buffer.byteLength,
+        });
       } else if (typeof part.value === 'string') {
         fields[part.fieldname] = part.value.trim();
       }
     }
-    return { fileName, contentMarkdown, fields };
+    return { files, fields };
+  }
+
+  function firstUpload(files: UploadedTextFile[]): UploadedTextFile {
+    const file = files[0];
+    if (!file) throw new UploadError('No file uploaded', 400);
+    return file;
+  }
+
+  function titleForFile(title: string | undefined, fileName: string, fileCount: number): string {
+    const base = title?.trim();
+    const fileTitle = path.parse(fileName).name || fileName || 'Uploaded document';
+    if (!base) return fileTitle;
+    return fileCount > 1 ? `${base} - ${fileTitle}` : base;
+  }
+
+  function assertNonEmptyUploadFiles(files: UploadedTextFile[]) {
+    for (const file of files) {
+      if (!file.contentMarkdown.trim()) throw new UploadError('Upload content is empty', 422);
+    }
+  }
+
+  function parseMetadata(value: string | undefined): Record<string, unknown> | undefined {
+    if (!value) return undefined;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(value) as unknown;
+    } catch {
+      throw new UploadError('metadata must be valid JSON', 400);
+    }
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw new UploadError('metadata must be a JSON object', 400);
+    }
+    return parsed as Record<string, unknown>;
   }
 
   async function readAgentPreviewInput(request: FastifyRequest): Promise<{ title: string; contentMarkdown: string; commit: boolean }> {
     if (request.isMultipart()) {
-      const { fileName, contentMarkdown, fields } = await collectUploadParts(request);
+      const { files, fields } = await collectUploadParts(request, { maxFiles: 1 });
+      const file = firstUpload(files);
       return {
-        title: fields.title || path.parse(fileName).name || '에이전트 미리보기',
-        contentMarkdown,
+        title: fields.title || path.parse(file.fileName).name || '에이전트 미리보기',
+        contentMarkdown: file.contentMarkdown,
         commit: fields.commit === 'true',
       };
     }
@@ -144,15 +261,124 @@ export function buildServer({
 
   async function readIngestFileInput(request: FastifyRequest) {
     if (!request.isMultipart()) throw new UploadError('Expected multipart upload', 400);
-    const { fileName, contentMarkdown, fields } = await collectUploadParts(request);
+    const { files, fields } = await collectUploadParts(request, { maxFiles: 1 });
+    const file = firstUpload(files);
     return IngestRequestSchema.parse({
-      title: fields.title || path.parse(fileName).name || 'Uploaded document',
-      contentMarkdown,
+      title: fields.title || path.parse(file.fileName).name || 'Uploaded document',
+      contentMarkdown: file.contentMarkdown,
       topic: fields.topic || undefined,
       workspace: fields.workspace || fields.department || undefined,
-      sourceLabel: fields.sourceLabel || fileName || undefined,
+      sourceLabel: fields.sourceLabel || file.fileName || undefined,
     });
   }
+
+  async function readIngestFilesInput(request: FastifyRequest) {
+    if (!request.isMultipart()) throw new UploadError('Expected multipart upload', 400);
+    const { files, fields } = await collectUploadParts(request, { maxFiles: INGEST_MAX_FILES });
+    if (files.length === 0) throw new UploadError('No file uploaded', 400);
+    assertNonEmptyUploadFiles(files);
+    return files.map((file) =>
+      IngestRequestSchema.parse({
+        title: titleForFile(fields.title, file.fileName, files.length),
+        contentMarkdown: file.contentMarkdown,
+        topic: fields.topic || undefined,
+        workspace: fields.workspace || fields.department || undefined,
+        sourceLabel: fields.sourceLabel || file.fileName || undefined,
+      }),
+    );
+  }
+
+  async function ensureIngestCapacity(reply: FastifyReply): Promise<boolean> {
+    if (!jobQueue) return true;
+    // Only pending work counts as backlog; 'active' jobs are already being drained by workers, so
+    // including them would reject admissions on a healthy, fully-saturated queue.
+    const counts = await jobQueue.getJobCounts('waiting', 'delayed', 'prioritized');
+    const backlog = Object.values(counts).reduce((sum, value) => sum + (typeof value === 'number' ? value : 0), 0);
+    if (backlog < maxQueueBacklog) return true;
+    reply.header('Retry-After', String(BACKLOG_RETRY_AFTER_SECONDS));
+    reply.code(503).send({ error: 'Ingestion queue is busy. Retry later.' });
+    return false;
+  }
+
+  async function enforceExternalRateLimit(
+    reply: FastifyReply,
+    input: { userId: string; workspaceId: string },
+  ): Promise<boolean> {
+    // Key on the authenticated principal + workspace only. `sourceName` is caller-chosen and
+    // unbounded, so including it would let a client bypass the limit by varying that field.
+    const key = ['external-ingest', input.userId, input.workspaceId].join(':');
+    const result = await getLimiter().hit(key, externalRateLimit.max, externalRateLimit.windowMs);
+    if (result.allowed) return true;
+    const retryAfter = Math.max(1, Math.ceil(result.retryAfterMs / 1000));
+    reply.header('Retry-After', String(retryAfter));
+    reply.code(429).send({ error: 'Rate limit exceeded' });
+    return false;
+  }
+
+  function externalIngestResponse(result: IngestResult) {
+    return {
+      id: result.doc.id,
+      documentId: result.doc.id,
+      jobId: result.job.id,
+      replayed: result.replayed ?? false,
+    };
+  }
+
+  // Ingests a batch of independent inputs concurrently (each file is unrelated), pairing every input
+  // with its result so callers can shape the per-item response. Used by both upload-batch routes.
+  async function runIngestBatch<T>(
+    items: T[],
+    toInput: (item: T, index: number) => IngestInput,
+  ): Promise<Array<{ item: T; result: IngestResult }>> {
+    const results = await Promise.all(items.map((item, index) => store.ingest(toInput(item, index))));
+    return results.map((result, index) => ({ item: items[index]!, result }));
+  }
+
+  function externalIngestInput(input: {
+    userId: string;
+    workspaceId: string;
+    sourceName: string;
+    contentMarkdown: string;
+    contentType: string;
+    title: string;
+    idempotencyKey?: string;
+    sourceLabel?: string;
+    topic?: string;
+    metadata?: Record<string, unknown>;
+  }): IngestInput {
+    const sourceLabel = input.sourceLabel?.trim() || input.sourceName;
+    return {
+      title: input.title,
+      contentMarkdown: input.contentMarkdown,
+      workspace: input.workspaceId,
+      sourceLabel,
+      sourceName: input.sourceName,
+      contentType: input.contentType,
+      sourceType: 'api',
+      sourceRef: `api://workspaces/${input.workspaceId}/ingestions`,
+      ...(input.topic ? { topic: input.topic } : {}),
+      ...(input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : {}),
+      ingestion: {
+        userId: input.userId,
+        workspaceId: input.workspaceId,
+        sourceName: input.sourceName,
+        contentType: input.contentType,
+        sourceLabel,
+        ...(input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : {}),
+        ...(input.metadata ? { metadata: input.metadata } : {}),
+      },
+    };
+  }
+
+  const ExternalMultipartFieldsSchema = z.object({
+    sourceName: z.string().min(1).max(200),
+    idempotencyKey: z.string().min(1).max(512).optional(),
+    contentType: z.string().min(1).optional(),
+    titleHint: z.string().min(1).optional(),
+    topic: z.string().min(1).optional(),
+    sourceLabel: z.string().min(1).optional(),
+    metadata: z.string().optional(),
+  });
 
   function writeSse(res: import('node:http').ServerResponse, event: string, data: unknown) {
     if (res.writableEnded) return;
@@ -295,7 +521,8 @@ export function buildServer({
     });
   });
 
-  app.post('/api/ingest', async (request) => {
+  app.post('/api/ingest', async (request, reply) => {
+    if (!(await ensureIngestCapacity(reply))) return reply;
     const body = IngestRequestSchema.parse(request.body);
     const workspace = body.workspace ?? body.department;
     return store.ingest({
@@ -309,6 +536,7 @@ export function buildServer({
   });
 
   app.post('/api/ingest/file', async (request, reply) => {
+    if (!(await ensureIngestCapacity(reply))) return reply;
     const input = await readIngestFileInput(request);
     if (!input.contentMarkdown.trim()) return reply.code(422).send({ error: 'Upload content is empty' });
     return store.ingest({
@@ -318,7 +546,102 @@ export function buildServer({
       ...(input.topic ? { topic: input.topic } : {}),
       ...(input.workspace ? { workspace: input.workspace } : {}),
       ...(input.sourceLabel ? { sourceLabel: input.sourceLabel } : {}),
+      sourceType: 'upload',
+      sourceRef: `upload://${input.sourceLabel ?? input.title}`,
     });
+  });
+
+  app.post('/api/ingest/files', async (request, reply) => {
+    if (!(await ensureIngestCapacity(reply))) return reply;
+    const inputs = await readIngestFilesInput(request);
+    const batch = await runIngestBatch(inputs, (input) => ({
+      title: input.title,
+      contentMarkdown: input.contentMarkdown,
+      ...(input.parentId ? { parentId: input.parentId } : {}),
+      ...(input.topic ? { topic: input.topic } : {}),
+      ...(input.workspace ? { workspace: input.workspace } : {}),
+      ...(input.sourceLabel ? { sourceLabel: input.sourceLabel } : {}),
+      sourceType: 'upload' as const,
+      sourceRef: `upload://${input.sourceLabel ?? input.title}`,
+    }));
+    const items = batch.map(({ item: input, result }) => ({
+      fileName: input.sourceLabel ?? input.title,
+      documentId: result.doc.id,
+      jobId: result.job.id,
+      replayed: result.replayed ?? false,
+      doc: result.doc,
+      job: result.job,
+    }));
+    return { items };
+  });
+
+  app.post('/api/workspaces/:workspaceId/ingestions', async (request, reply) => {
+    const me = await currentUser(request);
+    if (!me || !canEdit(me.role)) return reply.code(403).send({ error: 'Forbidden' });
+    const { workspaceId } = request.params as { workspaceId: string };
+
+    // Shed load before touching the (potentially large, multi-file) request body: backlog 503 first so
+    // a busy-queue rejection does not burn the caller's rate-limit budget, then the per-principal limit.
+    if (!(await ensureIngestCapacity(reply))) return reply;
+    if (!(await enforceExternalRateLimit(reply, { userId: me.id, workspaceId }))) return reply;
+
+    if (request.isMultipart()) {
+      const { files, fields } = await collectUploadParts(request, { maxFiles: INGEST_MAX_FILES });
+      if (files.length === 0) return reply.code(400).send({ error: 'No file uploaded' });
+      assertNonEmptyUploadFiles(files);
+      const parsedFields = ExternalMultipartFieldsSchema.parse({
+        ...fields,
+        idempotencyKey: fields.idempotencyKey || undefined,
+        contentType: fields.contentType || undefined,
+        titleHint: fields.titleHint || undefined,
+        topic: fields.topic || undefined,
+        sourceLabel: fields.sourceLabel || undefined,
+        metadata: fields.metadata || undefined,
+      });
+
+      const metadata = parseMetadata(parsedFields.metadata);
+      const batch = await runIngestBatch(files, (file, index) => {
+        const fileTitle = titleForFile(parsedFields.titleHint, file.fileName, files.length);
+        // Disambiguate per file (by index) so same-named files in one batch get distinct idempotency
+        // scopes — otherwise all but the first would be silently dropped as a "replay".
+        const idempotencyKey = parsedFields.idempotencyKey ? `${parsedFields.idempotencyKey}:${index}:${file.fileName}` : undefined;
+        return externalIngestInput({
+          userId: me.id,
+          workspaceId,
+          sourceName: parsedFields.sourceName,
+          contentMarkdown: file.contentMarkdown,
+          contentType: parsedFields.contentType ?? file.contentType,
+          title: fileTitle,
+          ...(idempotencyKey ? { idempotencyKey } : {}),
+          ...(parsedFields.sourceLabel ? { sourceLabel: parsedFields.sourceLabel } : {}),
+          ...(parsedFields.topic ? { topic: parsedFields.topic } : {}),
+          ...(metadata ? { metadata } : {}),
+        });
+      });
+      const items = batch.map(({ item: file, result }) => ({
+        fileName: file.fileName,
+        ...externalIngestResponse(result),
+      }));
+      return { items };
+    }
+
+    const body = ExternalIngestionRequestSchema.parse(request.body);
+    if (!body.rawPayload.text.trim()) return reply.code(422).send({ error: 'Ingestion content is empty' });
+    const result = await store.ingest(
+      externalIngestInput({
+        userId: me.id,
+        workspaceId,
+        sourceName: body.sourceName,
+        contentMarkdown: body.rawPayload.text,
+        contentType: body.contentType,
+        title: body.titleHint?.trim() || body.sourceName,
+        ...(body.idempotencyKey ? { idempotencyKey: body.idempotencyKey } : {}),
+        ...(body.sourceLabel ? { sourceLabel: body.sourceLabel } : {}),
+        ...(body.topic ? { topic: body.topic } : {}),
+        ...(body.metadata ? { metadata: body.metadata } : {}),
+      }),
+    );
+    return externalIngestResponse(result);
   });
 
   app.get('/api/reviews', async () => store.reviews());

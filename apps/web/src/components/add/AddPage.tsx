@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type DragEvent, type FormEvent } from 'react';
 import { UNCLASSIFIED_TOPIC_NAME, type Topic } from '@wf/shared';
-import { useIngest, useIngestFile } from '../../api/hooks.js';
+import { useIngest, useIngestFiles } from '../../api/hooks.js';
 import { useTopics, useTopicMutations } from '../../data/hooks.js';
 import { useUiStore } from '../../store.js';
 import { TopicChipGrid } from '../common/TopicChipGrid.js';
@@ -8,12 +8,28 @@ import { TopicChipGrid } from '../common/TopicChipGrid.js';
 const uploadAccept = '.pdf,.docx,.pptx,.xlsx,.md,.txt';
 const supportedUploadExt = new Set(['.pdf', '.md', '.txt']);
 const futureUploadExt = new Set(['.docx', '.pptx', '.xlsx']);
+const maxFileBytes = 20 * 1024 * 1024;
+const maxRequestBytes = 100 * 1024 * 1024;
 
-type InputMode = 'file' | 'webpage' | 'manual' | 'integration';
+type InputMode = 'file' | 'manual' | 'integration';
+type CodeTab = 'javascript' | 'curl' | 'python';
 
 function fileExt(file: File): string {
   const dot = file.name.lastIndexOf('.');
   return dot >= 0 ? file.name.slice(dot).toLowerCase() : '';
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+}
+
+function fileIssue(file: File): string | null {
+  const ext = fileExt(file);
+  if (file.size > maxFileBytes) return '20 MB를 초과합니다.';
+  if (futureUploadExt.has(ext)) return '추후 지원 예정입니다.';
+  if (!supportedUploadExt.has(ext)) return '지원하지 않는 형식입니다.';
+  return null;
 }
 
 function TopicList({
@@ -81,7 +97,7 @@ export function AddPage() {
   const { data: topics = [] } = useTopics();
   const topicMutations = useTopicMutations();
   const ingest = useIngest();
-  const ingestFile = useIngestFile();
+  const ingestFiles = useIngestFiles();
 
   const assignableTopics = useMemo(() => topics.filter((topic) => !topic.isUnclassified), [topics]);
   const userTopics = assignableTopics.filter((topic) => topic.source === 'user');
@@ -93,29 +109,48 @@ export function AddPage() {
   const [workspaceId, setWorkspaceId] = useState(activeWorkspaceId);
   const [mode, setMode] = useState<InputMode>('file');
   const [manualContent, setManualContent] = useState('');
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
   const [source, setSource] = useState('');
+  const [dragging, setDragging] = useState(false);
+  const [codeTab, setCodeTab] = useState<CodeTab>('javascript');
 
   const selectedWorkspace = workspaces.find((workspace) => workspace.id === workspaceId) ?? workspaces[0];
+  const workspaceApiId = selectedWorkspace?.id ?? workspaceId;
+  const totalFileBytes = files.reduce((sum, file) => sum + file.size, 0);
+  const totalFileError = totalFileBytes > maxRequestBytes ? '요청당 총 업로드 용량 100 MB를 초과합니다.' : null;
+  const fileRows = files.map((file) => ({ file, issue: fileIssue(file) }));
+  const hasFileError = Boolean(totalFileError) || fileRows.some((row) => row.issue);
+  const busy = ingest.isPending || ingestFiles.isPending;
+  const submitDisabled =
+    busy ||
+    !selectedWorkspace ||
+    (mode === 'manual'
+      ? !title.trim() || !manualContent.trim()
+      : mode === 'file'
+        ? files.length === 0 || hasFileError
+        : true);
+  const mutationError = ingest.error ?? ingestFiles.error;
+
+  const endpoint = `https://wekiflow.veluga.app/api/workspaces/${workspaceApiId}/ingestions`;
+  // Only depends on the workspace id; memoized so it isn't rebuilt on every keystroke/drag render
+  // (and only ever read in the integration tab).
+  const codeSamples = useMemo<Record<CodeTab, string>>(
+    () => ({
+      javascript: `const BASE = 'https://wekiflow.veluga.app/api';\nconst API_TOKEN = 'wf_...';\n\nconst res = await fetch(\n  \`\${BASE}/workspaces/${workspaceApiId}/ingestions\`,\n  {\n    method: 'POST',\n    headers: {\n      Authorization: \`Bearer \${API_TOKEN}\`,\n      'Content-Type': 'application/json',\n    },\n    body: JSON.stringify({\n      sourceName: 'my-agent',\n      idempotencyKey: 'unique-key-for-this-doc',\n      contentType: 'text/markdown',\n      titleHint: 'Document Title',\n      metadata: { sentFrom: 'ci', repository: 'policy-repo' },\n      rawPayload: { text: '# Heading\\n\\nContent here...' },\n    }),\n  },\n);\n\nconst { documentId, jobId, replayed } = await res.json();`,
+      curl: `curl -X POST '${endpoint}' \\\n  -H 'Authorization: Bearer wf_...' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\n    "sourceName": "my-agent",\n    "idempotencyKey": "unique-key-for-this-doc",\n    "contentType": "text/markdown",\n    "titleHint": "Document Title",\n    "metadata": { "sentFrom": "ci" },\n    "rawPayload": { "text": "# Heading\\n\\nContent here..." }\n  }'`,
+      python: `import requests\n\nbase = 'https://wekiflow.veluga.app/api'\ntoken = 'wf_...'\n\nres = requests.post(\n    f'{base}/workspaces/${workspaceApiId}/ingestions',\n    headers={'Authorization': f'Bearer {token}'},\n    json={\n        'sourceName': 'my-agent',\n        'idempotencyKey': 'unique-key-for-this-doc',\n        'contentType': 'text/markdown',\n        'titleHint': 'Document Title',\n        'metadata': {'sentFrom': 'ci'},\n        'rawPayload': {'text': '# Heading\\n\\nContent here...'},\n    },\n)\nprint(res.json())`,
+    }),
+    [workspaceApiId, endpoint],
+  );
 
   useEffect(() => {
     setWorkspaceId(activeWorkspaceId);
   }, [activeWorkspaceId]);
 
-  const fileError = file && futureUploadExt.has(fileExt(file)) ? 'DOCX/PPTX/XLSX 파일 추출은 추후 지원 예정입니다.' : null;
-  const unsupportedFile = file && !supportedUploadExt.has(fileExt(file)) && !futureUploadExt.has(fileExt(file));
-  const submitDisabled =
-    ingest.isPending ||
-    ingestFile.isPending ||
-    !title.trim() ||
-    !selectedWorkspace ||
-    (mode === 'manual' ? !manualContent.trim() : mode === 'file' ? !file || Boolean(fileError) || Boolean(unsupportedFile) : true);
-  const mutationError = ingest.error ?? ingestFile.error;
-
   const resetInputs = () => {
     setTitle('');
     setManualContent('');
-    setFile(null);
+    setFiles([]);
     setSource('');
     setMode('file');
   };
@@ -141,21 +176,54 @@ export function AddPage() {
     });
   };
 
+  const addFiles = (list: FileList | File[]) => {
+    const incoming = Array.from(list);
+    if (incoming.length === 0) return;
+    setFiles((current) => {
+      const seen = new Set(current.map((file) => `${file.name}:${file.size}:${file.lastModified}`));
+      const next = [...current];
+      for (const file of incoming) {
+        const key = `${file.name}:${file.size}:${file.lastModified}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          next.push(file);
+        }
+      }
+      return next.slice(0, 20);
+    });
+  };
+
+  const removeFile = (index: number) => {
+    setFiles((current) => current.filter((_, fileIndex) => fileIndex !== index));
+  };
+
+  const onDrop = (event: DragEvent<HTMLLabelElement>) => {
+    event.preventDefault();
+    setDragging(false);
+    addFiles(event.dataTransfer.files);
+  };
+
+  const copyText = (value: string, message: string) => {
+    void navigator.clipboard.writeText(value).then(
+      () => showToast(message, 'ok'),
+      () => showToast('복사하지 못했습니다.', 'warn'),
+    );
+  };
+
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (submitDisabled) return;
+    if (submitDisabled || !selectedWorkspace) return;
 
-    const sourceRef = source.trim() || file?.name;
-    const meta = {
-      title: title.trim(),
-      topic: selectedTopic,
+    const sourceRef = source.trim();
+    const baseMeta = {
       workspace: selectedWorkspace.name,
+      ...(selectedTopic !== UNCLASSIFIED_TOPIC_NAME ? { topic: selectedTopic } : {}),
       ...(sourceRef ? { sourceLabel: sourceRef } : {}),
     };
 
     if (mode === 'manual') {
       ingest.mutate(
-        { ...meta, contentMarkdown: manualContent.trim() },
+        { ...baseMeta, title: title.trim(), contentMarkdown: manualContent.trim() },
         {
           onSuccess: () => {
             resetInputs();
@@ -166,9 +234,15 @@ export function AddPage() {
       return;
     }
 
-    if (mode === 'file' && file) {
-      ingestFile.mutate(
-        { file, meta },
+    if (mode === 'file') {
+      ingestFiles.mutate(
+        {
+          files,
+          meta: {
+            ...baseMeta,
+            ...(title.trim() ? { title: title.trim() } : {}),
+          },
+        },
         {
           onSuccess: () => {
             resetInputs();
@@ -238,7 +312,7 @@ export function AddPage() {
 
           <div className="add-fields">
             <label>
-              <span>제목 *</span>
+              <span>{mode === 'file' ? '제목' : '제목 *'}</span>
               <input value={title} placeholder="예: 법인카드 사용 기준" onChange={(event) => setTitle(event.target.value)} />
             </label>
             <label>
@@ -254,9 +328,8 @@ export function AddPage() {
           <div className="add-mode-tabs" role="tablist" aria-label="입력 방식">
             {[
               ['file', '파일'],
-              ['webpage', '웹페이지'],
               ['manual', '직접 입력'],
-              ['integration', '연동'],
+              ['integration', '외부 연동'],
             ].map(([key, label]) => (
               <button type="button" key={key} className={mode === key ? 'on' : ''} onClick={() => setMode(key as InputMode)}>
                 {label}
@@ -276,50 +349,115 @@ export function AddPage() {
           ) : null}
 
           {mode === 'file' ? (
-            <label className={`agent-drop add-drop ${fileError || unsupportedFile ? 'has-error' : ''}`}>
-              <span>{file ? file.name : '파일을 선택하거나 드래그해 업로드하세요.'}</span>
-              <small>PDF, DOCX, PPTX, XLSX, MD, TXT · 최대 20 MB</small>
-              <input
-                type="file"
-                accept={uploadAccept}
-                onChange={(event) => {
-                  const nextFile = event.target.files?.[0] ?? null;
-                  setFile(nextFile);
-                  if (nextFile && futureUploadExt.has(fileExt(nextFile))) showToast('DOCX/PPTX/XLSX 파일은 추후 지원 예정입니다.', 'warn');
-                  if (nextFile && !supportedUploadExt.has(fileExt(nextFile)) && !futureUploadExt.has(fileExt(nextFile))) {
-                    showToast('지원하지 않는 파일 형식입니다.', 'warn');
-                  }
+            <>
+              <label
+                className={`add-dropzone ${dragging ? 'is-dragging' : ''} ${hasFileError ? 'has-error' : ''}`}
+                onDragOver={(event) => {
+                  event.preventDefault();
+                  setDragging(true);
                 }}
-              />
-            </label>
+                onDragLeave={() => setDragging(false)}
+                onDrop={onDrop}
+              >
+                <span className="add-drop-icon">⇧</span>
+                <strong>여기로 파일을 끌어다 놓거나 클릭하여 선택하세요</strong>
+                <small>PDF, DOCX, PPTX, XLSX, MD, TXT · 파일당 최대 20 MB · 요청당 최대 20개</small>
+                <span className="add-drop-button">파일 선택</span>
+                <input
+                  type="file"
+                  accept={uploadAccept}
+                  multiple
+                  onChange={(event) => {
+                    if (event.target.files) addFiles(event.target.files);
+                    event.currentTarget.value = '';
+                  }}
+                />
+              </label>
+
+              {files.length > 0 ? (
+                <div className="add-file-list" aria-label="선택된 파일">
+                  <div className="add-file-list-head">
+                    <strong>{files.length}개 파일</strong>
+                    <span>{formatBytes(totalFileBytes)} / 100 MB</span>
+                  </div>
+                  {fileRows.map(({ file, issue }, index) => (
+                    <div className={`add-file-row ${issue ? 'has-error' : ''}`} key={`${file.name}:${file.size}:${file.lastModified}`}>
+                      <div>
+                        <strong>{file.name}</strong>
+                        <span>{formatBytes(file.size)}{issue ? ` · ${issue}` : ''}</span>
+                      </div>
+                      <button type="button" onClick={() => removeFile(index)} aria-label={`${file.name} 제거`}>삭제</button>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </>
           ) : null}
 
-          {mode === 'webpage' || mode === 'integration' ? (
-            <div className="add-disabled-panel">
-              <strong>준비 중</strong>
-              <span>이번 단계에서는 직접 입력과 파일 업로드만 검토 요청으로 연결됩니다.</span>
+          {mode === 'integration' ? (
+            <div className="add-integration">
+              <p className="add-help">외부 에이전트, 스크립트, CI 파이프라인에서 REST API로 이 워크스페이스에 지식을 전달합니다.</p>
+              <div className="add-workspace-id">
+                <span>워크스페이스 ID</span>
+                <code>{workspaceApiId}</code>
+                <button type="button" onClick={() => copyText(workspaceApiId, '워크스페이스 ID를 복사했습니다.')}>복사</button>
+              </div>
+              <div className="add-api-steps">
+                <strong>1단계 - 인증</strong>
+                <span>/auth/login으로 자격증명을 POST하면 JWT가 발급됩니다. 이후 모든 요청에 Authorization: Bearer &lt;token&gt; 헤더를 포함하세요.</span>
+                <strong>2단계 - 지식 전달</strong>
+                <span>/workspaces/{workspaceApiId}/ingestions 엔드포인트로 콘텐츠 또는 파일을 POST합니다.</span>
+              </div>
+              <div className="add-code-panel">
+                <div className="add-code-tabs">
+                  {(['javascript', 'curl', 'python'] as const).map((tab) => (
+                    <button type="button" key={tab} className={codeTab === tab ? 'on' : ''} onClick={() => setCodeTab(tab)}>
+                      {tab === 'javascript' ? 'JavaScript' : tab === 'curl' ? 'cURL' : 'Python'}
+                    </button>
+                  ))}
+                  <button type="button" className="add-code-copy" onClick={() => copyText(codeSamples[codeTab], '예시 코드를 복사했습니다.')}>복사</button>
+                </div>
+                <pre><code>{codeSamples[codeTab]}</code></pre>
+              </div>
+              <div className="add-api-fields">
+                {[
+                  ['sourceName', '에이전트 또는 통합 이름, 필수'],
+                  ['idempotencyKey', '문서당 고유 키, 재시도 중복 방지'],
+                  ['contentType', 'rawPayload.text의 MIME 타입, 기본값 text/plain'],
+                  ['titleHint', '문서 제목 힌트, 선택'],
+                  ['metadata', 'sentFrom, repository, pipeline 등 호출 출처 메타'],
+                  ['rawPayload.text', '전달할 본문 텍스트, 필수'],
+                ].map(([name, desc]) => (
+                  <div key={name}>
+                    <code>{name}</code>
+                    <span>{desc}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           ) : null}
 
-          {fileError ? <p className="add-error">{fileError}</p> : null}
-          {unsupportedFile ? <p className="add-error">지원하지 않는 파일 형식입니다.</p> : null}
+          {mode !== 'integration' ? (
+            <>
+              {totalFileError ? <p className="add-error">{totalFileError}</p> : null}
+              <label className="add-source">
+                <span>출처(선택)</span>
+                <input value={source} placeholder="예: 사내 공지, 취업규칙 §22" onChange={(event) => setSource(event.target.value)} />
+              </label>
 
-          <label className="add-source">
-            <span>출처(선택)</span>
-            <input value={source} placeholder="예: 사내 공지, 취업규칙 §22" onChange={(event) => setSource(event.target.value)} />
-          </label>
+              {mutationError ? (
+                <p className="add-error">{mutationError.message}</p>
+              ) : null}
 
-          {mutationError ? (
-            <p className="add-error">{mutationError.message}</p>
+              <div className="add-actions">
+                <button type="button" className="btn" onClick={resetInputs}>취소</button>
+                <button type="submit" className="btn-primary" disabled={submitDisabled}>
+                  {busy ? '접수 중...' : '검토 요청하기'}
+                </button>
+              </div>
+              <p className="add-footnote">직접 추가한 내용은 P2 배치 검토로 분류되며, 안내 박스는 이번 단계에서 반영하지 않습니다.</p>
+            </>
           ) : null}
-
-          <div className="add-actions">
-            <button type="button" className="btn" onClick={resetInputs}>취소</button>
-            <button type="submit" className="btn-primary" disabled={submitDisabled}>
-              {ingest.isPending || ingestFile.isPending ? '접수 중...' : '검토 요청하기'}
-            </button>
-          </div>
-          <p className="add-footnote">직접 추가한 내용은 P2 배치 검토로 분류되며, 안내 박스는 이번 단계에서 반영하지 않습니다.</p>
         </section>
       </form>
     </section>
