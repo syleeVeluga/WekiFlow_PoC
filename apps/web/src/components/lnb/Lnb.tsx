@@ -104,7 +104,6 @@ export function Lnb() {
   const updateSettings = useUpdateSettings();
   const { data: published = [] } = usePublished();
   const nav = (page: Parameters<typeof go>[0]) => {
-    if (['sources', 'rules', 'history'].includes(page)) showToast('준비 중입니다.', 'inf');
     go(page);
   };
 
