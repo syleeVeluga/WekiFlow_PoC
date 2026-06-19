@@ -22,7 +22,7 @@
 | PR | 제목 | 선행 | 산출 |
 | :--- | :--- | :--- | :--- |
 | [PR-01](./PR-01-wkf-scaffold-and-spec.md) | `packages/wkf` 스캐폴드 + WKF v0.1 스펙 + frontmatter 타입 | 완료 | 패키지·SPEC·zod |
-| [PR-02](./PR-02-parse-serialize.md) | parse/serialize + `fromMongo` 어댑터 + 라운드트립 테스트 | 01 | 직렬화 |
+| [PR-02](./PR-02-parse-serialize.md) | parse/serialize + `fromMongo` 어댑터 + 라운드트립 테스트 | 완료 | 직렬화 |
 | [PR-03](./PR-03-validate-and-nonshrinkage.md) | `validate`(적합성) + **비축소 검증 라이브러리** | 02 | 게이트·가드레일 lib |
 | [PR-04](./PR-04-bundle-init-pull.md) | 번들 레이아웃 + `wkf init/status/pull`(DB→번들, baseRev) | 02 | export 경로 |
 | [PR-05](./PR-05-push-optimistic-lock.md) | `wkf push`(**낙관적 락**) + `wkf reference`(읽기전용) | 03,04 | 동기화 |
