@@ -4,7 +4,7 @@ import { cosineSimilarity, generateObject, tool, type LanguageModel } from 'ai';
 import { z } from 'zod';
 import type { Db } from 'mongodb';
 import { createChunksRepo, createDocumentsRepo, searchKnowledgeGraph, type GraphPath } from '@wf/db';
-import { parse, serialize, type StaleConcept } from '@wekiflow/wkf';
+import { assertNoShrinkage, parse, serialize, type StaleConcept, type WkfDoc } from '@wekiflow/wkf';
 import {
   MergeResultSchema,
   TripletArraySchema,
@@ -57,6 +57,14 @@ function shSingleQuote(value: string): string {
 
 function resolveBundlePath(bundlePathRoot: string, relativePath: string): string {
   return join(bundlePathRoot, relativePath.split('/').join(sep));
+}
+
+function parseDraftWithFallback(markdown: string, before: WkfDoc): WkfDoc {
+  try {
+    return parse(markdown);
+  } catch {
+    return { frontmatter: before.frontmatter, body: markdown };
+  }
 }
 
 export const MAIN_AGENT_SYSTEM_PROMPT = `너는 WekiFlow의 지식 병합 에이전트다. 목표는 인입된 정보를 기존 문서에 정확히 병합하는 것이다.
@@ -276,6 +284,19 @@ export function createCurationTools(ctx: CurationToolContext) {
 
         if (!mergedMarkdown?.trim()) throw new Error(`${decision} requires mergedMarkdown`);
         if (decision === 'enhance') {
+          const before = parse(await readFile(conceptPath(), 'utf8'));
+          const after = parseDraftWithFallback(mergedMarkdown, before);
+          try {
+            assertNoShrinkage(before, after);
+          } catch (error) {
+            await record({
+              tool: 'tool_write_concept',
+              args: { decision, slug: ctx.concept.slug, changeSummary },
+              result: { status: 'rejected', reason: error instanceof Error ? error.message : String(error) },
+              tookMs: Date.now() - started,
+            });
+            throw error;
+          }
           const updated = await documents.setDraftBySlug(ctx.concept.slug, mergedMarkdown);
           if (!updated) throw new Error(`Document not found for curation slug: ${ctx.concept.slug}`);
           await record({

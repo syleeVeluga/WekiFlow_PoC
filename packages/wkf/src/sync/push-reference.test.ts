@@ -61,6 +61,31 @@ Changed policy body`,
     await expect(readFile(sourcePath, 'utf8')).resolves.not.toContain('Validate only body');
   });
 
+  it('blocks modified pushes that shrink existing citations', async () => {
+    const { root, sourcePath, store, docPath } = await setupBundle();
+    const remote = JSON.parse(await readFile(sourcePath, 'utf8')) as { documents: Array<Record<string, unknown>> };
+    remote.documents[0]!.sourceRefs = [{ type: 'manual', ref: 'wkf://curation/policy', note: 'source=curation' }];
+    await writeFile(sourcePath, JSON.stringify(remote), 'utf8');
+    await writeFile(
+      docPath,
+      `---
+type: ENTITY
+title: Annual Leave
+tags: []
+status: PUBLISHED
+slug: hr/annual-leave
+---
+Changed policy body
+
+# Citations
+`,
+      'utf8',
+    );
+
+    await expect(pushBundle(root, store, { force: true })).rejects.toThrow('citation count decreased');
+    await expect(readFile(sourcePath, 'utf8')).resolves.not.toContain('Changed policy body');
+  });
+
   it('blocks policy violations before pushing commits', async () => {
     const { root, sourcePath, store, docPath } = await setupBundle();
     await writeFile(join(root, 'policy.yaml'), 'citations:\n  required_for: [REGULATION]\n', 'utf8');

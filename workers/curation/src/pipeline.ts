@@ -105,6 +105,7 @@ export function extractCurationResult(
 
 export async function runCurationAgent(job: CurationConceptJob, ctx: CurationAgentContext): Promise<CurationAgentResult> {
   const policy = ctx.policy ?? (await loadPolicy(ctx.bundlePath));
+  const recordedSteps: AgentStep[] = [];
   const tools = createCurationTools({
     db: ctx.db,
     sandbox: ctx.sandbox,
@@ -112,7 +113,10 @@ export async function runCurationAgent(job: CurationConceptJob, ctx: CurationAge
     docsSnapshotDir: ctx.docsSnapshotDir,
     concept: job.concept,
     ...(ctx.now ? { now: ctx.now } : {}),
-    ...(ctx.recordStep ? { recordStep: ctx.recordStep } : {}),
+    recordStep: async (step) => {
+      recordedSteps.push(step);
+      await ctx.recordStep?.(step);
+    },
   });
   const agent = new ToolLoopAgent({
     model: ctx.model,
@@ -127,6 +131,20 @@ export async function runCurationAgent(job: CurationConceptJob, ctx: CurationAge
   });
   const decision = extractCurationResult(job.concept.slug, result.steps);
   if (!decision) {
+    const rejected = recordedSteps.findLast(
+      (step) =>
+        step.tool === 'tool_write_concept' &&
+        step.result &&
+        typeof step.result === 'object' &&
+        (step.result as { status?: unknown }).status === 'rejected',
+    );
+    if (rejected) {
+      const reason =
+        rejected.result && typeof rejected.result === 'object' && 'reason' in rejected.result
+          ? String((rejected.result as { reason: unknown }).reason)
+          : 'curation write rejected';
+      throw new Error(reason);
+    }
     return { slug: job.concept.slug, decision: 'skip', status: 'skipped' };
   }
   return decision;
