@@ -4,7 +4,8 @@ import { FrontmatterSchema, type WkfDoc } from './types.js';
 const FRONTMATTER_PATTERN = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n)?/;
 
 export function parse(markdown: string): WkfDoc {
-  const match = FRONTMATTER_PATTERN.exec(markdown);
+  const normalized = markdown.replace(/^\uFEFF/, '');
+  const match = FRONTMATTER_PATTERN.exec(normalized);
   if (!match) throw new Error('WKF document is missing YAML frontmatter');
 
   const yamlText = match[1] ?? '';
@@ -15,6 +16,6 @@ export function parse(markdown: string): WkfDoc {
 
   return {
     frontmatter: FrontmatterSchema.parse(parsed.toJSON()),
-    body: markdown.slice(match[0].length),
+    body: normalized.slice(match[0].length),
   };
 }

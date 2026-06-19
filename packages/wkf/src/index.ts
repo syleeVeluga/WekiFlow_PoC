@@ -40,6 +40,8 @@ export {
 export { contentHash, rawContentHash } from './sync/hash.js';
 export { initBundle, type InitOptions } from './sync/init.js';
 export { pullBundle, type PullOptions, type PullResult } from './sync/pull.js';
+export { ConflictError, pushBundle, type PushOptions, type PushResult } from './sync/push.js';
+export { referenceBundle, type ReferenceResult } from './sync/reference.js';
 export { slugFromDocument, slugToBundlePath } from './sync/paths.js';
-export { JsonDocumentSource, type WkfDocumentSource } from './sync/source.js';
+export { JsonDocumentSource, JsonDocumentStore, type WkfDocumentSource, type WkfDocumentStore } from './sync/source.js';
 export { statusBundle, type StatusEntry } from './sync/status.js';

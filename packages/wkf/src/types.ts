@@ -63,4 +63,5 @@ export interface MongoWkfDocument {
   status?: unknown;
   contentMarkdown?: unknown;
   sourceRefs?: unknown;
+  contentHash?: unknown;
 }
