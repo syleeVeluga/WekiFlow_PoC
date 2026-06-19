@@ -4,6 +4,7 @@ import { loadEnv, type JobType } from '@wf/shared';
 
 export const MAIN_QUEUE_NAME = 'main';
 export const GRAPH_QUEUE_NAME = 'graph';
+export const CURATION_QUEUE_NAME = 'curation';
 
 export function createRedisConnection() {
   const env = loadEnv();
@@ -16,6 +17,10 @@ export function createMainQueue(connection = createRedisConnection()) {
 
 export function createGraphQueue(connection = createRedisConnection()) {
   return new Queue(GRAPH_QUEUE_NAME, { connection, prefix: 'wf:graph' });
+}
+
+export function createCurationQueue(connection = createRedisConnection()) {
+  return new Queue(CURATION_QUEUE_NAME, { connection, prefix: 'wf:curation' });
 }
 
 export function createMainQueueEvents(connection = createRedisConnection()) {
@@ -36,25 +41,36 @@ export interface WorkerRuntimeOptions {
   limiter?: { max: number; duration: number };
 }
 
-function workerRuntimeOptions(queueName: typeof MAIN_QUEUE_NAME | typeof GRAPH_QUEUE_NAME, options: WorkerRuntimeOptions = {}) {
+function workerRuntimeOptions(queueName: typeof MAIN_QUEUE_NAME | typeof GRAPH_QUEUE_NAME | typeof CURATION_QUEUE_NAME, options: WorkerRuntimeOptions = {}) {
   const env = loadEnv();
   const concurrency =
-    options.concurrency ?? (queueName === MAIN_QUEUE_NAME ? env.MAIN_WORKER_CONCURRENCY : env.GRAPH_WORKER_CONCURRENCY);
-  const rateMax = queueName === MAIN_QUEUE_NAME ? env.MAIN_QUEUE_RATE_MAX : env.GRAPH_QUEUE_RATE_MAX;
-  const rateDuration = queueName === MAIN_QUEUE_NAME ? env.MAIN_QUEUE_RATE_DURATION_MS : env.GRAPH_QUEUE_RATE_DURATION_MS;
+    options.concurrency ??
+    (queueName === MAIN_QUEUE_NAME
+      ? env.MAIN_WORKER_CONCURRENCY
+      : queueName === GRAPH_QUEUE_NAME
+        ? env.GRAPH_WORKER_CONCURRENCY
+        : env.CURATION_WORKER_CONCURRENCY);
+  const rateMax =
+    queueName === MAIN_QUEUE_NAME ? env.MAIN_QUEUE_RATE_MAX : queueName === GRAPH_QUEUE_NAME ? env.GRAPH_QUEUE_RATE_MAX : env.CURATION_QUEUE_RATE_MAX;
+  const rateDuration =
+    queueName === MAIN_QUEUE_NAME
+      ? env.MAIN_QUEUE_RATE_DURATION_MS
+      : queueName === GRAPH_QUEUE_NAME
+        ? env.GRAPH_QUEUE_RATE_DURATION_MS
+        : env.CURATION_QUEUE_RATE_DURATION_MS;
   const limiter = options.limiter ?? (rateMax > 0 ? { max: rateMax, duration: rateDuration } : undefined);
   return limiter ? { concurrency, limiter } : { concurrency };
 }
 
 export function createWorker<T>(
-  queueName: typeof MAIN_QUEUE_NAME | typeof GRAPH_QUEUE_NAME,
+  queueName: typeof MAIN_QUEUE_NAME | typeof GRAPH_QUEUE_NAME | typeof CURATION_QUEUE_NAME,
   processor: Processor<T>,
   connection = createRedisConnection(),
   options: WorkerRuntimeOptions = {},
 ) {
   return new Worker(queueName, processor, {
     connection,
-    prefix: queueName === MAIN_QUEUE_NAME ? 'wf:main' : 'wf:graph',
+    prefix: queueName === MAIN_QUEUE_NAME ? 'wf:main' : queueName === GRAPH_QUEUE_NAME ? 'wf:graph' : 'wf:curation',
     ...workerRuntimeOptions(queueName, options),
   });
 }
