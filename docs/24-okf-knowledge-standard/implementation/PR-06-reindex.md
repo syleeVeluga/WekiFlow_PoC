@@ -26,9 +26,13 @@
 - `# Relations` 트리플이 `kg_edges`로 정확 매핑.
 
 ## DoD
-- [ ] **DB를 비운 뒤 `wkf reindex --all`만으로 벡터·KG 완전 복구**(게이트, [`10` §2.2]).
-- [ ] 멱등 보장(2회 실행 동일).
-- [ ] Entity Resolution 병합 규칙 준수.
+- [x] **DB를 비운 뒤 `wkf reindex --all`만으로 벡터·KG 완전 복구**(게이트, [`10` §2.2]).
+- [x] 멱등 보장(2회 실행 동일).
+- [x] Entity Resolution 병합 규칙 준수.
+
+완료 증거:
+- 구현 PR: <https://github.com/syleeVeluga/WekiFlow_PoC/pull/12>
+- 검증: `corepack pnpm -r build`, `corepack pnpm -r typecheck`, `corepack pnpm -r test`
 
 ## 리스크·메모
 - 임베딩 비용/시간 — `--concept`로 증분 재빌드 지원, 변경분만.
