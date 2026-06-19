@@ -26,9 +26,9 @@ git-backed 번들 디렉터리 레이아웃을 확정하고, DB의 published 문
 - 멱등: `pull` 2회 시 동일 결과.
 
 ## DoD
-- [ ] `wkf init`/`pull`/`status`가 동작하고 `--dry-run` 지원.
-- [ ] 각 개념에 `baseRev`가 기록된다(PR-05 락의 입력).
-- [ ] `pull`이 멱등.
+- [x] `wkf init`/`pull`/`status`가 동작하고 `--dry-run` 지원.
+- [x] 각 개념에 `baseRev`가 기록된다(PR-05 락의 입력).
+- [x] `pull`이 멱등.
 
 ## 리스크·메모
 - contentHash는 `serialize` 정규화 출력 기준(공백/키순서 안정화 필수, PR-02 의존).
