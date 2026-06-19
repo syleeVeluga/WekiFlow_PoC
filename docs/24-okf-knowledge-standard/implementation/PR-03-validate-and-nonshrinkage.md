@@ -33,9 +33,9 @@
 - 비축소: 헤딩 삭제/스키마 필드 감소/인용 감소 → 각각 throw. 가산적 변경(섹션 추가) → pass. `tags` union 유지.
 
 ## DoD
-- [ ] `validate`가 OKF MUST를 정확히 강제하고 관용 규칙을 지킨다.
-- [ ] `assertNoShrinkage`가 4종 축소를 모두 차단, 가산 변경은 통과.
-- [ ] 라이브러리가 PR-09/PR-12에서 import 가능하게 export.
+- [x] `validate`가 OKF MUST를 정확히 강제하고 관용 규칙을 지킨다.
+- [x] `assertNoShrinkage`가 4종 축소를 모두 차단, 가산 변경은 통과.
+- [x] 라이브러리가 PR-09/PR-12에서 import 가능하게 export.
 
 ## 리스크·메모
 - 헤딩 "같은 문구" 비교는 정규화(trim/공백) 후 비교 — 과민하면 정상 보강을 막음.
