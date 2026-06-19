@@ -78,6 +78,10 @@ export async function validate(bundlePath: string, policy?: ValidationPolicy): P
     const content = await readFile(file, 'utf8');
     const basename = path.split('/').pop() ?? path;
 
+    if (path.startsWith('.wkf/') || path.startsWith('.ref/')) {
+      continue;
+    }
+
     if (basename === 'policy.yaml') {
       continue;
     }

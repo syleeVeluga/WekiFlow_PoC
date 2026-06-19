@@ -64,6 +64,10 @@ describe('parse and serialize', () => {
     expect(parse(serialize(doc)).body).toContain('# Citations');
   });
 
+  it('accepts UTF-8 BOM before frontmatter', () => {
+    expect(parse('\uFEFF---\ntype: POLICY\n---\nBody').frontmatter.type).toBe('POLICY');
+  });
+
   it('does not duplicate an existing citations heading when adapting Mongo documents', () => {
     const doc = fromMongo({
       title: 'Existing Citations',

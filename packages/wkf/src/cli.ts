@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 import { initBundle } from './sync/init.js';
+import { pushBundle } from './sync/push.js';
+import { referenceBundle } from './sync/reference.js';
 import { pullBundle } from './sync/pull.js';
-import { JsonDocumentSource } from './sync/source.js';
+import { JsonDocumentSource, JsonDocumentStore } from './sync/source.js';
 import { statusBundle } from './sync/status.js';
 
 function hasFlag(args: string[], flag: string): boolean {
@@ -17,7 +19,7 @@ function bundleArg(args: string[]): string {
   const positionals: string[] = [];
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index]!;
-    if (arg === '--source') {
+    if (arg === '--source' || arg === '--slug') {
       index += 1;
       continue;
     }
@@ -44,6 +46,31 @@ async function main(argv: string[]): Promise<void> {
     return;
   }
 
+  if (command === 'push') {
+    const sourcePath = optionValue(args, '--source') ?? process.env.WKF_PULL_SOURCE;
+    if (!sourcePath) throw new Error('wkf push requires --source <documents.json> or WKF_PULL_SOURCE');
+    const result = await pushBundle(bundleArg(args), new JsonDocumentStore(sourcePath), {
+      force: hasFlag(args, '--force'),
+      validateOnly: hasFlag(args, '--validate-only') || dryRun,
+    });
+    if (hasFlag(args, '--validate-only') || dryRun) {
+      console.log(result.checked.length === 0 ? 'nothing to validate' : `validated\n${result.checked.join('\n')}`);
+    } else {
+      console.log(result.pushed.length === 0 ? 'nothing to push' : result.pushed.join('\n'));
+    }
+    return;
+  }
+
+  if (command === 'reference') {
+    const sourcePath = optionValue(args, '--source') ?? process.env.WKF_PULL_SOURCE;
+    const slug = optionValue(args, '--slug');
+    if (!sourcePath) throw new Error('wkf reference requires --source <documents.json> or WKF_PULL_SOURCE');
+    if (!slug || slug.startsWith('--')) throw new Error('wkf reference requires --slug <slug>');
+    const result = await referenceBundle(bundleArg(args), new JsonDocumentStore(sourcePath), slug);
+    console.log(result.path);
+    return;
+  }
+
   if (command === 'status') {
     const entries = await statusBundle(bundleArg(args));
     if (entries.length === 0) {
@@ -54,7 +81,7 @@ async function main(argv: string[]): Promise<void> {
     return;
   }
 
-  throw new Error('Usage: wkf <init|pull|status> [bundlePath] [--dry-run] [--source documents.json]');
+  throw new Error('Usage: wkf <init|pull|status|push|reference> [bundlePath] [--dry-run] [--source documents.json]');
 }
 
 main(process.argv.slice(2)).catch((error: unknown) => {
