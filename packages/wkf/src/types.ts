@@ -56,3 +56,11 @@ export interface WkfDoc {
   frontmatter: Frontmatter;
   body: string;
 }
+
+export interface MongoWkfDocument {
+  title?: unknown;
+  slug?: unknown;
+  status?: unknown;
+  contentMarkdown?: unknown;
+  sourceRefs?: unknown;
+}
