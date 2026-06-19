@@ -1,4 +1,13 @@
 import type { Queue } from 'bullmq';
+import { ToolLoopAgent, stepCountIs, type LanguageModel } from 'ai';
+import type { Db } from 'mongodb';
+import type { SandboxRunner } from '@wf/sandbox';
+import {
+  buildCurationPrompt,
+  createCurationTools,
+  CURATION_SYSTEM_PROMPT,
+  type AgentStep,
+} from '@wf/agent-tools';
 import { loadPolicy, scanStale, type Policy, type StaleConcept } from '@wekiflow/wkf';
 
 export const CURATION_SCAN_JOB_ID = 'curation-scan';
@@ -13,6 +22,30 @@ export interface CurationConceptJob {
 export interface CurationScanResult {
   queued: number;
   stale: StaleConcept[];
+}
+
+export type CurationDecision = 'verify' | 'enhance' | 'create' | 'skip';
+
+export interface CurationAgentResult {
+  slug: string;
+  decision: CurationDecision;
+  status: 'verified' | 'review' | 'skipped';
+  documentId?: string;
+  lastVerified?: string;
+}
+
+export interface CurationAgentContext {
+  db: Db;
+  sandbox: SandboxRunner;
+  bundlePath: string;
+  docsSnapshotDir: string;
+  jobId: string;
+  model: LanguageModel;
+  policy?: Policy;
+  now?: Date;
+  stepLimit?: number;
+  onStep?: (step: unknown) => void | Promise<void>;
+  recordStep?: (step: AgentStep) => void | Promise<void>;
 }
 
 export async function registerCurationSchedule(
@@ -42,6 +75,59 @@ export async function runCurationScan(
   return { queued: stale.length, stale };
 }
 
-export async function runCurationPlaceholder(job: CurationConceptJob): Promise<{ slug: string; status: 'queued' }> {
-  return { slug: job.concept.slug, status: 'queued' };
+export function extractCurationResult(
+  slug: string,
+  steps: ReadonlyArray<{ toolResults?: ReadonlyArray<{ toolName: string; output: unknown }> }>,
+): CurationAgentResult | undefined {
+  for (let i = steps.length - 1; i >= 0; i -= 1) {
+    const toolResults = steps[i]?.toolResults ?? [];
+    for (const toolResult of toolResults) {
+      if (toolResult.toolName !== 'tool_write_concept' || !toolResult.output || typeof toolResult.output !== 'object') continue;
+      const output = toolResult.output as Record<string, unknown>;
+      const decision = output.decision;
+      const status = output.status;
+      if (
+        (decision === 'verify' || decision === 'enhance' || decision === 'create' || decision === 'skip') &&
+        (status === 'verified' || status === 'review' || status === 'skipped')
+      ) {
+        return {
+          slug,
+          decision,
+          status,
+          ...(typeof output.documentId === 'string' ? { documentId: output.documentId } : {}),
+          ...(typeof output.lastVerified === 'string' ? { lastVerified: output.lastVerified } : {}),
+        };
+      }
+    }
+  }
+  return undefined;
+}
+
+export async function runCurationAgent(job: CurationConceptJob, ctx: CurationAgentContext): Promise<CurationAgentResult> {
+  const policy = ctx.policy ?? (await loadPolicy(ctx.bundlePath));
+  const tools = createCurationTools({
+    db: ctx.db,
+    sandbox: ctx.sandbox,
+    bundlePath: ctx.bundlePath,
+    docsSnapshotDir: ctx.docsSnapshotDir,
+    concept: job.concept,
+    ...(ctx.now ? { now: ctx.now } : {}),
+    ...(ctx.recordStep ? { recordStep: ctx.recordStep } : {}),
+  });
+  const agent = new ToolLoopAgent({
+    model: ctx.model,
+    instructions: CURATION_SYSTEM_PROMPT,
+    tools,
+    stopWhen: stepCountIs(ctx.stepLimit ?? policy.enrichment.agent_step_limit),
+  });
+
+  const result = await agent.generate({
+    prompt: buildCurationPrompt(job.concept),
+    ...(ctx.onStep ? { onStepFinish: ctx.onStep } : {}),
+  });
+  const decision = extractCurationResult(job.concept.slug, result.steps);
+  if (!decision) {
+    return { slug: job.concept.slug, decision: 'skip', status: 'skipped' };
+  }
+  return decision;
 }

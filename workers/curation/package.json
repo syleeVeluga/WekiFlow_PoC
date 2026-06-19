@@ -13,9 +13,14 @@
     "dev": "tsx watch src/index.ts"
   },
   "dependencies": {
+    "@ai-sdk/openai": "^3.0.67",
+    "@wf/agent-tools": "workspace:*",
+    "@wf/db": "workspace:*",
     "@wf/queue": "workspace:*",
+    "@wf/sandbox": "workspace:*",
     "@wf/shared": "workspace:*",
     "@wekiflow/wkf": "workspace:*",
+    "ai": "^6.0.193",
     "bullmq": "^5.65.0",
     "dotenv": "17.4.2"
   }

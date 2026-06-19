@@ -26,7 +26,7 @@ async function listConceptFiles(bundlePath: string, dir = bundlePath): Promise<s
   const entries = await readdir(dir, { withFileTypes: true });
   const files: string[] = [];
   for (const entry of entries) {
-    if (entry.name === '.wkf' || entry.name === 'references') continue;
+    if (entry.name === '.wkf' || entry.name === '.ref' || entry.name === 'references') continue;
     const path = join(dir, entry.name);
     if (entry.isDirectory()) files.push(...(await listConceptFiles(bundlePath, path)));
     if (entry.isFile() && entry.name.endsWith('.md') && !RESERVED_MARKDOWN.has(entry.name)) files.push(path);

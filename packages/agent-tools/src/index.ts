@@ -1,7 +1,10 @@
+import { readFile, writeFile } from 'node:fs/promises';
+import { join, sep } from 'node:path';
 import { cosineSimilarity, generateObject, tool, type LanguageModel } from 'ai';
 import { z } from 'zod';
 import type { Db } from 'mongodb';
 import { createChunksRepo, createDocumentsRepo, searchKnowledgeGraph, type GraphPath } from '@wf/db';
+import { parse, serialize, type StaleConcept } from '@wekiflow/wkf';
 import {
   MergeResultSchema,
   TripletArraySchema,
@@ -35,9 +38,25 @@ export interface MainToolContext {
   recordStep?: (step: AgentStep) => void | Promise<void>;
 }
 
+export interface CurationToolContext {
+  db: Db;
+  sandbox: SandboxRunner;
+  /** Bundle root; concept paths are resolved relative to this directory. */
+  bundlePath: string;
+  /** Host directory mounted read-only at /docs inside the sandbox. */
+  docsSnapshotDir: string;
+  concept: StaleConcept;
+  now?: Date;
+  recordStep?: (step: AgentStep) => void | Promise<void>;
+}
+
 /** Single-quote a value for safe interpolation into a `bash -lc` command (no shell expansion). */
 function shSingleQuote(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
+function resolveBundlePath(bundlePathRoot: string, relativePath: string): string {
+  return join(bundlePathRoot, relativePath.split('/').join(sep));
 }
 
 export const MAIN_AGENT_SYSTEM_PROMPT = `너는 WekiFlow의 지식 병합 에이전트다. 목표는 인입된 정보를 기존 문서에 정확히 병합하는 것이다.
@@ -54,6 +73,15 @@ Phase 4 retrieval guide:
 - Prefer tool_hybrid_retrieve when both semantically similar chunks and knowledge-graph paths are useful; it returns RRF-ranked context from vector and graph retrieval.
 - If graph paths are sparse, fall back to tool_search_vector and finally tool_execute_sandbox_terminal for exact clauses, numbers, and policy wording.
 - Pass graph path facts into tool_merge as evidence when they explain relationships across documents.`;
+
+export const CURATION_SYSTEM_PROMPT = `You are WekiFlow's knowledge curation agent. Keep the assigned concept current without destructive rewrites.
+
+Rules:
+1. First read the concept and its read-only reference context with tool_read_concept.
+2. Verify source facts with tool_grep_verify before deciding. If the source facts are unchanged, do not rewrite the document; call tool_write_concept with decision "verify".
+3. If facts changed, only produce additive updates. Preserve existing frontmatter keys, keep type/title/resource verbatim, union tags, and preserve every existing # heading in the same order and wording.
+4. If the topic does not clearly belong in the existing concept, use decision "create" only when the new reference is concrete, non-meta, citeable, and reusable. Otherwise use decision "skip".
+5. When in doubt, skip. Only cite sources that were actually read or verified.`;
 
 const MERGE_SYSTEM_PROMPT = `너는 사내 지식 문서 편집기다. 기존 문서(original)에 수집된 팩트(facts)를 정확히 병합한 마크다운 초안을 만든다.
 규칙:
@@ -73,6 +101,18 @@ ${doc.contentMarkdown}
 --- 끝 ---
 
 수치·조항·고유명사는 추측하지 말고 grep으로 검증한 뒤, tool_merge로 병합 초안을 만들고 tool_verify_integrity로 핵심 주장을 검증하라.`;
+}
+
+export function buildCurationPrompt(concept: StaleConcept): string {
+  return `Curate this stale WKF concept once.
+
+Slug: ${concept.slug}
+Path: ${concept.path}
+Type: ${concept.type}
+Last checked: ${concept.lastCheckedAt ?? 'never'}
+Stale since: ${concept.staleSince}
+
+Use the tools to read the current concept, grep-verify source facts, then choose exactly one write decision: verify, enhance, create, or skip.`;
 }
 
 export interface HybridContext {
@@ -135,6 +175,137 @@ export function fuseHybridRetrieval(input: {
   });
 
   return [...fused.values()].sort((a, b) => b.score - a.score).slice(0, input.k ?? 8);
+}
+
+export function createCurationTools(ctx: CurationToolContext) {
+  const documents = createDocumentsRepo(ctx.db);
+
+  const record = async (step: AgentStep) => {
+    await ctx.recordStep?.(step);
+  };
+
+  const conceptPath = () => resolveBundlePath(ctx.bundlePath, ctx.concept.path);
+  const referencePath = () => resolveBundlePath(join(ctx.bundlePath, '.ref'), ctx.concept.path);
+
+  return {
+    tool_read_concept: tool({
+      description: 'Read the current WKF concept and its read-only reference baseline.',
+      inputSchema: z.object({}),
+      execute: async () => {
+        const started = Date.now();
+        const currentMarkdown = await readFile(conceptPath(), 'utf8');
+        const referenceMarkdown = await readFile(referencePath(), 'utf8').catch(() => '');
+        await record({
+          tool: 'tool_read_concept',
+          args: { slug: ctx.concept.slug, path: ctx.concept.path },
+          result: { hasReference: referenceMarkdown.length > 0, referenceReadOnly: true },
+          tookMs: Date.now() - started,
+        });
+        return {
+          slug: ctx.concept.slug,
+          path: ctx.concept.path,
+          currentMarkdown,
+          referenceMarkdown,
+          referenceReadOnly: true,
+        };
+      },
+    }),
+
+    tool_grep_verify: tool({
+      description: 'Run a fixed-string rg check against the read-only /docs snapshot.',
+      inputSchema: z.object({
+        query: z.string().min(1),
+        timeoutMs: z.number().int().min(1_000).max(30_000).default(10_000),
+      }),
+      execute: async ({ query, timeoutMs }) => {
+        const started = Date.now();
+        const result = await ctx.sandbox.run({
+          language: 'bash',
+          code: `rg -n -F -- ${shSingleQuote(query)} /docs`,
+          docsSnapshotDir: ctx.docsSnapshotDir,
+          timeoutMs,
+        });
+        await record({
+          tool: 'tool_grep_verify',
+          args: { query, timeoutMs },
+          result: { exitCode: result.exitCode, truncated: result.truncated },
+          tookMs: Date.now() - started,
+        });
+        return result;
+      },
+    }),
+
+    tool_write_concept: tool({
+      description: 'Record the curation decision. verify only updates last_verified; enhance/create moves additive drafts to REVIEW; skip writes nothing.',
+      inputSchema: z.object({
+        decision: z.enum(['verify', 'enhance', 'create', 'skip']),
+        mergedMarkdown: z.string().optional(),
+        changeSummary: z.string().optional(),
+        createdSlug: z.string().optional(),
+        createdTitle: z.string().optional(),
+      }),
+      execute: async ({ decision, mergedMarkdown, changeSummary, createdSlug, createdTitle }) => {
+        const started = Date.now();
+        if (decision === 'skip') {
+          await record({
+            tool: 'tool_write_concept',
+            args: { decision, slug: ctx.concept.slug },
+            result: { status: 'skipped' },
+            tookMs: Date.now() - started,
+          });
+          return { decision, status: 'skipped' as const };
+        }
+
+        if (decision === 'verify') {
+          const markdown = await readFile(conceptPath(), 'utf8');
+          const doc = parse(markdown);
+          const verifiedAt = (ctx.now ?? new Date()).toISOString();
+          await writeFile(
+            conceptPath(),
+            serialize({ ...doc, frontmatter: { ...doc.frontmatter, last_verified: verifiedAt } }),
+            'utf8',
+          );
+          await record({
+            tool: 'tool_write_concept',
+            args: { decision, slug: ctx.concept.slug },
+            result: { status: 'verified', lastVerified: verifiedAt },
+            tookMs: Date.now() - started,
+          });
+          return { decision, status: 'verified' as const, lastVerified: verifiedAt };
+        }
+
+        if (!mergedMarkdown?.trim()) throw new Error(`${decision} requires mergedMarkdown`);
+        if (decision === 'enhance') {
+          const updated = await documents.setDraftBySlug(ctx.concept.slug, mergedMarkdown);
+          if (!updated) throw new Error(`Document not found for curation slug: ${ctx.concept.slug}`);
+          await record({
+            tool: 'tool_write_concept',
+            args: { decision, slug: ctx.concept.slug, changeSummary },
+            result: { status: 'review', documentId: updated.id },
+            tookMs: Date.now() - started,
+          });
+          return { decision, status: 'review' as const, documentId: updated.id };
+        }
+
+        const created = await documents.createDraft({
+          title: createdTitle ?? createdSlug ?? ctx.concept.slug,
+          contentMarkdown: mergedMarkdown,
+          ...(createdSlug ? { slug: createdSlug } : {}),
+          sourceType: 'manual',
+          sourceRef: `wkf://${createdSlug ?? ctx.concept.slug}`,
+          sourceLabel: 'curation',
+        });
+        await documents.setDraft(created.id, mergedMarkdown);
+        await record({
+          tool: 'tool_write_concept',
+          args: { decision, slug: createdSlug ?? ctx.concept.slug, changeSummary },
+          result: { status: 'review', documentId: created.id },
+          tookMs: Date.now() - started,
+        });
+        return { decision, status: 'review' as const, documentId: created.id };
+      },
+    }),
+  };
 }
 
 export function createMainTools(ctx: MainToolContext) {
