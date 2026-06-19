@@ -335,6 +335,27 @@ describe('@wf/api routes', () => {
     await app.close();
   });
 
+  it('streams Discovery Q&A answers through /api/ask', async () => {
+    const app = buildServer({ discoveryAsk: async ({ question }) => `answer:${question}` });
+    const ownerToken = await login(app, 'admin01@veluga.io', 'admin01@veluga.io');
+
+    const denied = await app.inject({ method: 'POST', url: '/api/ask', payload: { question: 'leave?' } });
+    expect(denied.statusCode).toBe(401);
+
+    const streamed = await app.inject({
+      method: 'POST',
+      url: '/api/ask',
+      headers: { authorization: `Bearer ${ownerToken}` },
+      payload: { question: 'leave?' },
+    });
+
+    expect(streamed.statusCode).toBe(200);
+    expect(streamed.payload).toContain('event: answer');
+    expect(streamed.payload).toContain('answer:leave?');
+    expect(streamed.payload).toContain('event: completed');
+    await app.close();
+  });
+
   it('runs owner-only agent preview and streams persisted steps', async () => {
     const app = buildServer();
     const ownerToken = await login(app, 'admin01@veluga.io', 'admin01@veluga.io');

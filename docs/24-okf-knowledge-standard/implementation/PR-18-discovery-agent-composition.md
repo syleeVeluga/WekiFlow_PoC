@@ -1,4 +1,4 @@
-# PR-18 — Q&A 에이전트 + `AgentTool` 합성
+﻿# PR-18 — Q&A 에이전트 + `AgentTool` 합성
 
 > Phase 7 · 선행: PR-17 · 근거: [`08` §B.4](../08-agent-implementation-specs.md), [`docs/22`](../../22-main-agent-architecture.md)
 
@@ -25,8 +25,8 @@ end-user용 Discovery Q&A 에이전트를 독립 `ToolLoopAgent`로 정의하되
 - SSE 스트리밍 동작.
 
 ## DoD
-- [ ] Discovery가 독립 Q&A로, 그리고 인입 에이전트의 `AgentTool`로 동작한다.
-- [ ] `docs/22`의 "멀티에이전트 부재"가 1단계 해소된다.
+- [x] Discovery가 독립 Q&A로, 그리고 인입 에이전트의 `AgentTool`로 동작한다.
+- [x] `docs/22`의 "멀티에이전트 부재"가 1단계 해소된다.
 
 ## 리스크·메모
 - 합성 시 step 폭주 방지(부모·자식 각각 stopWhen).

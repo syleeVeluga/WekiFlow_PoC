@@ -1026,6 +1026,89 @@ export function createJobsRepo(db: Db) {
   };
 }
 
+export interface StoredEnrichmentProposal {
+  id: string;
+  jobId: string;
+  gapType: string;
+  targetSlug: string | null;
+  instruction: string;
+  evidence: { reasoning: string; stepQuote: string };
+  priority: number;
+  evalCandidate: { valid: boolean; intent: string | null; goldenAnswer: string | null };
+  status: string;
+  createdAt: string;
+}
+
+export function createEnrichmentProposalsRepo(db: Db) {
+  const collection = db.collection('enrichment_proposals');
+  return {
+    async insertMany(jobId: string, proposals: Array<Omit<StoredEnrichmentProposal, 'id' | 'jobId' | 'status' | 'createdAt'>>): Promise<StoredEnrichmentProposal[]> {
+      if (proposals.length === 0) return [];
+      const now = new Date();
+      const docs = proposals.map((proposal) => ({ _id: new ObjectId(), jobId, ...proposal, status: 'OPEN', createdAt: now }));
+      await collection.insertMany(docs);
+      return docs.map((doc) => ({
+        id: doc._id.toString(),
+        jobId,
+        gapType: doc.gapType,
+        targetSlug: doc.targetSlug,
+        instruction: doc.instruction,
+        evidence: doc.evidence,
+        priority: doc.priority,
+        evalCandidate: doc.evalCandidate,
+        status: doc.status,
+        createdAt: doc.createdAt.toISOString(),
+      }));
+    },
+  };
+}
+
+export interface RetrievalGolden {
+  id: string;
+  intent: string;
+  goldenAnswer: string;
+  sourceJobId: string;
+  createdAt: string;
+}
+
+export function createRetrievalGoldensRepo(db: Db) {
+  const collection = db.collection('retrieval_goldens');
+  return {
+    async upsertFromProposals(proposals: StoredEnrichmentProposal[]): Promise<number> {
+      let written = 0;
+      for (const proposal of proposals) {
+        if (!proposal.evalCandidate.valid || !proposal.evalCandidate.intent || !proposal.evalCandidate.goldenAnswer) continue;
+        const result = await collection.updateOne(
+          { intent: proposal.evalCandidate.intent },
+          {
+            $setOnInsert: {
+              _id: new ObjectId(),
+              intent: proposal.evalCandidate.intent,
+              goldenAnswer: proposal.evalCandidate.goldenAnswer,
+              sourceJobId: proposal.jobId,
+              createdAt: new Date(),
+            },
+          },
+          { upsert: true },
+        );
+        if (result.upsertedCount === 1) written += 1;
+      }
+      return written;
+    },
+
+    async list(): Promise<RetrievalGolden[]> {
+      const rows = await collection.find({}).sort({ createdAt: 1 }).toArray();
+      return rows.map((row) => ({
+        id: objectIdKey(row._id),
+        intent: String(row.intent ?? ''),
+        goldenAnswer: String(row.goldenAnswer ?? ''),
+        sourceJobId: String(row.sourceJobId ?? ''),
+        createdAt: toIso(row.createdAt),
+      }));
+    },
+  };
+}
+
 export function createSandboxRunsRepo(db: Db) {
   const collection = db.collection('sandbox_runs');
 

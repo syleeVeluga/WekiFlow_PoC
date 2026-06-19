@@ -5,6 +5,7 @@ import { MongoClient } from 'mongodb';
 import { pushBundle } from './sync/push.js';
 import { reindexBundle } from './reindex.js';
 import { referenceBundle } from './sync/reference.js';
+import { regenerateFromRecipe } from './recipe.js';
 import { pullBundle } from './sync/pull.js';
 import { JsonDocumentSource, JsonDocumentStore } from './sync/source.js';
 import { statusBundle } from './sync/status.js';
@@ -115,7 +116,13 @@ async function main(argv: string[]): Promise<void> {
     return;
   }
 
-  throw new Error('Usage: wkf <init|pull|status|push|reference|reindex|index> [bundlePath] [--dry-run] [--source documents.json]');
+  if (command === 'regenerate') {
+    const result = await regenerateFromRecipe(bundleArg(args), { dryRun });
+    console.log(dryRun ? result.markdown : result.outputPath);
+    return;
+  }
+
+  throw new Error('Usage: wkf <init|pull|status|push|reference|reindex|index|regenerate> [bundlePath] [--dry-run] [--source documents.json]');
 }
 
 main(process.argv.slice(2)).catch((error: unknown) => {

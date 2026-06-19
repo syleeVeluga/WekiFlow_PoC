@@ -102,6 +102,7 @@ export interface BuildServerOptions {
   externalRateLimit?: { max: number; windowMs: number };
   maxQueueBacklog?: number;
   reviewPolicy?: Policy;
+  discoveryAsk?: (input: { question: string; user?: User }) => Promise<string>;
 }
 
 export function buildServer({
@@ -112,6 +113,7 @@ export function buildServer({
   externalRateLimit = { max: EXTERNAL_RATE_LIMIT_MAX, windowMs: EXTERNAL_RATE_LIMIT_WINDOW_MS },
   maxQueueBacklog = QUEUE_BACKLOG_LIMIT,
   reviewPolicy,
+  discoveryAsk,
 }: BuildServerOptions = {}) {
   store.seed?.();
   const app = Fastify({ logger: false });
@@ -751,6 +753,31 @@ export function buildServer({
     return store.listActivity(q.limit ? Number(q.limit) : undefined);
   });
   app.get('/api/tree/categories', async () => store.treeCategories());
+
+  app.post('/api/ask', async (request, reply) => {
+    const me = await currentUser(request);
+    if (!me) return reply.code(401).send({ error: 'Unauthorized' });
+    if (!discoveryAsk) return reply.code(503).send({ error: 'Discovery agent is not configured' });
+    const body = z.object({ question: z.string().min(1) }).parse(request.body);
+
+    reply.hijack();
+    const res = reply.raw;
+    res.writeHead(200, {
+      'content-type': 'text/event-stream',
+      'cache-control': 'no-cache',
+      connection: 'keep-alive',
+    });
+    res.write(': connected\n\n');
+    try {
+      const answer = await discoveryAsk({ question: body.question, user: me });
+      writeSse(res, 'answer', { answer });
+      writeSse(res, 'completed', { ok: true });
+    } catch (error) {
+      writeSse(res, 'failed', { error: error instanceof Error ? error.message : String(error) });
+    } finally {
+      res.end();
+    }
+  });
 
   app.post('/api/documents/:id/approve', async (request, reply) => {
     const { id } = request.params as { id: string };

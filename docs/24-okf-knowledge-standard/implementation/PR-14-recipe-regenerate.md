@@ -1,4 +1,4 @@
-# PR-14 — (선택) `recipe.yaml` + `wkf regenerate`
+﻿# PR-14 — (선택) `recipe.yaml` + `wkf regenerate`
 
 > Phase 6 · 선택(🟡) · 선행: PR-06 · 근거: [`07` §3](../07-knowledge-format-and-generation.md)
 
@@ -23,8 +23,8 @@
 - regenerate가 동일 입력에 안정적 결과(스냅샷).
 
 ## DoD
-- [ ] `recipe.yaml`로 영역 재생성이 가능하다.
-- [ ] recipe가 provenance로 git에 남는다.
+- [x] `recipe.yaml`로 영역 재생성이 가능하다.
+- [x] recipe가 provenance로 git에 남는다.
 
 ## 리스크·메모
 - 선택 PR — 핵심 게이트(Phase 5/6) 통과 후 착수. 시드는 PR-19 외부 크롤과 공유.

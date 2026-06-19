@@ -65,3 +65,13 @@ export {
   type PolicyContext,
 } from './policy.js';
 export { scanStale, type ScanStaleOptions, type StaleConcept } from './scan.js';
+export {
+  RecipeSchema,
+  RecipeSourceSchema,
+  readRecipe,
+  regenerateFromRecipe,
+  writeRecipe,
+  type RegenerateOptions,
+  type RegenerateResult,
+  type WkfRecipe,
+} from './recipe.js';

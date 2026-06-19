@@ -144,3 +144,7 @@
 - [08. Phase 2 — 샌드박스 파이프라인 A](./08-phase-2-sandbox-pipeline-a.md)
 - [09. Phase 3 — 그래프 파이프라인 B](./09-phase-3-graph-pipeline-b.md)
 - [10. Phase 4 — 하이브리드 RAG](./10-phase-4-hybrid-rag.md)
+
+## PR-18 update
+
+Discovery now has two entry points: `/api/ask` streams Q&A answers over SSE, and Pipeline A composes the same Discovery `ToolLoopAgent` through `tool_discovery_agent`. This is the first multi-agent composition step; the parent ingest agent and nested Discovery agent keep separate step caps.

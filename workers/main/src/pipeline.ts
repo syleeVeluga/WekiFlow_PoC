@@ -7,6 +7,7 @@ import {
   MAIN_AGENT_SYSTEM_PROMPT,
   buildIngestPrompt,
   createMainTools,
+  discoveryAgentAsTool,
   type AgentStep,
   type EmbedFn,
 } from '@wf/agent-tools';
@@ -76,11 +77,20 @@ export async function runMainPipeline(
     model: ctx.model,
     ...(ctx.recordStep ? { recordStep: ctx.recordStep } : {}),
   });
+  const composedTools = {
+    ...tools,
+    tool_discovery_agent: discoveryAgentAsTool({
+      jobId: ctx.jobId,
+      model: ctx.model,
+      tools,
+      ...(ctx.recordStep ? { recordStep: ctx.recordStep } : {}),
+    }),
+  };
 
   const agent = new ToolLoopAgent({
     model: ctx.model,
     instructions: MAIN_AGENT_SYSTEM_PROMPT,
-    tools,
+    tools: composedTools,
     stopWhen: stepCountIs(ctx.stepLimit ?? 12),
   });
 
