@@ -39,6 +39,9 @@ export async function ensureIndexes(db: Db): Promise<void> {
     db.collection('multi_source_groups').createIndex({ resolved: 1 }),
     db.collection('ai_tag_suggestions').createIndex({ status: 1 }),
     db.collection('activity_log').createIndex({ createdAt: -1 }),
+    db.collection('enrichment_proposals').createIndex({ status: 1, priority: -1, createdAt: -1 }),
+    db.collection('enrichment_proposals').createIndex({ jobId: 1 }),
+    db.collection('retrieval_goldens').createIndex({ intent: 1 }, { unique: true }),
   ]);
 }
 

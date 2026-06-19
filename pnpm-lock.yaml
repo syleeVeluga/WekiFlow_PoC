@@ -282,6 +282,33 @@ importers:
         specifier: 17.4.2
         version: 17.4.2
 
+  workers/learner:
+    dependencies:
+      '@ai-sdk/openai':
+        specifier: ^3.0.67
+        version: 3.0.67(zod@4.4.3)
+      '@wf/agent-tools':
+        specifier: workspace:*
+        version: link:../../packages/agent-tools
+      '@wf/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@wf/queue':
+        specifier: workspace:*
+        version: link:../../packages/queue
+      '@wf/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
+      ai:
+        specifier: ^6.0.193
+        version: 6.0.193(zod@4.4.3)
+      bullmq:
+        specifier: ^5.65.0
+        version: 5.77.6
+      dotenv:
+        specifier: 17.4.2
+        version: 17.4.2
+
   workers/main:
     dependencies:
       '@ai-sdk/openai':

@@ -1,0 +1,25 @@
+{
+  "name": "@wf/learner-worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "lint": "tsc -p tsconfig.json --noEmit",
+    "dev": "tsx watch src/index.ts"
+  },
+  "dependencies": {
+    "@ai-sdk/openai": "^3.0.67",
+    "@wf/agent-tools": "workspace:*",
+    "@wf/db": "workspace:*",
+    "@wf/queue": "workspace:*",
+    "@wf/shared": "workspace:*",
+    "ai": "^6.0.193",
+    "bullmq": "^5.65.0",
+    "dotenv": "17.4.2"
+  }
+}

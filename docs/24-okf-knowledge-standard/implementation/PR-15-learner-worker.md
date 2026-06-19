@@ -1,4 +1,4 @@
-# PR-15 — `workers/learner` (파이프라인 D): 궤적 judge → 제안
+﻿# PR-15 — `workers/learner` (파이프라인 D): 궤적 judge → 제안
 
 > Phase 7 · 선행: PR-03 · 근거: [`08` §A](../08-agent-implementation-specs.md), [`06` §3](../06-adoptable-patterns.md)
 
@@ -28,9 +28,9 @@
 - PII 레닥션 동작.
 
 ## DoD
-- [ ] 실패 궤적에서 `WkfEnrichmentProposal`이 생성되어 검토 큐로 들어간다.
-- [ ] 신호→gapType 매핑이 정확.
-- [ ] PII가 제안 필드에 노출되지 않는다.
+- [x] 실패 궤적에서 `WkfEnrichmentProposal`이 생성되어 검토 큐로 들어간다.
+- [x] 신호→gapType 매핑이 정확.
+- [x] PII가 제안 필드에 노출되지 않는다.
 
 ## 리스크·메모
 - 비용: 전수 평가 대신 verify 실패/저점수 등 **신호 있는 궤적만** 평가.

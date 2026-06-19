@@ -14,6 +14,7 @@ import {
   type VectorHit,
 } from '@wf/shared';
 import type { SandboxRunner } from '@wf/sandbox';
+import { decomposeQuestion, rerankDiscoveryContexts } from './discovery.js';
 
 export type { EmbedFn } from '@wf/shared';
 
@@ -35,6 +36,8 @@ export interface MainToolContext {
   embed: EmbedFn;
   /** Model used by tool_merge to synthesise the merged draft. */
   model: LanguageModel;
+  /** Enable LLM question decomposition before hybrid retrieval. Off by default to preserve ingest loop determinism. */
+  decomposeHybridRetrieve?: boolean;
   recordStep?: (step: AgentStep) => void | Promise<void>;
 }
 
@@ -379,6 +382,26 @@ export function createMainTools(ctx: MainToolContext) {
       .slice(0, k);
   };
 
+  const retrieveHybrid = async (input: {
+    query: string;
+    startEntity?: string;
+    k: number;
+    maxDepth: number;
+    predicates?: string[];
+    documentId?: string;
+  }) => {
+    const vectorHits = await searchVector(input.query, input.k, input.documentId);
+    const graph = input.startEntity
+      ? await searchKnowledgeGraph(ctx.db, {
+          startEntity: input.startEntity,
+          maxDepth: input.maxDepth,
+          pathLimit: input.k,
+          ...(input.predicates ? { predicates: input.predicates } : {}),
+        })
+      : { paths: [], startNodes: [], exactMatch: false };
+    return { vectorHits, graph, contexts: fuseHybridRetrieval({ vectorHits, graphPaths: graph.paths, k: input.k }) };
+  };
+
   return {
     tool_search_vector: tool({
       description: '의미론적으로 유사한 문서 청크를 벡터 유사도로 탐색한다.',
@@ -413,22 +436,34 @@ export function createMainTools(ctx: MainToolContext) {
       }),
       execute: async ({ query, startEntity, k, maxDepth, predicates, documentId }) => {
         const started = Date.now();
-        const vectorHits = await searchVector(query, k, documentId);
-        const graph = startEntity
-          ? await searchKnowledgeGraph(ctx.db, {
-              startEntity,
+        const queries = ctx.decomposeHybridRetrieve ? await decomposeQuestion(ctx.model, query).catch(() => [query]) : [query];
+        const batches = await Promise.all(
+          queries.map(async (nextQuery) => ({
+            query: nextQuery,
+            ...(await retrieveHybrid({
+              query: nextQuery,
+              k,
               maxDepth,
-              pathLimit: k,
+              ...(startEntity ? { startEntity } : {}),
               ...(predicates ? { predicates } : {}),
-            })
-          : { paths: [], startNodes: [], exactMatch: false };
-        const contexts = fuseHybridRetrieval({ vectorHits, graphPaths: graph.paths, k });
+              ...(documentId ? { documentId } : {}),
+            })),
+          })),
+        );
+        const contexts = rerankDiscoveryContexts(
+          batches.map((batch) => ({ query: batch.query, contexts: batch.contexts })),
+          k,
+        );
+        const vectorHits = batches.flatMap((batch) => batch.vectorHits);
+        const graphPaths = batches.flatMap((batch) => batch.graph.paths);
+        const graph = batches[0]?.graph ?? { paths: [], startNodes: [], exactMatch: false };
         await record({
           tool: 'tool_hybrid_retrieve',
           args: { query, startEntity, k, maxDepth, predicates, documentId },
           result: {
+            queryCount: queries.length,
             vectorCount: vectorHits.length,
-            graphPathCount: graph.paths.length,
+            graphPathCount: graphPaths.length,
             fusedCount: contexts.length,
             exactGraphStartMatch: graph.exactMatch,
           },
@@ -583,3 +618,28 @@ export function extractTripletsDeterministic(markdown: string): { triplets: Trip
 
   return TripletArraySchema.parse({ triplets });
 }
+
+export {
+  DISCOVERY_DECOMPOSE_PROMPT,
+  DISCOVERY_SYSTEM_PROMPT,
+  DiscoveryDecompositionSchema,
+  askDiscovery,
+  createDiscoveryAgent,
+  decomposeQuestion,
+  discoveryAgentAsTool,
+  rerankDiscoveryContexts,
+  type DiscoveryAgentContext,
+  type DiscoveryDecomposition,
+} from './discovery.js';
+
+export {
+  LEARNER_JUDGE_PROMPT,
+  LearnerGapTypeSchema,
+  TrajectoryAnalysisResultSchema,
+  WkfEnrichmentProposalSchema,
+  judgeTrajectory,
+  redactPii,
+  summarizeSteps,
+  type TrajectoryAnalysisResult,
+  type WkfEnrichmentProposal,
+} from './learner.js';
