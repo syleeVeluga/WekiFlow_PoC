@@ -29,6 +29,7 @@
     "@wf/db": "workspace:*",
     "@wf/queue": "workspace:*",
     "@wf/shared": "workspace:*",
+    "@wekiflow/wkf": "workspace:*",
     "ai": "^6.0.193",
     "dotenv": "17.4.2"
   }

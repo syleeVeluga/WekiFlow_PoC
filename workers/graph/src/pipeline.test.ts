@@ -1,4 +1,8 @@
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { ObjectId } from 'mongodb';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { formatKnownTagVocabulary, runGraphPipeline } from './pipeline.js';
 
@@ -41,13 +45,19 @@ function setPath(obj: Record<string, unknown>, path: string, value: unknown) {
 }
 
 function matches(row: Row, query: Record<string, unknown>): boolean {
+  if ('$or' in query) return (query.$or as Record<string, unknown>[]).some((entry) => matches(row, entry));
   return Object.entries(query).every(([key, value]) => {
     if (isOperatorObject(value)) {
-      if ('$ne' in value) return !valueEquals(row[key], value.$ne);
-      if ('$exists' in value) return (row[key] !== undefined) === Boolean(value.$exists);
+      const current = getPath(row, key);
+      if ('$ne' in value) return !valueEquals(current, value.$ne);
+      if ('$exists' in value) return (current !== undefined) === Boolean(value.$exists);
+      if ('$size' in value) return Array.isArray(current) && current.length === value.$size;
+      if ('$nin' in value) return !(value.$nin as unknown[]).some((entry) => valueEquals(current, entry));
       return false;
     }
-    return valueEquals(row[key], value);
+    const current = getPath(row, key);
+    if (Array.isArray(current)) return current.some((entry) => valueEquals(entry, value));
+    return valueEquals(current, value);
   });
 }
 
@@ -118,8 +128,8 @@ function createMemoryDb(seed: Record<string, Row[]> = {}) {
           rows.length = 0;
           rows.push(...keep);
         },
-        async insertMany(docs: Row[]) {
-          rows.push(...docs);
+        async insertMany(docs: Array<Record<string, unknown>>) {
+          rows.push(...docs.map((doc) => ({ _id: new ObjectId(), ...doc }) as Row));
         },
         async findOneAndUpdate(
           query: Record<string, unknown>,
@@ -147,9 +157,40 @@ function createMemoryDb(seed: Record<string, Row[]> = {}) {
           applyUpdate(row, update, inserting);
           return { matchedCount: inserting ? 0 : 1, upsertedCount: inserting ? 1 : 0 };
         },
+        async updateMany(query: Record<string, unknown>, update: Record<string, unknown>) {
+          for (const row of rows.filter((candidate) => matches(candidate, query))) {
+            if (update.$pull) {
+              for (const [key, value] of Object.entries(update.$pull as Record<string, unknown>)) {
+                const existing = getPath(row, key);
+                if (Array.isArray(existing)) setPath(row, key, existing.filter((entry) => !valueEquals(entry, value)));
+              }
+            }
+          }
+        },
       };
     },
   };
+}
+
+async function createBundle(slug: string, markdown: string): Promise<string> {
+  const root = join(tmpdir(), `wkf-graph-${randomUUID()}`);
+  const parts = slug.split('/');
+  const file = `${parts.pop()}.md`;
+  const dir = join(root, ...parts);
+  await mkdir(dir, { recursive: true });
+  await writeFile(
+    join(dir, file),
+    `---
+type: REGULATION
+title: Policy
+slug: ${slug}
+status: PUBLISHED
+---
+${markdown}
+`,
+    'utf8',
+  );
+  return root;
 }
 
 describe('runGraphPipeline', () => {
@@ -163,8 +204,10 @@ describe('runGraphPipeline', () => {
     expect(vocabulary.length).toBeLessThanOrEqual(2000);
   });
 
-  it('extracts, upserts normalized graph rows, and marks the document indexed', async () => {
+  it('extracts, writes Relations, reindexes graph rows, and marks the document indexed', async () => {
     const documentId = new ObjectId();
+    const contentMarkdown = '# A\nNew hires receive 15 annual leave days.\n\n# B\nNew hires receive 15 annual leave days.';
+    const bundlePath = await createBundle('policy', contentMarkdown);
     const db = createMemoryDb({
       documents: [
         {
@@ -174,7 +217,7 @@ describe('runGraphPipeline', () => {
           parentId: null,
           isFolder: false,
           status: 'PUBLISHED',
-          contentMarkdown: '# A\nNew hires receive 15 annual leave days.\n\n# B\nNew hires receive 15 annual leave days.',
+          contentMarkdown,
           draftMarkdown: null,
           version: 1,
           sourceRefs: [],
@@ -201,6 +244,7 @@ describe('runGraphPipeline', () => {
       }),
       embed: async (texts) => texts.map(() => [1, 0]),
       embeddingModel: 'text-embedding-3-large',
+      bundlePath,
       recordStep: (step) => {
         steps.push(step);
       },
@@ -222,12 +266,11 @@ describe('runGraphPipeline', () => {
     expect(db.rows('kg_edges')).toHaveLength(1);
     expect(db.rows('kg_edges')[0]!.strength).toBe(0.9);
     expect(db.rows('kg_edges')[0]!.sourceDocIds).toHaveLength(1);
-    expect(db.rows('chunks')).toHaveLength(2);
+    expect(db.rows('chunks')).toHaveLength(3);
     expect(steps.map((step) => step.tool)).toEqual([
       'tool_extract_triplets',
       'tool_extract_triplets',
-      'graph_upsert_triplets',
-      'graph_index_chunks',
+      'graph_write_relations',
     ]);
   });
 
@@ -286,8 +329,63 @@ describe('runGraphPipeline', () => {
     expect(steps.map((step) => step.tool)).toEqual(['tool_extract_triplets', 'graph_preview_triplets']);
   });
 
+  it('merges Relations additively and keeps existing refs when raising strength', async () => {
+    const documentId = new ObjectId();
+    const contentMarkdown = `# A
+New hires receive annual leave.
+
+# Relations
+- (New Hire) -[receives]-> (Annual Leave) {strength: 0.3, ref: /hr/source.md}
+- (Annual Leave) -[approved_by]-> (Manager) {strength: 0.7}`;
+    const bundlePath = await createBundle('policy', contentMarkdown);
+    const db = createMemoryDb({
+      documents: [
+        {
+          _id: documentId,
+          slug: 'policy',
+          title: 'Policy',
+          parentId: null,
+          isFolder: false,
+          status: 'PUBLISHED',
+          contentMarkdown,
+          draftMarkdown: null,
+          version: 1,
+          sourceRefs: [],
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      ],
+    });
+
+    await runGraphPipeline(documentId.toHexString(), {
+      db: db as never,
+      maxChunks: 1,
+      extractTriplets: async () => ({
+        triplets: [
+          {
+            subject: 'New Hire',
+            predicate: 'receives',
+            object: 'Annual Leave',
+            subjectType: 'PERSON',
+            objectType: 'REGULATION',
+            strength: 0.9,
+          },
+        ],
+      }),
+      embed: async (texts) => texts.map(() => [1, 0]),
+      embeddingModel: 'text-embedding-3-large',
+      bundlePath,
+    });
+
+    const written = await readFile(join(bundlePath, 'policy.md'), 'utf8');
+    expect(written).toContain('(New Hire) -[receives]-> (Annual Leave) {strength: 0.9, ref: /hr/source.md}');
+    expect(written).toContain('(Annual Leave) -[approved_by]-> (Manager) {strength: 0.7}');
+  });
+
   it('classifies and unions AI tags after indexing, reusing existing vocabulary', async () => {
     const documentId = new ObjectId();
+    const contentMarkdown = '# 휴가\n신입은 연차 15일을 받는다.';
+    const bundlePath = await createBundle('leave', contentMarkdown);
     const otherDocId = new ObjectId();
     const db = createMemoryDb({
       documents: [
@@ -298,7 +396,7 @@ describe('runGraphPipeline', () => {
           parentId: null,
           isFolder: false,
           status: 'PUBLISHED',
-          contentMarkdown: '# 휴가\n신입은 연차 15일을 받는다.',
+          contentMarkdown,
           draftMarkdown: null,
           version: 1,
           sourceRefs: [],
@@ -328,6 +426,7 @@ describe('runGraphPipeline', () => {
       },
       embed: async (texts) => texts.map(() => [1, 0]),
       embeddingModel: 'text-embedding-3-large',
+      bundlePath,
       recordStep: (step) => {
         steps.push(step);
       },
@@ -344,8 +443,7 @@ describe('runGraphPipeline', () => {
     // The classify step runs after indexing and reports the resulting tags.
     expect(steps.map((step) => step.tool)).toEqual([
       'tool_extract_triplets',
-      'graph_upsert_triplets',
-      'graph_index_chunks',
+      'graph_write_relations',
       'graph_classify_tags',
     ]);
     expect(steps.find((step) => step.tool === 'graph_classify_tags')?.result).toMatchObject({
@@ -356,6 +454,8 @@ describe('runGraphPipeline', () => {
 
   it('does not fail the job when tag classification throws', async () => {
     const documentId = new ObjectId();
+    const contentMarkdown = '# 휴가\n신입은 연차 15일을 받는다.';
+    const bundlePath = await createBundle('leave', contentMarkdown);
     const db = createMemoryDb({
       documents: [
         {
@@ -365,7 +465,7 @@ describe('runGraphPipeline', () => {
           parentId: null,
           isFolder: false,
           status: 'PUBLISHED',
-          contentMarkdown: '# 휴가\n신입은 연차 15일을 받는다.',
+          contentMarkdown,
           draftMarkdown: null,
           version: 1,
           sourceRefs: [],
@@ -385,6 +485,7 @@ describe('runGraphPipeline', () => {
       },
       embed: async (texts) => texts.map(() => [1, 0]),
       embeddingModel: 'text-embedding-3-large',
+      bundlePath,
       recordStep: (step) => {
         steps.push(step);
       },
