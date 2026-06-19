@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 import { initBundle } from './sync/init.js';
+import { MongoClient } from 'mongodb';
 import { pushBundle } from './sync/push.js';
+import { reindexBundle } from './reindex.js';
 import { referenceBundle } from './sync/reference.js';
 import { pullBundle } from './sync/pull.js';
 import { JsonDocumentSource, JsonDocumentStore } from './sync/source.js';
@@ -19,7 +21,7 @@ function bundleArg(args: string[]): string {
   const positionals: string[] = [];
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index]!;
-    if (arg === '--source' || arg === '--slug') {
+    if (arg === '--source' || arg === '--slug' || arg === '--concept' || arg === '--mongo-uri' || arg === '--db' || arg === '--embedding-model') {
       index += 1;
       continue;
     }
@@ -81,7 +83,27 @@ async function main(argv: string[]): Promise<void> {
     return;
   }
 
-  throw new Error('Usage: wkf <init|pull|status|push|reference> [bundlePath] [--dry-run] [--source documents.json]');
+  if (command === 'reindex') {
+    const mongoUri = optionValue(args, '--mongo-uri') ?? process.env.MONGODB_URI ?? 'mongodb://localhost:27017';
+    const dbName = optionValue(args, '--db') ?? process.env.MONGODB_DB ?? 'wekiflow';
+    const client = new MongoClient(mongoUri);
+    try {
+      await client.connect();
+      const concept = optionValue(args, '--concept');
+      const embeddingModel = optionValue(args, '--embedding-model') ?? process.env.EMBEDDING_MODEL;
+      const result = await reindexBundle(client.db(dbName), bundleArg(args), {
+        all: hasFlag(args, '--all'),
+        ...(concept ? { concept } : {}),
+        ...(embeddingModel ? { embeddingModel } : {}),
+      });
+      console.log(`reindexed ${result.concepts.length} concepts, ${result.chunkCount} chunks, ${result.relationCount} relations`);
+    } finally {
+      await client.close();
+    }
+    return;
+  }
+
+  throw new Error('Usage: wkf <init|pull|status|push|reference|reindex> [bundlePath] [--dry-run] [--source documents.json]');
 }
 
 main(process.argv.slice(2)).catch((error: unknown) => {

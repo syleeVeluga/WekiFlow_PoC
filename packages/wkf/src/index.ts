@@ -45,3 +45,10 @@ export { referenceBundle, type ReferenceResult } from './sync/reference.js';
 export { slugFromDocument, slugToBundlePath } from './sync/paths.js';
 export { JsonDocumentSource, JsonDocumentStore, type WkfDocumentSource, type WkfDocumentStore } from './sync/source.js';
 export { statusBundle, type StatusEntry } from './sync/status.js';
+export {
+  defaultDeterministicEmbed,
+  reindexBundle,
+  type ReindexedConcept,
+  type ReindexOptions,
+  type ReindexResult,
+} from './reindex.js';
