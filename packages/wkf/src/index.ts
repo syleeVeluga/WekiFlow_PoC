@@ -52,3 +52,4 @@ export {
   type ReindexOptions,
   type ReindexResult,
 } from './reindex.js';
+export { generateIndexes, type GenerateIndexOptions, type GenerateIndexResult } from './index-gen.js';
