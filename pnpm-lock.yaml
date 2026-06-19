@@ -198,6 +198,12 @@ importers:
         specifier: ^8.0.6
         version: 8.0.7
 
+  packages/wkf:
+    dependencies:
+      zod:
+        specifier: ^4.1.13
+        version: 4.4.3
+
   workers/graph:
     dependencies:
       '@ai-sdk/anthropic':
