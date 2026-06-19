@@ -28,9 +28,13 @@
 - `auto_publish_max_tier` 초과 소스 → 검토 강제.
 
 ## DoD
-- [ ] `policy.yaml`이 로드되고 위반이 커밋/API에서 차단된다.
-- [ ] type별 승인 override 동작.
-- [ ] 기본값이 [`10` §0]과 일치.
+- [x] `policy.yaml`이 로드되고 위반이 커밋/API에서 차단된다.
+- [x] type별 승인 override 동작.
+- [x] 기본값이 [`10` §0]과 일치.
+
+완료 증거:
+- 구현 PR: <https://github.com/syleeVeluga/WekiFlow_PoC/pull/18>
+- 검증: `corepack pnpm -r build`, `corepack pnpm -r typecheck`, `corepack pnpm -r test`
 
 ## 리스크·메모
 - 정책 변경은 git diff로 리뷰(정책도 코드). 핫리로드보다 배포 시 로드 권장.
