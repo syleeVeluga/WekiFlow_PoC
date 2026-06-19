@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { fromMongo } from '../fromMongo.js';
+import { appendLog } from '../log.js';
 import { readState, writeState } from '../manifest.js';
 import { parse } from '../parse.js';
 import { enforcePolicy, loadPolicy } from '../policy.js';
@@ -93,6 +94,13 @@ export async function pushBundle(bundlePath: string, store: WkfDocumentStore, op
 
     if (!options.validateOnly) {
       await store.upsert(nextRemote);
+      await appendLog(join(bundlePath, dirname(entry.path)), {
+        kind: remote ? 'Update' : 'Creation',
+        slug: basename(entry.path),
+        summary: remote ? 'WKF push 승인 변경 반영' : 'WKF push 최초 등록',
+        actor: 'wkf',
+        pipeline: 'A',
+      });
       state.entries[entry.slug] = { ...state.entries[entry.slug]!, baseRev: nextHash };
       pushed.push(entry.path);
     }

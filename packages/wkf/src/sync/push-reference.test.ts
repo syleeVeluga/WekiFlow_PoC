@@ -40,6 +40,7 @@ Changed policy body`,
 
     await expect(pushBundle(root, store)).resolves.toMatchObject({ pushed: ['hr/annual-leave.md'] });
     await expect(readFile(sourcePath, 'utf8')).resolves.toContain('Changed policy body');
+    await expect(readFile(join(root, 'hr', 'log.md'), 'utf8')).resolves.toContain('**Update** annual-leave.md: WKF push 승인 변경 반영. 검토 wkf. [A]');
   });
 
   it('blocks conflicts unless force is set', async () => {
