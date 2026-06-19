@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { EventEmitter } from 'node:events';
 import { DepartmentSchema } from '@wf/shared';
+import { defaultPolicy } from '@wekiflow/wkf';
 import { buildServer } from './server.js';
 import { InMemoryWekiFlowStore } from './store.js';
 
@@ -579,6 +580,53 @@ describe('@wf/api routes', () => {
     expect((await app.inject({ method: 'POST', url: `/api/reviews/${reviewId}/reject`, headers: reviewerAuth })).statusCode).toBe(200);
     expect((await app.inject({ method: 'GET', url: '/api/users', headers: reviewerAuth })).statusCode).toBe(403);
     expect((await app.inject({ method: 'PATCH', url: '/api/settings', headers: reviewerAuth, payload: { reviewApprovalEnabled: true } })).statusCode).toBe(403);
+
+    await app.close();
+  });
+
+  it('applies policy review role overrides on document approval', async () => {
+    const ownerOnlyRegulationPolicy = {
+      ...defaultPolicy,
+      review: { ...defaultPolicy.review, overrides: { REGULATION: ['OWNER'] } },
+    };
+    const app = buildServer({ reviewPolicy: ownerOnlyRegulationPolicy });
+    const ownerToken = await login(app, 'admin01@veluga.io', 'admin01@veluga.io');
+    const approverToken = await login(app, 'lee.jisoo@veluga.io', 'lee.jisoo@veluga.io');
+
+    await app.inject({
+      method: 'PATCH',
+      url: '/api/settings',
+      headers: { authorization: `Bearer ${ownerToken}` },
+      payload: { reviewApprovalEnabled: true },
+    });
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/ingest',
+      payload: {
+        title: 'Regulation',
+        contentMarkdown: `---
+type: REGULATION
+title: Regulation
+---
+# Body`,
+      },
+    });
+    const id = created.json().doc.id;
+
+    const denied = await app.inject({
+      method: 'POST',
+      url: `/api/documents/${id}/approve`,
+      headers: { authorization: `Bearer ${approverToken}` },
+    });
+    expect(denied.statusCode).toBe(403);
+    expect(denied.json().error).toContain('cannot approve REGULATION');
+
+    const approved = await app.inject({
+      method: 'POST',
+      url: `/api/documents/${id}/approve`,
+      headers: { authorization: `Bearer ${ownerToken}` },
+    });
+    expect(approved.statusCode).toBe(200);
 
     await app.close();
   });

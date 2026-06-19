@@ -1,0 +1,23 @@
+wkf_version: "0.1"
+freshness:
+  REGULATION: 90d
+  POLICY: 180d
+  METRIC: 30d
+  default: 365d
+sources:
+  tiers: [official, internal, external, unverified]
+  auto_publish_max_tier: internal
+  allowed_hosts: []
+enrichment:
+  web_max_pages: 50
+  agent_step_limit: 12
+citations:
+  required_for: [REGULATION, POLICY]
+  require_fact_verification: true
+review:
+  approver_roles: [ADMIN, REVIEWER]
+  overrides:
+    REGULATION: [ADMIN]
+conformance:
+  reject_on_missing_type: true
+  block_commit_on_validate_fail: true
