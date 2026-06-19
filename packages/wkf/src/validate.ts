@@ -2,6 +2,7 @@ import { readdir, readFile, stat } from 'node:fs/promises';
 import { join, relative, sep } from 'node:path';
 import { parseDocument } from 'yaml';
 import { parse } from './parse.js';
+import { PolicySchema, type Policy } from './policy.js';
 import { parseCitations } from './sections.js';
 
 export interface ValidationIssue {
@@ -11,11 +12,7 @@ export interface ValidationIssue {
   message: string;
 }
 
-export interface ValidationPolicy {
-  citations?: {
-    required_for?: string[];
-  };
-}
+export type ValidationPolicy = Pick<Policy, 'citations'>;
 
 export interface ValidationResult {
   ok: boolean;
@@ -55,16 +52,16 @@ function parsePolicy(content: string, path: string, issues: ValidationIssue[]): 
   const parsed = parseDocument(content, { strict: true });
   if (parsed.errors.length > 0) {
     issues.push({ level: 'error', rule: 'policy-parseable', path, message: parsed.errors[0]!.message });
-    return {};
+    return PolicySchema.parse({});
   }
   const policy = parsed.toJSON();
-  return policy && typeof policy === 'object' ? (policy as ValidationPolicy) : {};
+  return PolicySchema.parse(policy ?? {});
 }
 
 export async function validate(bundlePath: string, policy?: ValidationPolicy): Promise<ValidationResult> {
   const issues: ValidationIssue[] = [];
   const files = await listFiles(bundlePath);
-  let activePolicy = policy ?? {};
+  let activePolicy: ValidationPolicy = policy ?? PolicySchema.parse({});
 
   if (!policy) {
     const policyFile = files.find((file) => normalizePath(relative(bundlePath, file)).split('/').pop() === 'policy.yaml');

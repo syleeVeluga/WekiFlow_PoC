@@ -60,6 +60,26 @@ Changed policy body`,
     await expect(pushBundle(root, store, { validateOnly: true })).resolves.toMatchObject({ checked: ['hr/annual-leave.md'], pushed: [] });
     await expect(readFile(sourcePath, 'utf8')).resolves.not.toContain('Validate only body');
   });
+
+  it('blocks policy violations before pushing commits', async () => {
+    const { root, sourcePath, store, docPath } = await setupBundle();
+    await writeFile(join(root, 'policy.yaml'), 'citations:\n  required_for: [REGULATION]\n', 'utf8');
+    await writeFile(
+      docPath,
+      `---
+type: REGULATION
+title: Annual Leave
+tags: []
+status: PUBLISHED
+slug: hr/annual-leave
+---
+Changed policy body`,
+      'utf8',
+    );
+
+    await expect(pushBundle(root, store)).rejects.toThrow('requires # Citations');
+    await expect(readFile(sourcePath, 'utf8')).resolves.not.toContain('Changed policy body');
+  });
 });
 
 describe('referenceBundle', () => {

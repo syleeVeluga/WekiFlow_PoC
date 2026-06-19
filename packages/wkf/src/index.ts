@@ -53,3 +53,13 @@ export {
   type ReindexResult,
 } from './reindex.js';
 export { generateIndexes, type GenerateIndexOptions, type GenerateIndexResult } from './index-gen.js';
+export {
+  PolicyError,
+  PolicySchema,
+  defaultPolicy,
+  enforcePolicy,
+  loadPolicy,
+  type Policy,
+  type PolicyAction,
+  type PolicyContext,
+} from './policy.js';

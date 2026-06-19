@@ -22,6 +22,7 @@ import {
   canManageUsers,
   canReview,
 } from '@wf/shared';
+import { PolicyError, enforcePolicy, parse as parseWkf, type Policy } from '@wekiflow/wkf';
 import { InMemoryWekiFlowStore, type IngestInput, type IngestResult, type WekiFlowStore } from './store.js';
 
 // Shared cap for both upload routes (/api/ingest/file and /api/agent-preview).
@@ -100,6 +101,7 @@ export interface BuildServerOptions {
   rateLimiter?: FixedWindowRateLimiter;
   externalRateLimit?: { max: number; windowMs: number };
   maxQueueBacklog?: number;
+  reviewPolicy?: Policy;
 }
 
 export function buildServer({
@@ -109,6 +111,7 @@ export function buildServer({
   rateLimiter,
   externalRateLimit = { max: EXTERNAL_RATE_LIMIT_MAX, windowMs: EXTERNAL_RATE_LIMIT_WINDOW_MS },
   maxQueueBacklog = QUEUE_BACKLOG_LIMIT,
+  reviewPolicy,
 }: BuildServerOptions = {}) {
   store.seed?.();
   const app = Fastify({ logger: false });
@@ -752,6 +755,19 @@ export function buildServer({
   app.post('/api/documents/:id/approve', async (request, reply) => {
     const { id } = request.params as { id: string };
     const me = await currentUser(request);
+    if (reviewPolicy) {
+      const doc = await store.getDocument(id);
+      if (!doc) return reply.code(404).send({ error: 'Not found' });
+      try {
+        const wkfDoc = doc.contentMarkdown.trimStart().startsWith('---')
+          ? parseWkf(doc.contentMarkdown)
+          : { frontmatter: { type: 'ENTITY', title: doc.title, tags: [] }, body: doc.contentMarkdown };
+        enforcePolicy('review', wkfDoc, reviewPolicy, me ? { role: me.role } : {});
+      } catch (error) {
+        if (error instanceof PolicyError) return reply.code(403).send({ error: error.message });
+        throw error;
+      }
+    }
     const result = await store.approve(id, me?.role ?? 'VIEWER');
     if (!result.ok) return reply.code(result.statusCode).send({ error: result.error });
     return result;

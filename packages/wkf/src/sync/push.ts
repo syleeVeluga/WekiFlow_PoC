@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { fromMongo } from '../fromMongo.js';
 import { readState, writeState } from '../manifest.js';
 import { parse } from '../parse.js';
+import { enforcePolicy, loadPolicy } from '../policy.js';
 import { serialize } from '../serialize.js';
 import { validate } from '../validate.js';
 import { contentHash } from './hash.js';
@@ -48,6 +49,7 @@ export async function pushBundle(bundlePath: string, store: WkfDocumentStore, op
   }
 
   const state = await readState(bundlePath);
+  const policy = await loadPolicy(bundlePath);
   const checked: string[] = [];
   const pushed: string[] = [];
   const conflicts: string[] = [];
@@ -63,6 +65,7 @@ export async function pushBundle(bundlePath: string, store: WkfDocumentStore, op
 
     const markdown = await readFile(join(bundlePath, entry.path), 'utf8');
     const doc = parse(markdown);
+    enforcePolicy('commit', doc, policy);
     const nextHash = contentHash(markdown);
     const nextRemote: MongoWkfDocument = {
       title: doc.frontmatter.title,
