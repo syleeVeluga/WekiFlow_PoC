@@ -12,8 +12,8 @@ export const documentStatuses = [
 ] as const;
 
 export const userRoles = ['OWNER', 'APPROVER', 'REVIEWER', 'EDITOR', 'VIEWER'] as const;
-export const jobQueues = ['main', 'graph'] as const;
-export const jobTypes = ['INGEST', 'MERGE', 'EXTRACT_TRIPLETS', 'PREVIEW'] as const;
+export const jobQueues = ['main', 'graph', 'curation'] as const;
+export const jobTypes = ['INGEST', 'MERGE', 'EXTRACT_TRIPLETS', 'PREVIEW', 'SCAN_STALE', 'CURATE_CONCEPT'] as const;
 
 export const DocumentStatusSchema = z.enum(documentStatuses);
 export const UserRoleSchema = z.enum(userRoles);
@@ -353,6 +353,9 @@ export const EnvSchema = z.object({
   MAIN_QUEUE_RATE_DURATION_MS: z.coerce.number().int().positive().default(60_000),
   GRAPH_QUEUE_RATE_MAX: z.coerce.number().int().nonnegative().default(60),
   GRAPH_QUEUE_RATE_DURATION_MS: z.coerce.number().int().positive().default(60_000),
+  CURATION_WORKER_CONCURRENCY: z.coerce.number().int().positive().default(1),
+  CURATION_QUEUE_RATE_MAX: z.coerce.number().int().nonnegative().default(30),
+  CURATION_QUEUE_RATE_DURATION_MS: z.coerce.number().int().positive().default(60_000),
   WKF_BUNDLE_PATH: z.string().min(1).optional(),
   ADMIN_EMAIL: z.string().default('admin01@veluga.io'),
   ADMIN_PASSWORD: z.string().default('admin01@veluga.io'),

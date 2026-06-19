@@ -63,3 +63,4 @@ export {
   type PolicyAction,
   type PolicyContext,
 } from './policy.js';
+export { scanStale, type ScanStaleOptions, type StaleConcept } from './scan.js';

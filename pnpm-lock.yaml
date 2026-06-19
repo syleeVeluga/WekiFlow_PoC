@@ -216,6 +216,24 @@ importers:
         specifier: ^4.1.13
         version: 4.4.3
 
+  workers/curation:
+    dependencies:
+      '@wekiflow/wkf':
+        specifier: workspace:*
+        version: link:../../packages/wkf
+      '@wf/queue':
+        specifier: workspace:*
+        version: link:../../packages/queue
+      '@wf/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
+      bullmq:
+        specifier: ^5.65.0
+        version: 5.77.6
+      dotenv:
+        specifier: 17.4.2
+        version: 17.4.2
+
   workers/graph:
     dependencies:
       '@ai-sdk/anthropic':
