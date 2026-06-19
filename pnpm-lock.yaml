@@ -133,6 +133,9 @@ importers:
 
   packages/agent-tools:
     dependencies:
+      '@wekiflow/wkf':
+        specifier: workspace:*
+        version: link:../wkf
       '@wf/db':
         specifier: workspace:*
         version: link:../db
@@ -218,15 +221,30 @@ importers:
 
   workers/curation:
     dependencies:
+      '@ai-sdk/openai':
+        specifier: ^3.0.67
+        version: 3.0.67(zod@4.4.3)
       '@wekiflow/wkf':
         specifier: workspace:*
         version: link:../../packages/wkf
+      '@wf/agent-tools':
+        specifier: workspace:*
+        version: link:../../packages/agent-tools
+      '@wf/db':
+        specifier: workspace:*
+        version: link:../../packages/db
       '@wf/queue':
         specifier: workspace:*
         version: link:../../packages/queue
+      '@wf/sandbox':
+        specifier: workspace:*
+        version: link:../../packages/sandbox
       '@wf/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      ai:
+        specifier: ^6.0.193
+        version: 6.0.193(zod@4.4.3)
       bullmq:
         specifier: ^5.65.0
         version: 5.77.6

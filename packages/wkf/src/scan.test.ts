@@ -50,6 +50,7 @@ describe('scanStale', () => {
     await writeDoc(root, 'concept', 'REGULATION', '2026-01-01T00:00:00.000Z');
     await writeDoc(root, 'references/source', 'REGULATION', '2026-01-01T00:00:00.000Z');
     await writeDoc(root, '.wkf/internal', 'REGULATION', '2026-01-01T00:00:00.000Z');
+    await writeDoc(root, '.ref/reference-copy', 'REGULATION', '2026-01-01T00:00:00.000Z');
     await writeDoc(root, 'area/log', 'REGULATION', '2026-01-01T00:00:00.000Z');
 
     const stale = await scanStale(root, defaultPolicy, { now: new Date('2026-06-19T00:00:00.000Z') });

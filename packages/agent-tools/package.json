@@ -21,6 +21,7 @@
     "@wf/db": "workspace:*",
     "@wf/sandbox": "workspace:*",
     "@wf/shared": "workspace:*",
+    "@wekiflow/wkf": "workspace:*",
     "ai": "^6.0.193",
     "mongodb": "^6.18.0",
     "zod": "^4.1.13"

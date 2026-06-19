@@ -123,6 +123,7 @@ export function createDocumentsRepo(db: Db) {
     async createDraft(input: {
       title: string;
       contentMarkdown: string;
+      slug?: string;
       parentId?: string | null;
       topic?: string;
       workspace?: string;
@@ -146,7 +147,7 @@ export function createDocumentsRepo(db: Db) {
         : undefined;
       const result = await collection.insertOne({
         _id: id,
-        slug: makeDocumentSlug(input.title, id),
+        slug: input.slug ?? makeDocumentSlug(input.title, id),
         title: input.title,
         parentId: input.parentId ?? null,
         isFolder: false,
@@ -258,6 +259,21 @@ export function createDocumentsRepo(db: Db) {
           },
         },
       );
+    },
+
+    async setDraftBySlug(slug: string, draftMarkdown: string): Promise<DocumentDTO | undefined> {
+      const updated = await collection.findOneAndUpdate(
+        { slug, preview: { $ne: true }, trashed: { $ne: true } },
+        {
+          $set: {
+            draftMarkdown,
+            status: 'REVIEW',
+            updatedAt: new Date(),
+          },
+        },
+        { returnDocument: 'after' },
+      );
+      return updated ? toDocumentDTO(updated) : undefined;
     },
 
     async setPreviewDraft(id: string, draftMarkdown: string) {
