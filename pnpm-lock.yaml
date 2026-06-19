@@ -200,6 +200,12 @@ importers:
 
   packages/wkf:
     dependencies:
+      '@wf/shared':
+        specifier: workspace:*
+        version: link:../shared
+      mongodb:
+        specifier: ^6.21.0
+        version: 6.21.0
       yaml:
         specifier: 2.9.0
         version: 2.9.0

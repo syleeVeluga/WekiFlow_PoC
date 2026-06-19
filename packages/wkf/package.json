@@ -21,6 +21,8 @@
     "lint": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@wf/shared": "workspace:*",
+    "mongodb": "^6.21.0",
     "yaml": "2.9.0",
     "zod": "^4.1.13"
   }
