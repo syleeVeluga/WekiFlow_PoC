@@ -224,6 +224,9 @@ importers:
       '@ai-sdk/openai':
         specifier: ^3.0.67
         version: 3.0.67(zod@4.4.3)
+      '@wekiflow/wkf':
+        specifier: workspace:*
+        version: link:../../packages/wkf
       '@wf/db':
         specifier: workspace:*
         version: link:../../packages/db

@@ -353,6 +353,7 @@ export const EnvSchema = z.object({
   MAIN_QUEUE_RATE_DURATION_MS: z.coerce.number().int().positive().default(60_000),
   GRAPH_QUEUE_RATE_MAX: z.coerce.number().int().nonnegative().default(60),
   GRAPH_QUEUE_RATE_DURATION_MS: z.coerce.number().int().positive().default(60_000),
+  WKF_BUNDLE_PATH: z.string().min(1).optional(),
   ADMIN_EMAIL: z.string().default('admin01@veluga.io'),
   ADMIN_PASSWORD: z.string().default('admin01@veluga.io'),
 });

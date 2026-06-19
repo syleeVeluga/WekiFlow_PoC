@@ -3,8 +3,10 @@ import { createAnthropic } from '@ai-sdk/anthropic';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { createOpenAI } from '@ai-sdk/openai';
 import type { Db } from 'mongodb';
-import { createDocumentsRepo, indexDocumentChunks, upsertTriplets } from '@wf/db';
+import { readFile, writeFile } from 'node:fs/promises';
+import { createDocumentsRepo } from '@wf/db';
 import { TagClassificationSchema, TripletArraySchema, chunkMarkdown, type DocChunk, type EmbedFn, type Env, type Triplet } from '@wf/shared';
+import { parse, parseRelations, reindexBundle, serialize, serializeRelations, slugToBundlePath } from '@wekiflow/wkf';
 
 export const LIGHTRAG_EXTRACT_PROMPT = `You are a knowledge graph extractor.
 Analyze the document chunk and return explicit (Subject)-[Predicate]->(Object) triplets only.
@@ -66,6 +68,7 @@ export interface GraphPipelineContext {
   classifyTags?: TagClassifier;
   embed?: EmbedFn;
   embeddingModel?: string;
+  bundlePath?: string;
   persist?: boolean;
   maxChunks?: number;
   recordStep?: (step: {
@@ -100,6 +103,61 @@ function dedupeTriplets(triplets: Triplet[]): Triplet[] {
   }
 
   return [...byKey.values()];
+}
+
+function relationKey(triplet: Pick<Triplet, 'subject' | 'predicate' | 'object'>): string {
+  return [triplet.subject.trim().toLowerCase(), triplet.predicate.trim().toLowerCase(), triplet.object.trim().toLowerCase()].join('\u0000');
+}
+
+function mergeTriplets(existing: ReturnType<typeof parseRelations>, extracted: Triplet[]): ReturnType<typeof parseRelations> {
+  const byKey = new Map<string, ReturnType<typeof parseRelations>[number]>();
+  for (const triplet of existing) byKey.set(relationKey(triplet), triplet);
+  for (const triplet of extracted) {
+    const key = relationKey(triplet);
+    const current = byKey.get(key);
+    if (!current || (triplet.strength ?? 1) > (current.strength ?? 1)) {
+      byKey.set(key, {
+        subject: triplet.subject,
+        predicate: triplet.predicate,
+        object: triplet.object,
+        strength: triplet.strength,
+        ...(current?.ref ? { ref: current.ref } : {}),
+      });
+    }
+  }
+  return [...byKey.values()].sort((a, b) => relationKey(a).localeCompare(relationKey(b)));
+}
+
+function replaceRelationsSection(body: string, relationsMarkdown: string): string {
+  const normalized = relationsMarkdown.trimEnd();
+  const match = /^#\s+Relations\s*$/im.exec(body);
+  if (!match) return `${body.trimEnd()}\n\n${normalized}\n`;
+  const start = match.index;
+  const rest = body.slice(start + match[0].length);
+  const next = /^#\s+.+?\s*$/m.exec(rest);
+  const end = next ? start + match[0].length + next.index : body.length;
+  return `${body.slice(0, start).trimEnd()}\n\n${normalized}\n${body.slice(end).replace(/^\r?\n/, '')}`;
+}
+
+async function writeRelationsAndReindex(
+  ctx: GraphPipelineContext,
+  input: { slug: string; triplets: Triplet[] },
+): Promise<number> {
+  if (!ctx.bundlePath) throw new Error('Graph pipeline persist requires bundlePath');
+  if (!ctx.embed || !ctx.embeddingModel) throw new Error('Graph pipeline persist requires embed and embeddingModel');
+
+  const path = slugToBundlePath(ctx.bundlePath, input.slug);
+  const raw = await readFile(path, 'utf8');
+  const doc = parse(raw);
+  const relations = mergeTriplets(parseRelations(doc.body), input.triplets);
+  const body = replaceRelationsSection(doc.body, serializeRelations(relations));
+  await writeFile(path, serialize({ frontmatter: doc.frontmatter, body }), 'utf8');
+  await reindexBundle(ctx.db, ctx.bundlePath, {
+    concept: input.slug,
+    embed: ctx.embed,
+    embeddingModel: ctx.embeddingModel,
+  });
+  return relations.length;
 }
 
 function createDefaultExtractor(models: TripletModel[]): TripletExtractor {
@@ -208,36 +266,13 @@ export async function runGraphPipeline(
 
   const triplets = dedupeTriplets(extracted);
   if (persist) {
-    // Ordering note: triplets → embed → markGraphIndexed. If embed throws, the job fails before
-    // markGraphIndexed, leaving triplets persisted. This is safe to retry: upsertTriplets is keyed
-    // (nodes by normalizedName, edges by subject/predicate/object) with $addToSet/$max, and
-    // indexDocumentChunks skips re-embedding unchanged content via its stored signature — so a retry
-    // is idempotent and recovers the partial state without duplicating data.
     const started = Date.now();
-    await upsertTriplets(ctx.db, triplets, documentId);
+    const relationCount = await writeRelationsAndReindex(ctx, { slug: doc.slug, triplets });
     await ctx.recordStep?.({
-      tool: 'graph_upsert_triplets',
-      args: { documentId },
-      result: { tripletCount: triplets.length },
+      tool: 'graph_write_relations',
+      args: { documentId, slug: doc.slug },
+      result: { extractedTripletCount: triplets.length, relationCount },
       tookMs: Date.now() - started,
-    });
-
-    if (!ctx.embed || !ctx.embeddingModel) {
-      throw new Error('Graph pipeline persist requires embed and embeddingModel');
-    }
-    const embedStarted = Date.now();
-    const indexedChunkCount = await indexDocumentChunks(
-      ctx.db,
-      ctx.embed,
-      documentId,
-      doc.contentMarkdown,
-      ctx.embeddingModel,
-    );
-    await ctx.recordStep?.({
-      tool: 'graph_index_chunks',
-      args: { documentId, embeddingModel: ctx.embeddingModel },
-      result: { chunkCount: indexedChunkCount },
-      tookMs: Date.now() - embedStarted,
     });
 
     await documents.markGraphIndexed(documentId);

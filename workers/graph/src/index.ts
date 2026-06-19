@@ -36,6 +36,7 @@ const worker = createWorker<{ documentId: string }>(GRAPH_QUEUE_NAME, async (job
       models: tripletModels.length > 0 ? tripletModels : [{ label: `openai:${env.AGENT_MODEL}`, model }],
       embed,
       embeddingModel: env.EMBEDDING_MODEL,
+      ...(env.WKF_BUNDLE_PATH ? { bundlePath: env.WKF_BUNDLE_PATH } : {}),
       recordStep: (step) => jobs.appendAgentStep(jobId, step),
     });
     await job.updateProgress(100);
