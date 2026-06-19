@@ -28,8 +28,12 @@
 - `--check`가 드리프트 시 실패.
 
 ## DoD
-- [ ] `wkf index`가 트리 전체 index.md를 멱등 생성.
-- [ ] `--check`로 CI에서 미생성 index 드리프트를 잡는다.
+- [x] `wkf index`가 트리 전체 index.md를 멱등 생성.
+- [x] `--check`로 CI에서 미생성 index 드리프트를 잡는다.
+
+완료 증거:
+- 구현 PR: <https://github.com/syleeVeluga/WekiFlow_PoC/pull/16>
+- 검증: `corepack pnpm -r build`, `corepack pnpm -r typecheck`, `corepack pnpm -r test`
 
 ## 리스크·메모
 - reindex(PR-06)와 별개(번들 내부 생성 vs 번들→DB). 커밋 훅에서 `wkf index` + `wkf reindex` 순차 실행 권장.
