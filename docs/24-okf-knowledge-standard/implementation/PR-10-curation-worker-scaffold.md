@@ -26,9 +26,13 @@
 - placeholder 핸들러가 큐잉된 개념을 수신.
 
 ## DoD
-- [ ] cron 트리거가 `scanStale` 결과를 큐잉한다.
-- [ ] SLA가 type별로 정확히 적용된다.
-- [ ] 워커가 기동/종료 깔끔(graceful shutdown).
+- [x] cron 트리거가 `scanStale` 결과를 큐잉한다.
+- [x] SLA가 type별로 정확히 적용된다.
+- [x] 워커가 기동/종료 깔끔(graceful shutdown).
+
+완료 증거:
+- 구현 PR: <https://github.com/syleeVeluga/WekiFlow_PoC/pull/20>
+- 검증: `corepack pnpm -r build`, `corepack pnpm -r typecheck`, `corepack pnpm -r test`
 
 ## 리스크·메모
 - 폭주 방지: 1회 스캔당 최대 N개만 큐잉(배치 상한) — 큰 번들 대비.
