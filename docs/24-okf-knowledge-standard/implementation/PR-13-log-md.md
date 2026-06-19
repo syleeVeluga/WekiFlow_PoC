@@ -30,9 +30,13 @@
 - `Verify`(무변동) 기록 동작.
 
 ## DoD
-- [ ] 승인/재검증 시 `log.md`에 정확한 1줄이 남는다.
-- [ ] 무변동 재검증도 `Verify`로 기록된다.
-- [ ] `log.md`가 `validate`를 통과.
+- [x] 승인/재검증 시 `log.md`에 정확한 1줄이 남는다.
+- [x] 무변동 재검증도 `Verify`로 기록된다.
+- [x] `log.md`가 `validate`를 통과.
+
+완료 증거:
+- 구현 PR: <https://github.com/syleeVeluga/WekiFlow_PoC/pull/26>
+- 검증: `corepack pnpm -r build`, `corepack pnpm -r typecheck`, `corepack pnpm -r test`
 
 ## 리스크·메모
 - 동시 append 경쟁 → push(PR-05) 락 경로 안에서 수행하거나 파일 단위 직렬화.
