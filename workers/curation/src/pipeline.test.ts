@@ -204,6 +204,51 @@ describe('runCurationAgent', () => {
     expect(persisted?.status).toBe('REVIEW');
   });
 
+  it('rejects curation drafts that delete existing headings and records the reason', async () => {
+    const root = await bundle();
+    const db = makeFakeDb([{ _id: new ObjectId(), slug: 'policy', title: 'Policy', contentMarkdown: '# Body\nOriginal fact', status: 'PUBLISHED' }]);
+    const model = new MockLanguageModelV3({
+      doGenerate: mockValues(
+        {
+          content: [
+            {
+              type: 'tool-call',
+              toolCallId: 'w1',
+              toolName: 'tool_write_concept',
+              input: JSON.stringify({ decision: 'enhance', mergedMarkdown: 'Original fact without heading', changeSummary: 'Bad shrink.' }),
+            },
+          ],
+          finishReason: 'tool-calls',
+          usage: { inputTokens: { total: 1 }, outputTokens: { total: 1 } },
+          warnings: [],
+        },
+        {
+          content: [{ type: 'text', text: 'rejected' }],
+          finishReason: 'stop',
+          usage: { inputTokens: { total: 1 }, outputTokens: { total: 1 } },
+          warnings: [],
+        },
+      ),
+    } as never);
+    const steps: Array<{ tool: string; result?: unknown }> = [];
+
+    await expect(
+      runCurationAgent(concept, {
+        db,
+        sandbox: sandboxStub,
+        bundlePath: root,
+        docsSnapshotDir: root,
+        jobId: 'curate-reject',
+        model,
+        policy: defaultPolicy,
+        recordStep: (step) => void steps.push(step),
+      }),
+    ).rejects.toThrow('Missing preserved heading');
+    expect(steps.at(-1)).toMatchObject({ tool: 'tool_write_concept', result: { status: 'rejected' } });
+    const persisted = await db.collection('documents').findOne({ slug: 'policy' });
+    expect(persisted?.draftMarkdown).toBeUndefined();
+  });
+
   it('skips doubtful cases without writes', async () => {
     const root = await bundle();
     const db = makeFakeDb([{ _id: new ObjectId(), slug: 'policy', title: 'Policy', contentMarkdown: '# Body\nOriginal fact', status: 'PUBLISHED' }]);

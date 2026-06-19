@@ -6,6 +6,7 @@ import { parse } from '../parse.js';
 import { enforcePolicy, loadPolicy } from '../policy.js';
 import { serialize } from '../serialize.js';
 import { validate } from '../validate.js';
+import { assertNoShrinkage } from '../guardrails.js';
 import { contentHash } from './hash.js';
 import { statusBundle, type StatusEntry } from './status.js';
 import type { MongoWkfDocument } from '../types.js';
@@ -42,6 +43,15 @@ function changed(entries: StatusEntry[]): StatusEntry[] {
   return entries.filter((entry) => entry.status === 'modified');
 }
 
+function isCurationRemote(remote: MongoWkfDocument): boolean {
+  if (!Array.isArray(remote.sourceRefs)) return false;
+  return remote.sourceRefs.some((sourceRef) => {
+    if (!sourceRef || typeof sourceRef !== 'object') return false;
+    const raw = sourceRef as Record<string, unknown>;
+    return String(raw.note ?? '').includes('curation') || String(raw.ref ?? '').startsWith('wkf://');
+  });
+}
+
 export async function pushBundle(bundlePath: string, store: WkfDocumentStore, options: PushOptions = {}): Promise<PushResult> {
   const validation = await validate(bundlePath);
   if (!validation.ok) {
@@ -66,6 +76,12 @@ export async function pushBundle(bundlePath: string, store: WkfDocumentStore, op
     const markdown = await readFile(join(bundlePath, entry.path), 'utf8');
     const doc = parse(markdown);
     enforcePolicy('commit', doc, policy);
+    if (remote && isCurationRemote(remote)) {
+      const before = fromMongo(remote);
+      if (before.frontmatter.type.toLowerCase() !== 'reference' && doc.frontmatter.type.toLowerCase() !== 'reference') {
+        assertNoShrinkage(before, doc);
+      }
+    }
     const nextHash = contentHash(markdown);
     const nextRemote: MongoWkfDocument = {
       title: doc.frontmatter.title,
