@@ -16,3 +16,12 @@ export { parse } from './parse.js';
 export { serialize } from './serialize.js';
 export { extractHeadings, extractSection, parseCitations, parseRelations, serializeRelations } from './sections.js';
 export { fromMongo, fromMongoMarkdown } from './fromMongo.js';
+export {
+  ValidationError,
+  assertFrontmatterPreserved,
+  assertHeadingsPreserved,
+  assertNoShrinkage,
+  citationCount,
+  schemaFieldCount,
+} from './guardrails.js';
+export { validate, type ValidationIssue, type ValidationPolicy, type ValidationResult } from './validate.js';
