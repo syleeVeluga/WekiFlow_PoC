@@ -25,7 +25,7 @@
 | [PR-02](./PR-02-parse-serialize.md) | parse/serialize + `fromMongo` 어댑터 + 라운드트립 테스트 | 완료 | 직렬화 |
 | [PR-03](./PR-03-validate-and-nonshrinkage.md) | `validate`(적합성) + **비축소 검증 라이브러리** | 완료 | 게이트·가드레일 lib |
 | [PR-04](./PR-04-bundle-init-pull.md) | 번들 레이아웃 + `wkf init/status/pull`(DB→번들, baseRev) | 완료 | export 경로 |
-| [PR-05](./PR-05-push-optimistic-lock.md) | `wkf push`(**낙관적 락**) + `wkf reference`(읽기전용) | 03,04 | 동기화 |
+| [PR-05](./PR-05-push-optimistic-lock.md) | `wkf push`(**낙관적 락**) + `wkf reference`(읽기전용) | 완료 | 동기화 |
 | [PR-06](./PR-06-reindex.md) | `wkf reindex`(번들→chunks/벡터 + `# Relations`→kg_*) | 02 | 재빌드 |
 | [PR-07](./PR-07-graph-emit-relations.md) | `workers/graph` 재배선: 트리플 → `# Relations` 섹션 | 06 | B 변경 |
 | [PR-08](./PR-08-index-generation.md) | `wkf index`(자동 `index.md` 생성) | 02 | 트리 네비 |
