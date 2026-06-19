@@ -1,10 +1,10 @@
 import { readFile, writeFile } from 'node:fs/promises';
-import { join, sep } from 'node:path';
+import { basename, dirname, join, sep } from 'node:path';
 import { cosineSimilarity, generateObject, tool, type LanguageModel } from 'ai';
 import { z } from 'zod';
 import type { Db } from 'mongodb';
 import { createChunksRepo, createDocumentsRepo, searchKnowledgeGraph, type GraphPath } from '@wf/db';
-import { assertNoShrinkage, parse, serialize, type StaleConcept, type WkfDoc } from '@wekiflow/wkf';
+import { appendLog, assertNoShrinkage, parse, serialize, type StaleConcept, type WkfDoc } from '@wekiflow/wkf';
 import {
   MergeResultSchema,
   TripletArraySchema,
@@ -57,6 +57,14 @@ function shSingleQuote(value: string): string {
 
 function resolveBundlePath(bundlePathRoot: string, relativePath: string): string {
   return join(bundlePathRoot, relativePath.split('/').join(sep));
+}
+
+function conceptDir(bundlePathRoot: string, relativePath: string): string {
+  return join(bundlePathRoot, dirname(relativePath.split('/').join(sep)));
+}
+
+function conceptFileName(relativePath: string): string {
+  return basename(relativePath.split('/').join(sep));
 }
 
 function parseDraftWithFallback(markdown: string, before: WkfDoc): WkfDoc {
@@ -273,6 +281,13 @@ export function createCurationTools(ctx: CurationToolContext) {
             serialize({ ...doc, frontmatter: { ...doc.frontmatter, last_verified: verifiedAt } }),
             'utf8',
           );
+          await appendLog(conceptDir(ctx.bundlePath, ctx.concept.path), {
+            date: verifiedAt,
+            kind: 'Verify',
+            slug: conceptFileName(ctx.concept.path),
+            summary: '변경 없음, 재검증 완료',
+            pipeline: 'C',
+          });
           await record({
             tool: 'tool_write_concept',
             args: { decision, slug: ctx.concept.slug },
@@ -299,6 +314,12 @@ export function createCurationTools(ctx: CurationToolContext) {
           }
           const updated = await documents.setDraftBySlug(ctx.concept.slug, mergedMarkdown);
           if (!updated) throw new Error(`Document not found for curation slug: ${ctx.concept.slug}`);
+          await appendLog(conceptDir(ctx.bundlePath, ctx.concept.path), {
+            kind: 'Update',
+            slug: conceptFileName(ctx.concept.path),
+            summary: changeSummary ?? '큐레이션 보강 초안 생성',
+            pipeline: 'C',
+          });
           await record({
             tool: 'tool_write_concept',
             args: { decision, slug: ctx.concept.slug, changeSummary },
@@ -317,6 +338,12 @@ export function createCurationTools(ctx: CurationToolContext) {
           sourceLabel: 'curation',
         });
         await documents.setDraft(created.id, mergedMarkdown);
+        await appendLog(conceptDir(ctx.bundlePath, ctx.concept.path), {
+          kind: 'Creation',
+          slug: `${createdSlug ?? ctx.concept.slug}.md`,
+          summary: changeSummary ?? '큐레이션 신규 reference 초안 생성',
+          pipeline: 'C',
+        });
         await record({
           tool: 'tool_write_concept',
           args: { decision, slug: createdSlug ?? ctx.concept.slug, changeSummary },

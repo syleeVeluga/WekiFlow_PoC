@@ -14,6 +14,7 @@ export {
 } from './types.js';
 export { parse } from './parse.js';
 export { serialize } from './serialize.js';
+export { appendLog, type AppendLogEntry, type LogKind, type LogPipeline } from './log.js';
 export { extractHeadings, extractSection, parseCitations, parseRelations, serializeRelations } from './sections.js';
 export { fromMongo, fromMongoMarkdown } from './fromMongo.js';
 export {

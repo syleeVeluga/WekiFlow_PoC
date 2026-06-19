@@ -156,6 +156,7 @@ describe('runCurationAgent', () => {
 
     expect(result).toMatchObject({ decision: 'verify', status: 'verified', lastVerified: '2026-06-19T00:00:00.000Z' });
     await expect(readFile(join(root, 'policy.md'), 'utf8')).resolves.toContain('last_verified: 2026-06-19T00:00:00.000Z');
+    await expect(readFile(join(root, 'log.md'), 'utf8')).resolves.toContain('**Verify** policy.md: 변경 없음, 재검증 완료. [C]');
     const persisted = await db.collection('documents').findOne({ slug: 'policy' });
     expect(persisted?.draftMarkdown).toBeUndefined();
   });
@@ -202,6 +203,7 @@ describe('runCurationAgent', () => {
     const persisted = await db.collection('documents').findOne({ slug: 'policy' });
     expect(persisted?.draftMarkdown).toBe('# Body\nOriginal fact\nNew verified fact');
     expect(persisted?.status).toBe('REVIEW');
+    await expect(readFile(join(root, 'log.md'), 'utf8')).resolves.toContain('**Update** policy.md: Added verified fact. [C]');
   });
 
   it('rejects curation drafts that delete existing headings and records the reason', async () => {
