@@ -28,9 +28,13 @@
 - 신규 인입(A)은 가드 비적용 확인.
 
 ## DoD
-- [ ] 큐레이션 에이전트가 문서를 축소하는 쓰기가 **자동 차단**된다([`10` §3.2]).
-- [ ] 가산 변경은 정상 통과.
-- [ ] 거부 사유가 감사 로그에 남는다.
+- [x] 큐레이션 에이전트가 문서를 축소하는 쓰기가 **자동 차단**된다([`10` §3.2]).
+- [x] 가산 변경은 정상 통과.
+- [x] 거부 사유가 감사 로그에 남는다.
+
+완료 증거:
+- 구현 PR: <https://github.com/syleeVeluga/WekiFlow_PoC/pull/24>
+- 검증: `corepack pnpm -r build`, `corepack pnpm -r typecheck`, `corepack pnpm -r test`
 
 ## 리스크·메모
 - 과민 차단으로 정상 보강이 막히면 `assertHeadingsPreserved` 정규화 보정(PR-03).
