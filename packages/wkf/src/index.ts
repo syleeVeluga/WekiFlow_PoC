@@ -1,5 +1,6 @@
 export {
   FrontmatterSchema,
+  type MongoWkfDocument,
   RECOMMENDED_TYPES,
   SourceTierSchema,
   TripletSchema,
@@ -11,3 +12,7 @@ export {
   type WkfDoc,
   type WkfDocumentStatus,
 } from './types.js';
+export { parse } from './parse.js';
+export { serialize } from './serialize.js';
+export { extractHeadings, extractSection, parseCitations, parseRelations, serializeRelations } from './sections.js';
+export { fromMongo, fromMongoMarkdown } from './fromMongo.js';
