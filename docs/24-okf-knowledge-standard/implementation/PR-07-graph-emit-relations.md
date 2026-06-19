@@ -26,9 +26,13 @@
 - 라운드트립: 갱신된 문서가 여전히 `validate` 통과.
 
 ## DoD
-- [ ] 그래프 워커가 `# Relations`만 갱신하고 `kg_*` 직접쓰기를 안 한다.
-- [ ] 추출→섹션→push→reindex 흐름이 동작.
-- [ ] 기존 그래프 PoC 테스트가 새 경로로 green.
+- [x] 그래프 워커가 `# Relations`만 갱신하고 `kg_*` 직접쓰기를 안 한다.
+- [x] 추출→섹션→push→reindex 흐름이 동작.
+- [x] 기존 그래프 PoC 테스트가 새 경로로 green.
+
+완료 증거:
+- 구현 PR: <https://github.com/syleeVeluga/WekiFlow_PoC/pull/14>
+- 검증: `corepack pnpm -r build`, `corepack pnpm -r typecheck`, `corepack pnpm -r test`
 
 ## 리스크·메모
 - 기존 데이터: 한 번 `wkf pull`+추출로 `# Relations`를 backfill 후 직접쓰기 제거.
