@@ -29,9 +29,13 @@
 - reference가 read-only로 주입(쓰기 시도 차단).
 
 ## DoD
-- [ ] SLA 초과 개념이 재검증되고, 원문 미변동 시 재작성하지 않는다.
-- [ ] 변동 시 가산 보강 초안이 검토로 올라간다.
-- [ ] 의심 케이스는 skip.
+- [x] SLA 초과 개념이 재검증되고, 원문 미변동 시 재작성하지 않는다.
+- [x] 변동 시 가산 보강 초안이 검토로 올라간다.
+- [x] 의심 케이스는 skip.
+
+완료 증거:
+- 구현 PR: <https://github.com/syleeVeluga/WekiFlow_PoC/pull/22>
+- 검증: `corepack pnpm -r build`, `corepack pnpm -r typecheck`, `corepack pnpm -r test`
 
 ## 리스크·메모
 - 파괴적 재작성은 여기 프롬프트 + PR-12 쓰기 강제의 **2중 방어**.
