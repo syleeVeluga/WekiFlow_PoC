@@ -9,6 +9,7 @@ import { regenerateFromRecipe } from './recipe.js';
 import { pullBundle } from './sync/pull.js';
 import { JsonDocumentSource, JsonDocumentStore } from './sync/source.js';
 import { statusBundle } from './sync/status.js';
+import { serveWkfMcp } from './mcp.js';
 
 function hasFlag(args: string[], flag: string): boolean {
   return args.includes(flag);
@@ -122,7 +123,12 @@ async function main(argv: string[]): Promise<void> {
     return;
   }
 
-  throw new Error('Usage: wkf <init|pull|status|push|reference|reindex|index|regenerate> [bundlePath] [--dry-run] [--source documents.json]');
+  if (command === 'mcp') {
+    await serveWkfMcp(bundleArg(args));
+    return;
+  }
+
+  throw new Error('Usage: wkf <init|pull|status|push|reference|reindex|index|regenerate|mcp> [bundlePath] [--dry-run] [--source documents.json]');
 }
 
 main(process.argv.slice(2)).catch((error: unknown) => {

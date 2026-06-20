@@ -688,6 +688,18 @@ export {
 } from './fetchUrl.js';
 
 export {
+  ConnectorNotConfiguredError,
+  StaticSource,
+  StubSource,
+  createConnector,
+  createDefaultConnectors,
+  type ConnectorKind,
+  type Source,
+  type SourceDocument,
+  type SourceRef,
+} from './connectors/index.js';
+
+export {
   DISCOVERY_DECOMPOSE_PROMPT,
   DISCOVERY_SYSTEM_PROMPT,
   DiscoveryDecompositionSchema,

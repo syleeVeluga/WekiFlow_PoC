@@ -66,6 +66,18 @@ export {
 } from './policy.js';
 export { scanStale, type ScanStaleOptions, type StaleConcept } from './scan.js';
 export {
+  handleWkfMcpRequest,
+  listMcpConcepts,
+  lookupMcpConcept,
+  proposeMcpChange,
+  serveWkfMcp,
+  type McpConceptSummary,
+  type McpProposal,
+  type WkfMcpRequest,
+  type WkfMcpOptions,
+  type WkfMcpResponse,
+} from './mcp.js';
+export {
   RecipeSchema,
   RecipeSourceSchema,
   readRecipe,
