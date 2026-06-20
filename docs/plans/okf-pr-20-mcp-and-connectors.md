@@ -1,6 +1,6 @@
 # PR-20 — (선택) `wkf mcp` + 멀티소스 커넥터
 
-> Phase 7 · 선택(🟡) · 선행: PR-05 · 근거: [`09` §A.2·§B.4](../09-enrichment-harness-and-mdcode.md), [`06` §5](../06-adoptable-patterns.md)
+> Phase 7 · 선택(🟡) · 선행: PR-05 · 근거: [`09` §A.2·§B.4](../reference/okf-knowledge-standard/09-enrichment-harness-and-mdcode.md), [`06` §5](../archive/okf-knowledge-standard/06-adoptable-patterns.md)
 
 ## 목표
 WKF 번들을 MCP 서버로 노출해 외부 에이전트/IDE가 표준 프로토콜로 조직 지식을 읽고(우선) 제안하게 한다. 인입 소스를 커넥터로 일반화.

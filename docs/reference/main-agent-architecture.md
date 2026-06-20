@@ -14,10 +14,10 @@
 - 모델은 모두 환경변수로 주입되며 기본값은 `EnvSchema`에 정의되어 있다.
 
 핵심 파일:
-- 오케스트레이션: [`workers/main/src/pipeline.ts`](../workers/main/src/pipeline.ts)
-- 프롬프트·도구: [`packages/agent-tools/src/index.ts`](../packages/agent-tools/src/index.ts)
-- 모델 주입: [`workers/main/src/index.ts`](../workers/main/src/index.ts)
-- 모델 기본값: [`packages/shared/src/index.ts`](../packages/shared/src/index.ts) (`EnvSchema`)
+- 오케스트레이션: [`workers/main/src/pipeline.ts`](../../workers/main/src/pipeline.ts)
+- 프롬프트·도구: [`packages/agent-tools/src/index.ts`](../../packages/agent-tools/src/index.ts)
+- 모델 주입: [`workers/main/src/index.ts`](../../workers/main/src/index.ts)
+- 모델 기본값: [`packages/shared/src/index.ts`](../../packages/shared/src/index.ts) (`EnvSchema`)
 
 ---
 
@@ -138,12 +138,12 @@
 
 ## 7. 관련 문서
 
-- [01. 아키텍처](./01-architecture.md)
-- [02. 기술 스택](./02-tech-stack.md)
-- [04. 에이전트 도구 명세](./04-agent-tools.md)
-- [08. Phase 2 — 샌드박스 파이프라인 A](./08-phase-2-sandbox-pipeline-a.md)
-- [09. Phase 3 — 그래프 파이프라인 B](./09-phase-3-graph-pipeline-b.md)
-- [10. Phase 4 — 하이브리드 RAG](./10-phase-4-hybrid-rag.md)
+- [01. 아키텍처](../archive/01-architecture.md) _(archive)_
+- [02. 기술 스택](../archive/02-tech-stack.md) _(archive)_
+- [04. 에이전트 도구 명세](../archive/04-agent-tools.md) _(archive)_
+- [08. Phase 2 — 샌드박스 파이프라인 A](../archive/08-phase-2-sandbox-pipeline-a.md) _(archive)_
+- [09. Phase 3 — 그래프 파이프라인 B](../archive/09-phase-3-graph-pipeline-b.md) _(archive)_
+- [10. Phase 4 — 하이브리드 RAG](../archive/10-phase-4-hybrid-rag.md) _(archive)_
 
 ## PR-18 update
 

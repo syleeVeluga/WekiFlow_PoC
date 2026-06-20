@@ -1,6 +1,6 @@
 # PR-19 — (선택) 외부 allowlist 크롤 enrichment
 
-> Phase 7 · 선택(🟡) · 선행: PR-11 · 근거: [`05` §4](../05-curation-agent.md), [`09` §A.2](../09-enrichment-harness-and-mdcode.md), [`01` §3](../01-reference-analysis.md)
+> Phase 7 · 선택(🟡) · 선행: PR-11 · 근거: [`05` §4](../reference/okf-knowledge-standard/05-curation-agent.md), [`09` §A.2](../reference/okf-knowledge-standard/09-enrichment-harness-and-mdcode.md), [`01` §3](../archive/okf-knowledge-standard/01-reference-analysis.md)
 
 ## 목표
 파이프라인 C(큐레이션)에 외부 권위 소스 크롤을 추가한다. 단, **한도는 도구 레이어에서 하드 강제**(OKF 철학): `policy.yaml`의 `allowed_hosts`·`web_max_pages`.

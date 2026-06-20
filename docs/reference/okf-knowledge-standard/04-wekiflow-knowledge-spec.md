@@ -1,7 +1,7 @@
 # 04. WKF v0.1 초안 — WekiFlow Knowledge Format (Spec Draft)
 
 > OKF v0.1을 **WekiFlow에 맞게 구체화한 지식 포맷 초안**. OKF와 호환(상위호환 지향)하되, WekiFlow의 검증·KG·검토 기능에 필요한 키를 추가한다.
-> 이 문서는 [`03-proposal.md`](./03-proposal.md) Phase 5의 입력물이다. 확정 시 `packages/wkf`가 이 스펙을 구현한다.
+> 이 문서는 [`03-proposal.md`](../../archive/okf-knowledge-standard/03-proposal.md) Phase 5의 입력물이다. 확정 시 `packages/wkf`가 이 스펙을 구현한다.
 
 ---
 
@@ -262,4 +262,4 @@ appendLog(dir, entry): void                      // log.md 1줄 추가
 3. **freshness 기본값**: REGULATION 90d / POLICY 180d가 적정한지 (정책 디폴트).
 4. **외부 enrichment 활성화 여부**: 사내 grep 재검증만 vs 외부 allowlist 크롤까지.
 
-> 위 결정과 [`03-proposal.md`](./03-proposal.md) §2의 SoT 역전 여부가 확정되면 `packages/wkf` 구현(Phase 5)을 시작할 수 있다.
+> 위 결정과 [`03-proposal.md`](../../archive/okf-knowledge-standard/03-proposal.md) §2의 SoT 역전 여부가 확정되면 `packages/wkf` 구현(Phase 5)을 시작할 수 있다.

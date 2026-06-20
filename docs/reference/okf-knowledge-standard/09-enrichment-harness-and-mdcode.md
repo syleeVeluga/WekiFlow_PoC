@@ -1,7 +1,7 @@
 # 09. Enrichment 하니스 & Metadata-as-Code 동기화 (Harness & Sync — 구현 스펙)
 
 > `toolbox/enrichment`·`agents/enrichment`·`toolbox/mdcode`·`agents/mdcode`를 코드 레벨로 분석해, **설정 주도 enrichment 하니스**와 **git↔서비스 동기화 프로토콜(낙관적 락)** 을 WekiFlow 구현 스펙으로 옮긴다.
-> [`06`](./06-adoptable-patterns.md)에서 식별한 mdcode·하니스를 *실제 매니페스트/CLI/스키마* 수준으로 구체화.
+> [`06`](../../archive/okf-knowledge-standard/06-adoptable-patterns.md)에서 식별한 mdcode·하니스를 *실제 매니페스트/CLI/스키마* 수준으로 구체화.
 
 ---
 

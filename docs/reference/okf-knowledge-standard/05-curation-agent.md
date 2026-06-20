@@ -182,7 +182,7 @@ enrichment:
 
 ## 6. 도입 위치 (로드맵)
 
-[`03` §7](./03-proposal.md)의 **Phase 7(정책 + 지속 업데이트)** 에 포함된다. 선행 조건:
+[`03` §7](../../archive/okf-knowledge-standard/03-proposal.md)의 **Phase 7(정책 + 지속 업데이트)** 에 포함된다. 선행 조건:
 - Phase 5(WKF 스펙·`wkf validate`·`parse`/`serialize`)
 - Phase 6(SoT 역전·`wkf reindex`) — `scanStale`가 번들을 읽으려면 번들이 SoT여야 효과적.
 

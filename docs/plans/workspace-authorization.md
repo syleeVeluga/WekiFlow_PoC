@@ -19,13 +19,13 @@
 임의의 `workspaceId` 문자열로 문서를 생성/태깅할 수 있다. 멀티테넌트 격리가 의도라면
 이는 인가 공백이다.
 
-관련 위치: [`apps/api/src/server.ts`](../apps/api/src/server.ts) — `app.post('/api/workspaces/:workspaceId/ingestions', ...)`
+관련 위치: [`apps/api/src/server.ts`](../../apps/api/src/server.ts) — `app.post('/api/workspaces/:workspaceId/ingestions', ...)`
 
 ## 이미 완화된 부분 (Partially mitigated)
 
 멱등성 스코프를 **소유자 바인딩**(`userId + workspaceId + sourceName + idempotencyKey`)으로
 변경해 *교차 사용자 문서 유출* 절반은 막았다 — `buildIngestionIdempotencyScope`
-([`packages/shared/src/index.ts`](../packages/shared/src/index.ts)). 즉, 다른 사용자가
+([`packages/shared/src/index.ts`](../../packages/shared/src/index.ts)). 즉, 다른 사용자가
 같은 키로 재생(replay)해도 남의 문서가 노출되지 않는다. 다만 **임의 워크스페이스 쓰기**
 자체는 여전히 가능하다.
 
