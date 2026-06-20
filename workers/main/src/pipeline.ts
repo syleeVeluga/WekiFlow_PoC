@@ -1,13 +1,22 @@
 import { ToolLoopAgent, stepCountIs, type LanguageModel } from 'ai';
 import type { Db } from 'mongodb';
-import { createDocumentsRepo } from '@wf/db';
-import { DEFAULT_AGENT_PARAMS, MergeResultSchema, type MergeResult, type RuntimeConfig } from '@wf/shared';
+import { createCandidateRepository, createDocumentsRepo } from '@wf/db';
+import {
+  DEFAULT_AGENT_PARAMS,
+  MergeResultSchema,
+  type CandidateProvenance,
+  type KnowledgeCandidate,
+  type MergeResult,
+  type RuntimeConfig,
+} from '@wf/shared';
 import type { SandboxRunner } from '@wf/sandbox';
 import {
   MAIN_AGENT_SYSTEM_PROMPT,
   buildIngestPrompt,
   createMainTools,
   discoveryAgentAsTool,
+  DispositionResultSchema,
+  type DispositionResult,
   type AgentStep,
   type EmbedFn,
 } from '@wf/agent-tools';
@@ -34,11 +43,13 @@ export interface MainPipelineContext {
 
 export interface MainPipelineResult {
   documentId: string;
-  status: 'REVIEW' | 'PREVIEW';
+  status: 'REVIEW' | 'PREVIEW' | 'SKIPPED' | 'SOURCE_ONLY';
   draftMarkdown: string;
   changeSummary: string;
   /** False when the agent never produced a tool_merge draft (original kept as a fallback). */
   merged: boolean;
+  disposition?: DispositionResult;
+  candidate?: KnowledgeCandidate;
 }
 
 /** Pull the most recent tool_merge output out of the agent's step history. */
@@ -57,6 +68,31 @@ export function extractMergeResult(
   return undefined;
 }
 
+/** Pull the most recent tool_decide_disposition output out of the agent's step history. */
+export function extractCandidateResult(
+  steps: ReadonlyArray<{ toolResults?: ReadonlyArray<{ toolName: string; output: unknown }> }>,
+): DispositionResult | undefined {
+  for (let i = steps.length - 1; i >= 0; i -= 1) {
+    const toolResults = steps[i]?.toolResults ?? [];
+    for (const toolResult of toolResults) {
+      if (toolResult.toolName === 'tool_decide_disposition') {
+        const parsed = DispositionResultSchema.safeParse(toolResult.output);
+        if (parsed.success) return parsed.data;
+      }
+    }
+  }
+  return undefined;
+}
+
+function provenanceForDisposition(doc: { id: string; title: string }, disposition: DispositionResult): CandidateProvenance {
+  return {
+    kind: disposition.action === 'source_only' ? 'manual' : 'file',
+    ref: `document://${doc.id}`,
+    label: doc.title,
+    ...(disposition.action === 'source_only' ? { needsSource: true } : {}),
+  };
+}
+
 /**
  * Runs the real Vercel AI SDK agent loop: the agent autonomously uses the search/sandbox/merge/verify
  * tools to produce a REVIEW draft for the ingested document.
@@ -66,6 +102,7 @@ export async function runMainPipeline(
   ctx: MainPipelineContext,
 ): Promise<MainPipelineResult> {
   const documents = createDocumentsRepo(ctx.db);
+  const candidates = createCandidateRepository(ctx.db);
   const doc = await documents.getById(documentId);
   if (!doc) throw new Error(`Document not found: ${documentId}`);
 
@@ -106,21 +143,41 @@ export async function runMainPipeline(
   });
 
   const mergeResult = extractMergeResult(result.steps);
+  const disposition = extractCandidateResult(result.steps);
   const merged: MergeResult = mergeResult ?? {
     mergedMarkdown: doc.contentMarkdown,
     changeSummary: `⚠️ 자동 병합 미완료: ${result.text.trim() || '병합 도구가 호출되지 않아 원본을 유지했습니다.'}`,
   };
 
+  const shouldWriteDraft = !disposition || disposition.action === 'create' || disposition.action === 'enhance';
+  const shouldWriteCandidate = !ctx.preview && disposition && disposition.action !== 'skip';
+  const candidate = shouldWriteCandidate
+    ? await candidates.createCandidate({
+        title: doc.title,
+        summary: merged.changeSummary,
+        bodyMarkdown: disposition.action === 'source_only' ? doc.contentMarkdown : merged.mergedMarkdown,
+        status: disposition.status,
+        riskFactors: disposition.riskFactors,
+        provenance: provenanceForDisposition(doc, disposition),
+        linkedDocId: disposition.targetDocId ?? doc.id,
+        conflictWith: disposition.conflictWith,
+      })
+    : undefined;
+
   if (ctx.preview) {
     await documents.setPreviewDraft(documentId, merged.mergedMarkdown);
-  } else {
+  } else if (shouldWriteDraft) {
     await documents.setDraft(documentId, merged.mergedMarkdown); // status -> REVIEW
+  } else {
+    await documents.reject(documentId); // source-only/skip keeps the original as DRAFT, not official knowledge.
   }
   return {
     documentId,
-    status: ctx.preview ? 'PREVIEW' : 'REVIEW',
+    status: ctx.preview ? 'PREVIEW' : disposition?.action === 'skip' ? 'SKIPPED' : disposition?.action === 'source_only' ? 'SOURCE_ONLY' : 'REVIEW',
     draftMarkdown: merged.mergedMarkdown,
     changeSummary: merged.changeSummary,
     merged: mergeResult !== undefined,
+    ...(disposition ? { disposition } : {}),
+    ...(candidate ? { candidate } : {}),
   };
 }

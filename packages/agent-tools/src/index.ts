@@ -9,6 +9,7 @@ import {
   DEFAULT_AGENT_PARAMS,
   DEFAULT_RUNTIME_PROMPTS,
   MergeResultSchema,
+  RiskFactorSchema,
   TripletArraySchema,
   type DocumentDTO,
   type EmbedFn,
@@ -17,6 +18,7 @@ import {
   type VectorHit,
 } from '@wf/shared';
 import type { SandboxRunner } from '@wf/sandbox';
+import { decideDisposition, DispositionResultSchema, ExistingMatchSchema } from './disposition.js';
 import { decomposeQuestion, rerankDiscoveryContexts } from './discovery.js';
 import { createFetchUrlState, toolFetchUrl } from './fetchUrl.js';
 
@@ -89,7 +91,12 @@ function parseDraftWithFallback(markdown: string, before: WkfDoc): WkfDoc {
   }
 }
 
-export const MAIN_AGENT_SYSTEM_PROMPT = DEFAULT_RUNTIME_PROMPTS.main;
+export const MAIN_AGENT_SYSTEM_PROMPT = `${DEFAULT_RUNTIME_PROMPTS.main}
+
+Enrichment Draft rules:
+- Before producing a draft, call tool_decide_disposition with the source summary and any strong existing matches.
+- Use create for new reusable knowledge, enhance for additive updates to an existing document, skip for duplicates or irrelevant input, and source_only when the source should be preserved without synthesizing official knowledge.
+- Only use tool_merge for create/enhance drafts. Source-only and skip decisions should not invent knowledge.`;
 export const CURATION_SYSTEM_PROMPT = DEFAULT_RUNTIME_PROMPTS.curation;
 export const MERGE_SYSTEM_PROMPT = DEFAULT_RUNTIME_PROMPTS.merge;
 
@@ -104,7 +111,7 @@ export function buildIngestPrompt(doc: Pick<DocumentDTO, 'id' | 'title' | 'conte
 ${doc.contentMarkdown}
 --- 끝 ---
 
-수치·조항·고유명사는 추측하지 말고 grep으로 검증한 뒤, tool_merge로 병합 초안을 만들고 tool_verify_integrity로 핵심 주장을 검증하라.`;
+수치·조항·고유명사는 추측하지 말고 grep으로 검증한 뒤, tool_decide_disposition으로 create/enhance/skip/source-only 중 하나를 정하고, create/enhance일 때만 tool_merge로 병합 초안을 만들고 tool_verify_integrity로 핵심 주장을 검증하라.`;
 }
 
 export function buildCurationPrompt(concept: StaleConcept): string {
@@ -527,6 +534,38 @@ export function createMainTools(ctx: MainToolContext) {
       },
     }),
 
+    tool_decide_disposition: tool({
+      description:
+        'Classify an ingested source as create, enhance, skip, or source_only and return candidate status/risk/conflict metadata.',
+      inputSchema: z.object({
+        sourceText: z.string().min(1),
+        existingMatches: z.array(ExistingMatchSchema).optional().default([]),
+        riskFactors: z.array(RiskFactorSchema).optional(),
+        preserveSourceOnly: z.boolean().optional().default(false),
+      }),
+      execute: async ({ sourceText, existingMatches, riskFactors, preserveSourceOnly }) => {
+        const started = Date.now();
+        const result = decideDisposition({
+          sourceText,
+          existingMatches,
+          preserveSourceOnly,
+          ...(riskFactors ? { riskFactors } : {}),
+        });
+        const parsed = DispositionResultSchema.parse(result);
+        await record({
+          tool: 'tool_decide_disposition',
+          args: {
+            sourceLength: sourceText.length,
+            matchCount: existingMatches.length,
+            preserveSourceOnly,
+          },
+          result: parsed,
+          tookMs: Date.now() - started,
+        });
+        return parsed;
+      },
+    }),
+
     tool_execute_sandbox_terminal: tool({
       description:
         '격리된 Docker 컨테이너에서 bash/python을 실행한다. 예) rg -n "제4조 2항" /docs. 원본 문서는 /docs에 마운트됨.',
@@ -691,6 +730,18 @@ export {
   type SourceDocument,
   type SourceRef,
 } from './connectors/index.js';
+
+export {
+  decideDisposition,
+  detectRiskFactors,
+  DispositionActionSchema,
+  DispositionResultSchema,
+  ExistingMatchSchema,
+  type DispositionAction,
+  type DispositionResult,
+  type ExistingMatch,
+  type ExistingMatchInput,
+} from './disposition.js';
 
 export {
   DISCOVERY_DECOMPOSE_PROMPT,

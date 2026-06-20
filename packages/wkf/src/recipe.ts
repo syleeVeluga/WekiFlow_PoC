@@ -22,6 +22,10 @@ export type WkfRecipe = z.infer<typeof RecipeSchema>;
 export interface RegenerateOptions {
   dryRun?: boolean;
   now?: Date;
+  draftAgent?: (input: { title: string; contentMarkdown: string; recipe: WkfRecipe }) => Promise<{
+    markdown: string;
+    changeSummary?: string;
+  }>;
   runPipeline?: (input: { title: string; contentMarkdown: string; recipe: WkfRecipe }) => Promise<{
     markdown: string;
     changeSummary?: string;
@@ -72,8 +76,9 @@ export async function regenerateFromRecipe(dir: string, options: RegenerateOptio
   const recipe = await readRecipe(dir);
   const now = options.now ?? new Date();
   const fallback = defaultMarkdown(dir, recipe, now);
-  const generated = options.runPipeline
-    ? await options.runPipeline({ title: basename(dir) || 'regenerated', contentMarkdown: fallback, recipe })
+  const runDraftAgent = options.draftAgent ?? options.runPipeline;
+  const generated = runDraftAgent
+    ? await runDraftAgent({ title: basename(dir) || 'regenerated', contentMarkdown: fallback, recipe })
     : { markdown: fallback, changeSummary: 'Generated deterministic recipe draft.' };
   const markdown = generated.markdown.includes('recipe.yaml')
     ? generated.markdown
