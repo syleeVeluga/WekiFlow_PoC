@@ -1,7 +1,7 @@
 # PR-24 — 정책 런타임 오버라이드 + role 정합
 
 > 원본 계획 §D. PR-19(외부 enrichment, 구현 완료)과 **직결**. 패널에서 `allowed_hosts` 편집 = fetch allowlist 즉시 반영.
-> 상태: 미착수 · 선행: PR-22(config 저장소) · 후행: PR-25(UI 편집)
+> 상태: 완료(PR #37에 포함) · 선행: PR-22(config 저장소) · 후행: PR-25(UI 편집, 완료)
 
 ## 목표
 `policy.yaml` 시작 1회 로드 구조를 깨지 않으면서, 런타임 `Policy` 오버라이드를 우선 적용하는 `loadEffectivePolicy`를 도입한다. 동시에 enum 불일치(`ADMIN`) 버그를 정합하고 role 검증을 추가한다.

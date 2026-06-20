@@ -146,7 +146,8 @@ docker/
 - Pipeline A와 Pipeline B는 별도 Agent 또는 실행 루프로 유지하고, 각 파이프라인에 필요한 도구만 노출한다.
 - 문서 상태 전이는 `DRAFT -> PROCESSING -> REVIEW -> PUBLISHED -> GRAPH_INDEXED` 흐름을 기준으로 한다. 실패는 `FAILED`로 기록한다.
 - `draftMarkdown`은 Monaco Diff의 modified, `contentMarkdown`은 original로 사용한다.
-- 사용자 승인 권한은 `ADMIN`과 `REVIEWER`로 제한한다.
+- 사용자 최종 승인 권한은 실제 role enum 기준 `OWNER`와 `APPROVER`를 기본으로 한다. 정책 문서의 role 값은 `userRoles`와 대조 검증해 enum drift를 조용히 허용하지 않는다.
+- 개발자 제어판 접근은 role 사다리와 직교하는 `isSuperAdmin` 플래그로만 판단한다.
 - 큐 잡과 트리플 적재는 멱등성을 우선한다.
 
 ## 샌드박스 보안 규칙
