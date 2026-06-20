@@ -35,4 +35,29 @@ describe('recipe', () => {
     await expect(readFile(result.outputPath, 'utf8')).resolves.toContain('recipe.yaml');
     expect(result.markdown).toContain('gpt-test');
   });
+
+  it('delegates recipe regeneration to a draft agent callback', async () => {
+    const dir = join(tmpdir(), `wkf-regenerate-agent-${randomUUID()}`);
+    await mkdir(dir, { recursive: true });
+    await writeRecipe(dir, {
+      sources: [{ type: 'manual', ref: 'seed.md' }],
+      seeds: [],
+      params: { model: 'gpt-test', instruction: 'Create the canonical page.' },
+    });
+
+    const calls: string[] = [];
+    const result = await regenerateFromRecipe(dir, {
+      dryRun: true,
+      draftAgent: async ({ title, contentMarkdown, recipe }) => {
+        calls.push(`${title}:${recipe.params.model}:${contentMarkdown.includes('recipe.yaml')}`);
+        return { markdown: '# Agent Draft', changeSummary: 'Drafted by enrichment agent.' };
+      },
+    });
+
+    expect(calls).toEqual([`${dir.split(/[\\/]/).at(-1)}:gpt-test:true`]);
+    expect(result.markdown).toContain('# Agent Draft');
+    expect(result.markdown).toContain('recipe.yaml');
+    expect(result.changeSummary).toBe('Drafted by enrichment agent.');
+    expect(result.written).toBe(false);
+  });
 });

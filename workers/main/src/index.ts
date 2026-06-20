@@ -12,7 +12,7 @@ import { loadEnv, type DocumentDTO, type EmbedFn, type RuntimeConfig } from '@wf
 import { createTripletExtractionModels, runGraphPipeline } from '@wf/graph-worker/pipeline';
 import { runMainPipeline } from './pipeline.js';
 
-export { runMainPipeline, extractMergeResult } from './pipeline.js';
+export { runMainPipeline, extractCandidateResult, extractMergeResult } from './pipeline.js';
 
 loadDotenv({ path: path.resolve(process.cwd(), '../../.env'), quiet: true });
 const env = loadEnv();
@@ -86,6 +86,10 @@ async function runIngestJob(job: MainJob, doc: DocumentDTO, jobId: string, docum
       console.warn(
         `[main-worker] job ${jobId}: agent produced no merge for ${documentId}; using original content.`,
       );
+    }
+    if (result.status === 'SKIPPED' || result.status === 'SOURCE_ONLY') {
+      await job.updateProgress(100);
+      return { documentId: result.documentId, status: result.status, merged: result.merged };
     }
     if (!(await settings.get()).reviewApprovalEnabled) {
       const published = await docs.publish(documentId);

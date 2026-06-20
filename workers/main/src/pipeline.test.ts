@@ -3,7 +3,7 @@ import { ObjectId, type Db } from 'mongodb';
 import { MockLanguageModelV3, mockValues } from 'ai/test';
 import type { SandboxRunner } from '@wf/sandbox';
 import { MAIN_AGENT_SYSTEM_PROMPT, type AgentStep } from '@wf/agent-tools';
-import { extractMergeResult, runMainPipeline } from './pipeline.js';
+import { extractCandidateResult, extractMergeResult, runMainPipeline } from './pipeline.js';
 
 function makeFakeDb(
   documents: Record<string, unknown>[],
@@ -19,6 +19,10 @@ function makeFakeDb(
         toArray: async () => rows.filter((row) => matches(row, filter)),
       }),
       findOne: async (filter: Record<string, unknown>) => rows.find((row) => matches(row, filter)) ?? null,
+      insertOne: async (doc: Record<string, unknown>) => {
+        rows.push(doc);
+        return { insertedId: doc._id };
+      },
       insertMany: async (docs: Record<string, unknown>[]) => void rows.push(...docs),
       deleteMany: async (filter: Record<string, unknown>) => {
         const keep = rows.filter((row) => !matches(row, filter));
@@ -28,6 +32,11 @@ function makeFakeDb(
       updateOne: async (filter: Record<string, unknown>, update: { $set?: Record<string, unknown> }) => {
         const row = rows.find((r) => matches(r, filter));
         if (row && update.$set) Object.assign(row, update.$set);
+      },
+      findOneAndUpdate: async (filter: Record<string, unknown>, update: { $set?: Record<string, unknown> }) => {
+        const row = rows.find((r) => matches(r, filter));
+        if (row && update.$set) Object.assign(row, update.$set);
+        return row ?? null;
       },
     };
   };
@@ -55,6 +64,35 @@ describe('extractMergeResult', () => {
 
   it('returns undefined when no merge step is present', () => {
     expect(extractMergeResult([{ toolResults: [] }])).toBeUndefined();
+  });
+});
+
+describe('extractCandidateResult', () => {
+  it('returns the most recent valid disposition output from steps', () => {
+    const disposition = extractCandidateResult([
+      { toolResults: [{ toolName: 'tool_decide_disposition', output: { action: 'skip' } }] },
+      {
+        toolResults: [
+          {
+            toolName: 'tool_decide_disposition',
+            output: {
+              action: 'enhance',
+              status: 'NEEDS_APPROVAL',
+              targetDocId: 'doc-1',
+              riskFactors: ['policy'],
+              conflictWith: [],
+              reason: 'Strong match.',
+            },
+          },
+        ],
+      },
+    ]);
+
+    expect(disposition).toMatchObject({
+      action: 'enhance',
+      targetDocId: 'doc-1',
+      status: 'NEEDS_APPROVAL',
+    });
   });
 });
 
@@ -170,6 +208,140 @@ describe('runMainPipeline (agent loop)', () => {
     expect(persisted?.draftMarkdown).toBe(merged.mergedMarkdown);
     expect(persisted?.status).toBe('REVIEW');
     expect(steps.map((s) => s.tool)).toContain('tool_merge');
+  });
+
+  it('persists an enrichment candidate from the disposition and merge result', async () => {
+    const id = new ObjectId();
+    const targetId = new ObjectId();
+    const db = makeFakeDb([
+      { _id: id, title: 'Policy intake', slug: 'policy-intake', contentMarkdown: '# Policy intake', status: 'PROCESSING' },
+      { _id: targetId, title: 'Policy handbook', slug: 'policy-handbook', contentMarkdown: '# Policy handbook', status: 'PUBLISHED' },
+    ]);
+    const merged = {
+      mergedMarkdown: '# Policy intake\nOfficial answer update.',
+      changeSummary: 'Added official answer policy.',
+    };
+    const model = new MockLanguageModelV3({
+      doGenerate: mockValues(
+        {
+          content: [
+            {
+              type: 'tool-call',
+              toolCallId: 'd1',
+              toolName: 'tool_decide_disposition',
+              input: JSON.stringify({
+                sourceText: 'official answer policy update',
+                existingMatches: [{ documentId: targetId.toString(), score: 0.8 }],
+              }),
+            },
+          ],
+          finishReason: 'tool-calls',
+          usage: { inputTokens: { total: 1 }, outputTokens: { total: 1 } },
+          warnings: [],
+        },
+        {
+          content: [
+            {
+              type: 'tool-call',
+              toolCallId: 'm1',
+              toolName: 'tool_merge',
+              input: JSON.stringify({ facts: [{ source: 'policy', content: 'Official answer update.' }] }),
+            },
+          ],
+          finishReason: 'tool-calls',
+          usage: { inputTokens: { total: 1 }, outputTokens: { total: 1 } },
+          warnings: [],
+        },
+        {
+          content: [{ type: 'text', text: JSON.stringify(merged) }],
+          finishReason: 'stop',
+          usage: { inputTokens: { total: 1 }, outputTokens: { total: 1 } },
+          warnings: [],
+        },
+        {
+          content: [{ type: 'text', text: 'done' }],
+          finishReason: 'stop',
+          usage: { inputTokens: { total: 1 }, outputTokens: { total: 1 } },
+          warnings: [],
+        },
+      ),
+    } as never);
+
+    const result = await runMainPipeline(id.toString(), {
+      db,
+      sandbox: sandboxStub,
+      docsSnapshotDir: '/tmp/docs',
+      jobId: 'job-candidate',
+      embed: async (texts) => texts.map(() => [1, 0]),
+      model,
+      embeddingModel: 'text-embedding-3-large',
+    });
+
+    expect(result.status).toBe('REVIEW');
+    expect(result.disposition).toMatchObject({ action: 'enhance', targetDocId: targetId.toString() });
+    expect(result.candidate).toMatchObject({
+      title: 'Policy intake',
+      bodyMarkdown: merged.mergedMarkdown,
+      linkedDocId: targetId.toString(),
+      status: 'NEEDS_APPROVAL',
+      riskFactors: ['policy', 'official_answer'],
+    });
+    const persisted = await db.collection('documents').findOne({ _id: id });
+    expect(persisted?.draftMarkdown).toBe(merged.mergedMarkdown);
+  });
+
+  it('keeps source-only intake out of review drafts while saving a candidate', async () => {
+    const id = new ObjectId();
+    const db = makeFakeDb([
+      { _id: id, title: 'Raw transcript', slug: 'raw-transcript', contentMarkdown: '# Raw transcript', status: 'PROCESSING' },
+    ]);
+    const model = new MockLanguageModelV3({
+      doGenerate: mockValues(
+        {
+          content: [
+            {
+              type: 'tool-call',
+              toolCallId: 'd1',
+              toolName: 'tool_decide_disposition',
+              input: JSON.stringify({
+                sourceText: 'meeting transcript that needs source preservation',
+                preserveSourceOnly: true,
+              }),
+            },
+          ],
+          finishReason: 'tool-calls',
+          usage: { inputTokens: { total: 1 }, outputTokens: { total: 1 } },
+          warnings: [],
+        },
+        {
+          content: [{ type: 'text', text: 'source only' }],
+          finishReason: 'stop',
+          usage: { inputTokens: { total: 1 }, outputTokens: { total: 1 } },
+          warnings: [],
+        },
+      ),
+    } as never);
+
+    const result = await runMainPipeline(id.toString(), {
+      db,
+      sandbox: sandboxStub,
+      docsSnapshotDir: '/tmp/docs',
+      jobId: 'job-source-only',
+      embed: async (texts) => texts.map(() => [1, 0]),
+      model,
+      embeddingModel: 'text-embedding-3-large',
+    });
+
+    expect(result.status).toBe('SOURCE_ONLY');
+    expect(result.merged).toBe(false);
+    expect(result.candidate).toMatchObject({
+      title: 'Raw transcript',
+      bodyMarkdown: '# Raw transcript',
+      status: 'NEEDS_CHECK',
+    });
+    const persisted = await db.collection('documents').findOne({ _id: id });
+    expect(persisted?.draftMarkdown).toBeNull();
+    expect(persisted?.status).toBe('DRAFT');
   });
 
   it('keeps preview drafts in PREVIEW status', async () => {
