@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   DocumentStatusSchema,
+  AskResponseSchema,
   CANDIDATE_STATUS_LABEL,
   CANDIDATE_TO_DOC_STATUS,
   ConversationIngestRequestSchema,
@@ -145,6 +146,26 @@ describe('@wf/shared', () => {
     });
     expect(DOC_STATUS_TO_CANDIDATE.GRAPH_INDEXED).toBe('PUBLISHED');
     expect(DOC_STATUS_TO_CANDIDATE.FAILED).toBe('NEEDS_CHECK');
+  });
+
+  it('validates ask responses with citations and trust levels', () => {
+    const parsed = AskResponseSchema.parse({
+      answer: '답변',
+      citations: [
+        {
+          id: 'knowledge:k1',
+          title: '휴가 정책',
+          path: 'hr/k1.md',
+          snippet: '연차 기준',
+          trustStatus: 'PUBLISHED',
+          sourceType: 'knowledge',
+          documentId: 'k1',
+        },
+      ],
+      usedTrustLevels: ['PUBLISHED'],
+    });
+    expect(parsed.citations[0]?.trustStatus).toBe('PUBLISHED');
+    expect(parsed.needsAttention).toBe(false);
   });
 
   it('marks every declared risk factor as needing review', () => {

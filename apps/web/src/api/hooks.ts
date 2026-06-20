@@ -1,11 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   useMutation,
   useQuery,
   useQueryClient,
   type UseQueryResult,
 } from '@tanstack/react-query';
-import type { AgentPreviewResult, AgentStepDTO, CandidateRouteResolveAction, ConversationIngestRequest, DocumentDTO, KnowledgeCandidateListQuery, TreeNode, UpdateKnowledgeCandidateStatus } from '@wf/shared';
+import type { AgentPreviewResult, AgentStepDTO, AskCitation, AskFollowUp, AskResponse, CandidateRouteResolveAction, CandidateStatus, ConversationIngestRequest, DocumentDTO, KnowledgeCandidateListQuery, TreeNode, UpdateKnowledgeCandidateStatus } from '@wf/shared';
 import * as api from './client.js';
 
 export const queryKeys = {
@@ -288,6 +288,32 @@ export interface AgentRunStreamState {
   error: string | null;
 }
 
+export interface AskStreamState {
+  question: string;
+  answer: string;
+  citations: AskCitation[];
+  usedTrustLevels: CandidateStatus[];
+  needsAttention: boolean;
+  followUp: AskFollowUp | null;
+  loading: boolean;
+  done: boolean;
+  failed: boolean;
+  error: string | null;
+}
+
+const INITIAL_ASK_STATE: AskStreamState = {
+  question: '',
+  answer: '',
+  citations: [],
+  usedTrustLevels: [],
+  needsAttention: false,
+  followUp: null,
+  loading: false,
+  done: false,
+  failed: false,
+  error: null,
+};
+
 const INITIAL_STREAM_STATE: AgentRunStreamState = {
   steps: [],
   progress: 0,
@@ -349,6 +375,70 @@ export function useAgentRunStream(jobId: string | null): AgentRunStreamState {
   }, [jobId, qc]);
 
   return state;
+}
+
+export function useAsk() {
+  const abortRef = useRef<AbortController | null>(null);
+  const [state, setState] = useState<AskStreamState>(INITIAL_ASK_STATE);
+
+  const reset = useCallback(() => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setState(INITIAL_ASK_STATE);
+  }, []);
+
+  const askQuestion = useCallback((question: string) => {
+    const trimmed = question.trim();
+    if (!trimmed) return;
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setState({ ...INITIAL_ASK_STATE, question: trimmed, loading: true });
+    void api.ask(
+      trimmed,
+      (event, data) => {
+        if (event === 'answer') {
+          const payload = data as AskResponse;
+          setState((prev) => ({
+            ...prev,
+            answer: payload.answer,
+            citations: payload.citations,
+            usedTrustLevels: payload.usedTrustLevels,
+            needsAttention: payload.needsAttention,
+            followUp: payload.followUp ?? null,
+          }));
+        }
+        if (event === 'completed') {
+          setState((prev) => ({ ...prev, loading: false, done: true, failed: false }));
+        }
+        if (event === 'failed') {
+          const payload = data as { error?: string; followUp?: AskFollowUp };
+          setState((prev) => ({
+            ...prev,
+            loading: false,
+            done: true,
+            failed: true,
+            error: payload.error ?? '답변에 실패했습니다.',
+            followUp: payload.followUp ?? null,
+          }));
+        }
+      },
+      controller.signal,
+    ).catch((error) => {
+      if (controller.signal.aborted) return;
+      setState((prev) => ({
+        ...prev,
+        loading: false,
+        done: true,
+        failed: true,
+        error: error instanceof Error ? error.message : '답변에 실패했습니다.',
+      }));
+    });
+  }, []);
+
+  useEffect(() => () => abortRef.current?.abort(), []);
+
+  return { ...state, ask: askQuestion, reset };
 }
 
 /**
