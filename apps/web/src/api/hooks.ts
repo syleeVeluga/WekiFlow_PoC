@@ -5,7 +5,7 @@ import {
   useQueryClient,
   type UseQueryResult,
 } from '@tanstack/react-query';
-import type { AgentPreviewResult, AgentStepDTO, ConversationIngestRequest, DocumentDTO, KnowledgeCandidateListQuery, TreeNode, UpdateKnowledgeCandidateStatus } from '@wf/shared';
+import type { AgentPreviewResult, AgentStepDTO, CandidateRouteResolveAction, ConversationIngestRequest, DocumentDTO, KnowledgeCandidateListQuery, TreeNode, UpdateKnowledgeCandidateStatus } from '@wf/shared';
 import * as api from './client.js';
 
 export const queryKeys = {
@@ -14,6 +14,7 @@ export const queryKeys = {
   policy: ['admin', 'policy'] as const,
   tree: ['tree'] as const,
   reviews: ['reviews'] as const,
+  candidateReviewRoutes: (q: KnowledgeCandidateListQuery) => ['candidate-review-routes', q] as const,
   candidates: (q: KnowledgeCandidateListQuery) => ['candidates', q] as const,
   candidate: (id: string) => ['candidate', id] as const,
   document: (id: string) => ['document', id] as const,
@@ -40,6 +41,10 @@ export function useCandidates(q: KnowledgeCandidateListQuery = {}) {
   return useQuery({ queryKey: queryKeys.candidates(q), queryFn: () => api.fetchCandidates(q) });
 }
 
+export function useCandidateReviewRoutes(q: KnowledgeCandidateListQuery = {}) {
+  return useQuery({ queryKey: queryKeys.candidateReviewRoutes(q), queryFn: () => api.fetchCandidateReviewRoutes(q) });
+}
+
 export function useCandidate(id: string | null) {
   return useQuery({ queryKey: queryKeys.candidate(id ?? ''), queryFn: () => api.fetchCandidate(id!), enabled: id != null });
 }
@@ -57,6 +62,18 @@ export function useUpdateCandidateStatus() {
   return useMutation({
     mutationFn: ({ id, ...patch }: { id: string } & UpdateKnowledgeCandidateStatus) => api.updateCandidateStatus(id, patch),
     onSuccess: (candidate) => {
+      void qc.invalidateQueries({ queryKey: ['candidates'] });
+      void qc.invalidateQueries({ queryKey: queryKeys.candidate(candidate.id) });
+    },
+  });
+}
+
+export function useResolveCandidateRoute() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, action }: { id: string; action: CandidateRouteResolveAction }) => api.resolveCandidateRoute(id, action),
+    onSuccess: (candidate) => {
+      void qc.invalidateQueries({ queryKey: ['candidate-review-routes'] });
       void qc.invalidateQueries({ queryKey: ['candidates'] });
       void qc.invalidateQueries({ queryKey: queryKeys.candidate(candidate.id) });
     },
