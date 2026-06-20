@@ -121,6 +121,7 @@ describe('runMainPipeline (agent loop)', () => {
       embeddingModel: 'text-embedding-3-large',
       prompts: { main: 'MAIN PROMPT OVERRIDE' },
       agentParams: { mainStepLimit: 5 },
+      preview: true,
     });
 
     expect(systemPrompt(model.doGenerateCalls[0])).toBe('MAIN PROMPT OVERRIDE');
@@ -141,6 +142,7 @@ describe('runMainPipeline (agent loop)', () => {
       embed: async (texts) => texts.map(() => [1, 0]),
       model: fallbackModel,
       embeddingModel: 'text-embedding-3-large',
+      preview: true,
     });
 
     expect(systemPrompt(fallbackModel.doGenerateCalls[0])).toBe(MAIN_AGENT_SYSTEM_PROMPT);
@@ -153,9 +155,25 @@ describe('runMainPipeline (agent loop)', () => {
     ]);
     const merged = { mergedMarkdown: '# 연차 규정\n신입사원은 연차 15일을 부여받는다.', changeSummary: '연차 15일 반영' };
 
-    // Scripted: 1) agent requests tool_merge  2) merge's generateObject returns JSON  3) agent finishes.
+    // Scripted: 1) decide disposition  2) request tool_merge  3) merge returns JSON  4) finish.
     const model = new MockLanguageModelV3({
       doGenerate: mockValues(
+        {
+          content: [
+            {
+              type: 'tool-call',
+              toolCallId: 'd1',
+              toolName: 'tool_decide_disposition',
+              input: JSON.stringify({
+                sourceText: 'general leave regulation update',
+                existingMatches: [],
+              }),
+            },
+          ],
+          finishReason: 'tool-calls',
+          usage: { inputTokens: { total: 1 }, outputTokens: { total: 1 } },
+          warnings: [],
+        },
         {
           content: [
             {
@@ -208,6 +226,7 @@ describe('runMainPipeline (agent loop)', () => {
     expect(persisted?.draftMarkdown).toBe(merged.mergedMarkdown);
     expect(persisted?.status).toBe('REVIEW');
     expect(steps.map((s) => s.tool)).toContain('tool_merge');
+    expect(steps.map((s) => s.tool)).toContain('tool_decide_disposition');
   });
 
   it('persists an enrichment candidate from the disposition and merge result', async () => {
@@ -430,6 +449,22 @@ describe('runMainPipeline (agent loop)', () => {
           content: [
             {
               type: 'tool-call',
+              toolCallId: 'd1',
+              toolName: 'tool_decide_disposition',
+              input: JSON.stringify({
+                sourceText: 'annual leave for new hires',
+                existingMatches: [],
+              }),
+            },
+          ],
+          finishReason: 'tool-calls',
+          usage: { inputTokens: { total: 1 }, outputTokens: { total: 1 } },
+          warnings: [],
+        },
+        {
+          content: [
+            {
+              type: 'tool-call',
               toolCallId: 'h1',
               toolName: 'tool_hybrid_retrieve',
               input: JSON.stringify({ query: 'annual leave for new hires', startEntity: 'New Hire', k: 4 }),
@@ -483,8 +518,8 @@ describe('runMainPipeline (agent loop)', () => {
 
     expect(result.merged).toBe(true);
     expect(result.draftMarkdown).toBe(merged.mergedMarkdown);
-    expect(steps.map((step) => step.tool)).toEqual(['tool_hybrid_retrieve', 'tool_merge']);
-    expect(steps[0]).toMatchObject({
+    expect(steps.map((step) => step.tool)).toEqual(['tool_decide_disposition', 'tool_hybrid_retrieve', 'tool_merge']);
+    expect(steps[1]).toMatchObject({
       tool: 'tool_hybrid_retrieve',
       result: { graphPathCount: 1, fusedCount: 1, exactGraphStartMatch: true },
     });

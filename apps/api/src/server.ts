@@ -107,6 +107,7 @@ export interface BuildServerOptions {
   jobQueue?: Queue;
   conversationQueue?: Queue;
   jobEvents?: QueueEvents;
+  conversationJobEvents?: QueueEvents;
   rateLimiter?: FixedWindowRateLimiter;
   externalRateLimit?: { max: number; windowMs: number };
   maxQueueBacklog?: number;
@@ -119,6 +120,7 @@ export function buildServer({
   jobQueue,
   conversationQueue,
   jobEvents,
+  conversationJobEvents,
   rateLimiter,
   externalRateLimit = { max: EXTERNAL_RATE_LIMIT_MAX, windowMs: EXTERNAL_RATE_LIMIT_WINDOW_MS },
   maxQueueBacklog = QUEUE_BACKLOG_LIMIT,
@@ -764,7 +766,11 @@ export function buildServer({
     return { jobId: `conversation-sync-${Date.now()}`, type: 'INGEST_CONVERSATION' as const, candidates, createdAt };
   });
 
-  app.get('/api/candidates', async (request) => store.listCandidates(KnowledgeCandidateListQuerySchema.parse(request.query)));
+  app.get('/api/candidates', async (request, reply) => {
+    const me = await currentUser(request);
+    if (!me || !canEdit(me.role)) return reply.code(403).send({ error: 'Forbidden' });
+    return store.listCandidates(KnowledgeCandidateListQuerySchema.parse(request.query));
+  });
 
   app.post('/api/candidates', async (request, reply) => {
     const me = await currentUser(request);
@@ -774,6 +780,8 @@ export function buildServer({
   });
 
   app.get('/api/candidates/:id', async (request, reply) => {
+    const me = await currentUser(request);
+    if (!me || !canEdit(me.role)) return reply.code(403).send({ error: 'Forbidden' });
     const { id } = request.params as { id: string };
     const candidate = await store.getCandidate(id);
     if (!candidate) return reply.code(404).send({ error: 'Not found' });
@@ -785,6 +793,17 @@ export function buildServer({
     if (!me || !canEdit(me.role)) return reply.code(403).send({ error: 'Forbidden' });
     const { id } = request.params as { id: string };
     const body = UpdateKnowledgeCandidateStatusSchema.parse(request.body);
+    if (body.status === 'SOURCE_VERIFIED' || body.provenanceNeedsSource === false || body.removeRiskFactor === 'no_source') {
+      const candidate = await store.getCandidate(id);
+      if (!candidate) return reply.code(404).send({ error: 'Not found' });
+      if (!body.linkedDocId) return reply.code(400).send({ error: 'linkedDocId is required to verify a source' });
+      const linkedDoc = await store.getDocument(body.linkedDocId);
+      if (!linkedDoc) return reply.code(400).send({ error: 'Linked source document not found' });
+      const sourceWorkspaceId = linkedDoc.ingestion?.workspaceId;
+      if (candidate.workspaceId && sourceWorkspaceId && candidate.workspaceId !== sourceWorkspaceId) {
+        return reply.code(400).send({ error: 'Linked source document belongs to a different workspace' });
+      }
+    }
     const result = await store.updateCandidateStatus(id, body);
     if (!result.ok) return reply.code(result.statusCode).send({ error: result.error });
     return result.candidate;
@@ -1059,15 +1078,17 @@ export function buildServer({
       res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
     };
 
-    if (!jobEvents || !jobQueue) {
+    const liveQueues = [
+      ...(jobQueue && jobEvents ? [{ queue: jobQueue, events: jobEvents }] : []),
+      ...(conversationQueue && conversationJobEvents ? [{ queue: conversationQueue, events: conversationJobEvents }] : []),
+    ];
+    if (liveQueues.length === 0) {
       // No live queue (e.g. in-memory/test): emit a single stub event and close.
       send('step', { jobId: id, status: 'stub' });
       res.end();
       return;
     }
 
-    const liveJobEvents = jobEvents;
-    const liveJobQueue = jobQueue;
     let closed = false;
 
     const onProgress = ({ jobId, data }: { jobId: string; data: unknown }) => {
@@ -1085,9 +1106,11 @@ export function buildServer({
     };
 
     function cleanup() {
-      liveJobEvents.off('progress', onProgress);
-      liveJobEvents.off('completed', onCompleted);
-      liveJobEvents.off('failed', onFailed);
+      for (const { events } of liveQueues) {
+        events.off('progress', onProgress);
+        events.off('completed', onCompleted);
+        events.off('failed', onFailed);
+      }
       request.raw.off('close', cleanup);
     }
 
@@ -1098,12 +1121,21 @@ export function buildServer({
       res.end();
     }
 
-    liveJobEvents.on('progress', onProgress);
-    liveJobEvents.on('completed', onCompleted);
-    liveJobEvents.on('failed', onFailed);
+    for (const { events } of liveQueues) {
+      events.on('progress', onProgress);
+      events.on('completed', onCompleted);
+      events.on('failed', onFailed);
+    }
     request.raw.on('close', cleanup);
 
-    const job = await liveJobQueue.getJob(id);
+    let job: Awaited<ReturnType<Queue['getJob']>> | undefined;
+    for (const { queue } of liveQueues) {
+      const candidate = await queue.getJob(id);
+      if (candidate) {
+        job = candidate;
+        break;
+      }
+    }
     if (!job) {
       send('failed', { jobId: id, error: 'Job not found' });
       closeStream();

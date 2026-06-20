@@ -144,6 +144,9 @@ export async function runMainPipeline(
 
   const mergeResult = extractMergeResult(result.steps);
   const disposition = extractCandidateResult(result.steps);
+  if (!ctx.preview && !disposition) {
+    throw new Error('Main pipeline did not produce a candidate disposition');
+  }
   const merged: MergeResult = mergeResult ?? {
     mergedMarkdown: doc.contentMarkdown,
     changeSummary: `⚠️ 자동 병합 미완료: ${result.text.trim() || '병합 도구가 호출되지 않아 원본을 유지했습니다.'}`,

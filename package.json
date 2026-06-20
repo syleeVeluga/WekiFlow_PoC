@@ -9,7 +9,7 @@
   },
   "scripts": {
     "build": "corepack pnpm -r build",
-    "typecheck": "corepack pnpm --filter @wf/shared build && corepack pnpm -r typecheck",
+    "typecheck": "corepack pnpm --filter @wf/shared build && corepack pnpm --filter @wf/queue build && corepack pnpm -r typecheck",
     "test": "corepack pnpm -r test",
     "lint": "corepack pnpm -r lint",
     "e2e": "playwright test",

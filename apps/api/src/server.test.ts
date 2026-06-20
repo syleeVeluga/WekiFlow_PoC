@@ -388,24 +388,64 @@ describe('@wf/api routes', () => {
       provenance: { kind: 'conversation', needsSource: true },
     });
 
-    const filtered = await app.inject({ method: 'GET', url: '/api/candidates?riskFactor=no_source&provenanceKind=conversation' });
+    const anonymousList = await app.inject({ method: 'GET', url: '/api/candidates?riskFactor=no_source&provenanceKind=conversation' });
+    expect(anonymousList.statusCode).toBe(403);
+
+    const filtered = await app.inject({
+      method: 'GET',
+      url: '/api/candidates?riskFactor=no_source&provenanceKind=conversation',
+      headers: { authorization: `Bearer ${ownerToken}` },
+    });
     expect(filtered.statusCode).toBe(200);
     expect(filtered.json()).toEqual(expect.arrayContaining([expect.objectContaining({ id: created.json().id })]));
 
-    const detail = await app.inject({ method: 'GET', url: `/api/candidates/${created.json().id}` });
+    const detail = await app.inject({
+      method: 'GET',
+      url: `/api/candidates/${created.json().id}`,
+      headers: { authorization: `Bearer ${ownerToken}` },
+    });
     expect(detail.statusCode).toBe(200);
     expect(detail.json().title).toBe('회의 기반 승인 정책');
 
-    const advanced = await app.inject({
+    const sourceDocId = (await app.inject({ method: 'GET', url: '/api/tree' })).json()[0].id;
+    const missingSource = await app.inject({
       method: 'PATCH',
       url: `/api/candidates/${created.json().id}`,
       headers: { authorization: `Bearer ${ownerToken}` },
       payload: { status: 'SOURCE_VERIFIED', linkedDocId: 'doc-source-1', provenanceNeedsSource: false, removeRiskFactor: 'no_source' },
     });
+    expect(missingSource.statusCode).toBe(400);
+
+    const otherWorkspaceSource = await app.inject({
+      method: 'POST',
+      url: '/api/workspaces/workspace-other/ingestions',
+      headers: { authorization: `Bearer ${ownerToken}` },
+      payload: { sourceName: 'source-agent', rawPayload: { text: '# Other workspace source' } },
+    });
+    expect(otherWorkspaceSource.statusCode).toBe(200);
+    const wrongWorkspace = await app.inject({
+      method: 'PATCH',
+      url: `/api/candidates/${created.json().id}`,
+      headers: { authorization: `Bearer ${ownerToken}` },
+      payload: {
+        status: 'SOURCE_VERIFIED',
+        linkedDocId: otherWorkspaceSource.json().documentId,
+        provenanceNeedsSource: false,
+        removeRiskFactor: 'no_source',
+      },
+    });
+    expect(wrongWorkspace.statusCode).toBe(400);
+
+    const advanced = await app.inject({
+      method: 'PATCH',
+      url: `/api/candidates/${created.json().id}`,
+      headers: { authorization: `Bearer ${ownerToken}` },
+      payload: { status: 'SOURCE_VERIFIED', linkedDocId: sourceDocId, provenanceNeedsSource: false, removeRiskFactor: 'no_source' },
+    });
     expect(advanced.statusCode).toBe(200);
     expect(advanced.json()).toMatchObject({
       status: 'SOURCE_VERIFIED',
-      linkedDocId: 'doc-source-1',
+      linkedDocId: sourceDocId,
       provenance: { needsSource: false },
       riskFactors: ['official_answer'],
     });
@@ -500,6 +540,36 @@ describe('@wf/api routes', () => {
     expect(syncResult.statusCode).toBe(200);
     expect(syncResult.json().candidates.length).toBeGreaterThan(0);
 
+    await app.close();
+  });
+
+  it('streams conversation queue job state through the shared job stream route', async () => {
+    const app = buildServer({
+      jobEvents: new EventEmitter() as never,
+      jobQueue: {
+        async getJob() {
+          return null;
+        },
+      } as never,
+      conversationJobEvents: new EventEmitter() as never,
+      conversationQueue: {
+        async getJob() {
+          return {
+            async getState() {
+              return 'completed';
+            },
+            returnvalue: { candidateIds: ['candidate-1'], sourceRef: 'conversation://manual' },
+            progress: 100,
+          };
+        },
+      } as never,
+    });
+
+    const stream = await app.inject({ method: 'GET', url: '/api/jobs/conversation-queued-1/stream' });
+
+    expect(stream.statusCode).toBe(200);
+    expect(stream.payload).toContain('event: completed');
+    expect(stream.payload).toContain('candidate-1');
     await app.close();
   });
 

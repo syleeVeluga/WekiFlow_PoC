@@ -37,6 +37,10 @@ export function createMainQueueEvents(connection = createRedisConnection()) {
   return new QueueEvents(MAIN_QUEUE_NAME, { connection, prefix: 'wf:main' });
 }
 
+export function createConversationQueueEvents(connection = createRedisConnection()) {
+  return new QueueEvents(CONVERSATION_QUEUE_NAME, { connection, prefix: 'wf:conversation' });
+}
+
 export function defaultJobOptions(): JobsOptions {
   return {
     attempts: 3,
