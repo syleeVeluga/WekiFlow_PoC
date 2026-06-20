@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-export type ActivePage = 'home' | 'review' | 'kb' | 'doc' | 'sources' | 'rules' | 'history' | 'add' | 'users' | 'agent' | 'trash';
+export type ActivePage = 'home' | 'review' | 'kb' | 'doc' | 'sources' | 'rules' | 'history' | 'add' | 'users' | 'agent' | 'trash' | 'dev';
 
 export interface TreeContextMenu {
   x: number;

@@ -10,6 +10,8 @@ import * as api from './client.js';
 
 export const queryKeys = {
   settings: ['settings'] as const,
+  runtimeConfig: ['admin', 'config'] as const,
+  policy: ['admin', 'policy'] as const,
   tree: ['tree'] as const,
   reviews: ['reviews'] as const,
   document: (id: string) => ['document', id] as const,
@@ -45,6 +47,36 @@ export function useUpdateSettings() {
       void qc.invalidateQueries({ queryKey: queryKeys.reviews });
       void qc.invalidateQueries({ queryKey: queryKeys.tree });
       void qc.invalidateQueries({ queryKey: ['wiki'] });
+    },
+  });
+}
+
+export function useRuntimeConfig() {
+  return useQuery({ queryKey: queryKeys.runtimeConfig, queryFn: api.fetchRuntimeConfig });
+}
+
+export function useUpdateRuntimeConfig() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: api.updateRuntimeConfig,
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: queryKeys.runtimeConfig });
+      void qc.invalidateQueries({ queryKey: queryKeys.policy });
+    },
+  });
+}
+
+export function usePolicy() {
+  return useQuery({ queryKey: queryKeys.policy, queryFn: api.fetchPolicy });
+}
+
+export function useUpdatePolicy() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: api.updatePolicy,
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: queryKeys.policy });
+      void qc.invalidateQueries({ queryKey: queryKeys.runtimeConfig });
     },
   });
 }

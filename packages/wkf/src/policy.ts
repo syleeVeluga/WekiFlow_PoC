@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parseDocument } from 'yaml';
 import { z } from 'zod';
+import { userRoles } from '@wf/shared';
 import { parseCitations } from './sections.js';
 import type { WkfDoc } from './types.js';
 
@@ -13,8 +14,9 @@ const DEFAULT_SOURCES = {
 };
 const DEFAULT_ENRICHMENT = { web_max_pages: 50, agent_step_limit: 12 };
 const DEFAULT_CITATIONS = { required_for: ['REGULATION', 'POLICY'], require_fact_verification: true };
-const DEFAULT_REVIEW = { approver_roles: ['ADMIN', 'REVIEWER'], overrides: { REGULATION: ['ADMIN'] } };
+const DEFAULT_REVIEW = { approver_roles: ['OWNER', 'APPROVER'], overrides: { REGULATION: ['OWNER', 'APPROVER'] } };
 const DEFAULT_CONFORMANCE = { reject_on_missing_type: true, block_commit_on_validate_fail: true };
+const validRoles = new Set<string>(userRoles);
 
 export const PolicySchema = z.object({
   wkf_version: z.string().default('0.1'),
@@ -48,8 +50,8 @@ export const PolicySchema = z.object({
     .default(DEFAULT_CITATIONS),
   review: z
     .object({
-      approver_roles: z.array(z.string()).default(['ADMIN', 'REVIEWER']),
-      overrides: z.record(z.string(), z.array(z.string())).default({ REGULATION: ['ADMIN'] }),
+      approver_roles: z.array(z.string()).default(['OWNER', 'APPROVER']),
+      overrides: z.record(z.string(), z.array(z.string())).default({ REGULATION: ['OWNER', 'APPROVER'] }),
     })
     .default(DEFAULT_REVIEW),
   conformance: z
@@ -58,6 +60,27 @@ export const PolicySchema = z.object({
       block_commit_on_validate_fail: z.boolean().default(true),
     })
     .default(DEFAULT_CONFORMANCE),
+}).superRefine((policy, ctx) => {
+  for (const [index, role] of policy.review.approver_roles.entries()) {
+    if (!validRoles.has(role)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['review', 'approver_roles', index],
+        message: `Unknown role: ${role}`,
+      });
+    }
+  }
+  for (const [type, roles] of Object.entries(policy.review.overrides)) {
+    roles.forEach((role, index) => {
+      if (!validRoles.has(role)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['review', 'overrides', type, index],
+          message: `Unknown role: ${role}`,
+        });
+      }
+    });
+  }
 });
 
 export type Policy = z.infer<typeof PolicySchema>;
@@ -92,13 +115,14 @@ export async function loadPolicy(bundlePath: string): Promise<Policy> {
   return raw.trim() ? parsePolicyYaml(raw, 'policy.yaml') : defaultPolicy;
 }
 
+export async function loadEffectivePolicy(override: unknown, bundlePath: string): Promise<Policy> {
+  return override == null ? loadPolicy(bundlePath) : PolicySchema.parse(override);
+}
+
 function roleMatches(actual: string | undefined, allowed: string[]): boolean {
   if (!actual) return false;
   const normalized = actual.toUpperCase();
-  const aliases = new Set<string>([normalized]);
-  if (normalized === 'OWNER' || normalized === 'APPROVER') aliases.add('ADMIN');
-  if (normalized === 'REVIEWER') aliases.add('REVIEWER');
-  return allowed.some((role) => aliases.has(role.toUpperCase()));
+  return allowed.some((role) => role.toUpperCase() === normalized);
 }
 
 function tierRank(policy: Policy, tier: string): number {

@@ -1,0 +1,25 @@
+.dev-page{display:grid;gap:16px}
+.dev-tabs{display:flex;gap:6px;flex-wrap:wrap}
+.dev-tabs button{border:1px solid var(--line);background:#fff;border-radius:var(--r);padding:8px 12px;color:var(--muted);font-weight:800}
+.dev-tabs button.on{background:var(--navy);border-color:var(--navy);color:#fff}
+.dev-prompt-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.dev-prompt{display:grid;gap:12px;min-width:0}
+.dev-prompt header,.dev-policy-head,.dev-policy-card header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.dev-prompt h2,.dev-policy h2,.dev-policy-card h3{margin:0}
+.dev-actions{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}
+.dev-grid-2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.dev-field{display:grid;gap:6px;font-size:13px;color:var(--muted)}
+.dev-field>span{font-weight:800;color:var(--ink)}
+.dev-field input{width:100%;min-width:0;border:1px solid var(--line);border-radius:var(--r);background:#fff;color:var(--ink);padding:9px 10px}
+.dev-field small{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.dev-input-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center}
+.dev-policy{display:grid;gap:14px}
+.dev-policy-head{align-items:center}
+.dev-policy-card{display:grid;gap:12px}
+.dev-host-list{display:flex;gap:8px;flex-wrap:wrap;min-height:34px;align-items:center}
+.dev-host{border:1px solid #bfdbfe;background:#eff6ff;color:#1e40af;border-radius:999px;padding:6px 10px;cursor:pointer}
+.dev-role-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px}
+.dev-check{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:var(--r);padding:8px 10px;background:#fff}
+.dev-check input{accent-color:var(--primary)}
+@media (max-width:960px){.dev-prompt-grid,.dev-grid-2{grid-template-columns:1fr}.dev-role-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:640px){.dev-policy-head,.dev-prompt header{align-items:flex-start;flex-direction:column}.dev-role-grid{grid-template-columns:1fr}}

@@ -15,9 +15,9 @@ citations:
   required_for: [REGULATION, POLICY]
   require_fact_verification: true
 review:
-  approver_roles: [ADMIN, REVIEWER]
+  approver_roles: [OWNER, APPROVER]
   overrides:
-    REGULATION: [ADMIN]
+    REGULATION: [OWNER, APPROVER]
 conformance:
   reject_on_missing_type: true
   block_commit_on_validate_fail: true

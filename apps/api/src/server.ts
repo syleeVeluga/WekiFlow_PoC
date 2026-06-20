@@ -24,7 +24,7 @@ import {
   canManageUsers,
   canReview,
 } from '@wf/shared';
-import { PolicyError, enforcePolicy, parse as parseWkf, type Policy } from '@wekiflow/wkf';
+import { PolicyError, PolicySchema, defaultPolicy, enforcePolicy, loadEffectivePolicy, parse as parseWkf, type Policy } from '@wekiflow/wkf';
 import { InMemoryWekiFlowStore, type IngestInput, type IngestResult, type WekiFlowStore } from './store.js';
 
 // Shared cap for both upload routes (/api/ingest/file and /api/agent-preview).
@@ -166,6 +166,24 @@ export function buildServer({
       return undefined;
     }
     return me;
+  }
+
+  async function currentRuntimePolicy(): Promise<Policy> {
+    if (reviewPolicy) return reviewPolicy;
+    const config = await store.runtimeConfig();
+    if (config.overrides.policy) return PolicySchema.parse(config.overrides.policy);
+    return process.env.WKF_BUNDLE_PATH ? loadEffectivePolicy(null, process.env.WKF_BUNDLE_PATH) : defaultPolicy;
+  }
+
+  async function policyResponse() {
+    const config = await store.runtimeConfig();
+    const defaults = process.env.WKF_BUNDLE_PATH ? await loadEffectivePolicy(null, process.env.WKF_BUNDLE_PATH) : defaultPolicy;
+    const overrides = config.overrides.policy;
+    return {
+      defaults,
+      overrides,
+      effective: overrides ? PolicySchema.parse(overrides) : defaults,
+    };
   }
 
   app.addHook('preHandler', async (request, reply) => {
@@ -447,7 +465,18 @@ export function buildServer({
 
   app.patch('/api/admin/config', async (request) => {
     const body = RuntimeConfigPatchSchema.parse(request.body);
+    if (body.policy !== undefined && body.policy !== null) {
+      body.policy = PolicySchema.parse(body.policy);
+    }
     return store.updateRuntimeConfig(body);
+  });
+
+  app.get('/api/admin/policy', async () => policyResponse());
+
+  app.put('/api/admin/policy', async (request) => {
+    const nextPolicy = request.body == null ? null : PolicySchema.parse(request.body);
+    await store.updateRuntimeConfig({ policy: nextPolicy });
+    return policyResponse();
   });
 
   // --- User management (소유자 + 승인; 소유자 역할/계정은 소유자만) ---
@@ -817,14 +846,14 @@ export function buildServer({
   app.post('/api/documents/:id/approve', async (request, reply) => {
     const { id } = request.params as { id: string };
     const me = await currentUser(request);
-    if (reviewPolicy) {
+    {
       const doc = await store.getDocument(id);
       if (!doc) return reply.code(404).send({ error: 'Not found' });
       try {
         const wkfDoc = doc.contentMarkdown.trimStart().startsWith('---')
           ? parseWkf(doc.contentMarkdown)
           : { frontmatter: { type: 'ENTITY', title: doc.title, tags: [] }, body: doc.contentMarkdown };
-        enforcePolicy('review', wkfDoc, reviewPolicy, me ? { role: me.role } : {});
+        enforcePolicy('review', wkfDoc, await currentRuntimePolicy(), me ? { role: me.role } : {});
       } catch (error) {
         if (error instanceof PolicyError) return reply.code(403).send({ error: error.message });
         throw error;
