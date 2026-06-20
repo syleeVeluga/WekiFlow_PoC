@@ -1,6 +1,6 @@
 # PR-27 — KnowledgeCandidate 모델·API + 신뢰 라벨 UI (T1)
 
-> Track T1 · 상태: 계획 · 선행: [PR-26](./PR-26-candidate-contract.md) · 근거: [`Overview.md`](./Overview.md) §3.1·§5.1-2·§5.2-5, [`Gap-Analysis.md`](./Gap-Analysis.md) §2.2·§3.5
+> Track T1 · 상태: 완료(PR #39) · 선행: [PR-26](./PR-26-candidate-contract.md) · 근거: [`Overview.md`](./Overview.md) §3.1·§5.1-2·§5.2-5, [`Gap-Analysis.md`](./Gap-Analysis.md) §2.2·§3.5
 > 외부 API 메모: 없음.
 
 ## 목표
@@ -42,10 +42,10 @@ PR-26 contract를 실제 저장 모델·API·UI로 구현한다. 후보를 1급 
 
 ## DoD
 
-- [ ] `knowledge_candidates`가 1급 모델로 존재하고 상태/위험도/provenance를 보존한다.
-- [ ] 후보 목록·상세·상태전이 API가 동작하고 전이 규칙을 강제한다.
-- [ ] KB·Review 화면에 6종 신뢰 라벨이 일관 표시된다.
-- [ ] 기존 published 지식이 손상 없이 유지된다.
+- [x] `knowledge_candidates`가 1급 모델로 존재하고 상태/위험도/provenance를 보존한다.
+- [x] 후보 목록·상세·상태전이 API가 동작하고 전이 규칙을 강제한다.
+- [x] KB·Review 화면에 6종 신뢰 라벨이 일관 표시된다.
+- [x] 기존 published 지식이 손상 없이 유지된다.
 
 ## 리스크·메모
 
