@@ -1,11 +1,12 @@
 import { lazy, Suspense, useState } from 'react';
 import type { DocumentDTO, MultiSourceGroup, ReviewItem } from '@wf/shared';
-import { canApprove, canReview } from '@wf/shared';
+import { DOC_STATUS_TO_CANDIDATE, canApprove, canReview } from '@wf/shared';
 import { useApprove, useReject, useReviews, useSettings } from '../../api/hooks.js';
 import { useMultiSource, useMultiSourceActions, useResolveMultiSource, useResolveReview, useReviewBoard } from '../../data/hooks.js';
 import { useAuthStore } from '../../auth/store.js';
 import { useUiStore } from '../../store.js';
 import { Avatar, Badge, Certainty } from '../common/Primitives.js';
+import { TrustLabel } from '../common/TrustLabel.js';
 
 const MonacoDiffPane = lazy(async () => {
   const module = await import('../monaco/MonacoDiffPane.js');
@@ -54,7 +55,7 @@ function Layer1ReviewSection({ items }: { items: DocumentDTO[] }) {
             <div className="rv-head">
               <div>
                 <div className="row">
-                  <Badge tone="info">{doc.status}</Badge>
+                  <TrustLabel status={DOC_STATUS_TO_CANDIDATE[doc.status]} />
                   <button type="button" className="link-btn" onClick={() => openDoc(doc.id)}>문서 열기</button>
                 </div>
                 <h3>{doc.title}</h3>
@@ -98,7 +99,7 @@ function ReviewCard({ item }: { item: ReviewItem }) {
     <article className={`card ri-card ${done ? 'gone' : ''}`}>
       <div>
         <div className="row">
-          <Badge tone="info">신규 검토 대상</Badge>
+          <TrustLabel status="NEEDS_APPROVAL" riskFactors={['official_answer']} />
           <Certainty value={item.certainty} />
           <Badge>{item.changeType}</Badge>
         </div>

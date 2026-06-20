@@ -25,6 +25,10 @@ import {
   type UpdateAppSettings,
   type JobRef,
   type IngestionInfo,
+  type CandidateStatus,
+  type CreateKnowledgeCandidate,
+  type KnowledgeCandidate,
+  type KnowledgeCandidateListQuery,
   type SourceRef,
   type TreeNode,
   type User,
@@ -44,6 +48,7 @@ import {
   createSeedReviews,
   createDefaultTopics,
   createDefaultRuntimeConfig,
+  defaultCandidateStatusForProvenance,
   deriveTopicsFromItems,
   groupKnowledgeByCategory,
   ingestSourceNote,
@@ -52,6 +57,7 @@ import {
   mergeRuntimeConfigPatch,
   normalizeEntityName,
   seedDemoUsers,
+  canTransitionCandidate,
 } from '@wf/shared';
 
 export type ApproveResult =
@@ -70,6 +76,10 @@ export type OkResult = { ok: true } | { ok: false; statusCode: number; error: st
 
 export type SettingsResult =
   | { ok: true; settings: AppSettings }
+  | { ok: false; statusCode: number; error: string };
+
+export type CandidateResult =
+  | { ok: true; candidate: KnowledgeCandidate }
   | { ok: false; statusCode: number; error: string };
 
 export interface IngestInput {
@@ -125,6 +135,10 @@ export interface WekiFlowStore {
   reviews(): Promise<DocumentDTO[]>;
   approve(id: string, role: UserRole): Promise<ApproveResult>;
   reject(id: string): Promise<DocumentDTO | undefined>;
+  createCandidate(input: CreateKnowledgeCandidate): Promise<KnowledgeCandidate>;
+  listCandidates(filter: KnowledgeCandidateListQuery): Promise<KnowledgeCandidate[]>;
+  getCandidate(id: string): Promise<KnowledgeCandidate | undefined>;
+  updateCandidateStatus(id: string, status: CandidateStatus): Promise<CandidateResult>;
   listKnowledge(q: KnowledgeQuery): Promise<KnowledgeItem[]>;
   getKnowledge(id: string): Promise<KnowledgeItem | null>;
   patchKnowledge(id: string, body: { contentMarkdown: string }): Promise<KnowledgeItem | null>;
@@ -181,6 +195,7 @@ export class InMemoryWekiFlowStore implements WekiFlowStore {
   readonly richReviews = new Map<string, ReviewItem>();
   readonly multiSource = new Map<string, MultiSourceGroup>();
   readonly aiTagSuggestions = new Map<string, AiTagSuggestion>();
+  readonly candidates = new Map<string, KnowledgeCandidate>();
   readonly activity = createSeedActivity();
   readonly users = new Map<string, User & { password: string }>();
   readonly sessions = new Map<string, string>(); // token -> userId
@@ -193,6 +208,7 @@ export class InMemoryWekiFlowStore implements WekiFlowStore {
 
   private sequence = 0;
   private userSequence = 0;
+  private candidateSequence = 0;
 
   private addUser(name: string, email: string, role: UserRole, password: string, isSuperAdmin = false) {
     const id = `user-${++this.userSequence}`;
@@ -544,6 +560,50 @@ export class InMemoryWekiFlowStore implements WekiFlowStore {
     const updated: DocumentDTO = { ...doc, status: 'DRAFT', draftMarkdown: null };
     this.documents.set(id, updated);
     return updated;
+  }
+
+  async createCandidate(input: CreateKnowledgeCandidate): Promise<KnowledgeCandidate> {
+    const now = new Date().toISOString();
+    const candidate: KnowledgeCandidate = {
+      id: `candidate-${++this.candidateSequence}`,
+      title: input.title,
+      summary: input.summary ?? '',
+      bodyMarkdown: input.bodyMarkdown ?? '',
+      status: input.status ?? defaultCandidateStatusForProvenance(input.provenance),
+      riskFactors: input.riskFactors ?? [],
+      provenance: input.provenance,
+      linkedDocId: input.linkedDocId ?? null,
+      conflictWith: input.conflictWith ?? [],
+      ...(input.workspaceId ? { workspaceId: input.workspaceId } : {}),
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.candidates.set(candidate.id, candidate);
+    return candidate;
+  }
+
+  async listCandidates(filter: KnowledgeCandidateListQuery): Promise<KnowledgeCandidate[]> {
+    return [...this.candidates.values()]
+      .filter((candidate) => !filter.status || candidate.status === filter.status)
+      .filter((candidate) => !filter.riskFactor || candidate.riskFactors.includes(filter.riskFactor))
+      .filter((candidate) => !filter.provenanceKind || candidate.provenance.kind === filter.provenanceKind)
+      .filter((candidate) => !filter.workspaceId || candidate.workspaceId === filter.workspaceId)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  }
+
+  async getCandidate(id: string): Promise<KnowledgeCandidate | undefined> {
+    return this.candidates.get(id);
+  }
+
+  async updateCandidateStatus(id: string, status: CandidateStatus): Promise<CandidateResult> {
+    const candidate = this.candidates.get(id);
+    if (!candidate) return { ok: false, statusCode: 404, error: 'Not found' };
+    if (!canTransitionCandidate(candidate.status, status)) {
+      return { ok: false, statusCode: 400, error: `Invalid candidate status transition: ${candidate.status} -> ${status}` };
+    }
+    const updated = { ...candidate, status, updatedAt: new Date().toISOString() };
+    this.candidates.set(id, updated);
+    return { ok: true, candidate: updated };
   }
 
   async listKnowledge(q: KnowledgeQuery): Promise<KnowledgeItem[]> {

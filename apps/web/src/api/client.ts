@@ -3,11 +3,15 @@ import type {
   AgentPreviewRun,
   AppSettings,
   AuthResult,
+  CandidateStatus,
+  CreateKnowledgeCandidate,
   CreateUserBody,
   DocumentConnections,
   DocumentDTO,
   IngestRequest,
   JobRef,
+  KnowledgeCandidate,
+  KnowledgeCandidateListQuery,
   LoginBody,
   RuntimeConfigPatch,
   RuntimeConfigResponse,
@@ -125,6 +129,32 @@ export function fetchDocument(id: string): Promise<DocumentDTO> {
 
 export function fetchReviews(): Promise<DocumentDTO[]> {
   return request<DocumentDTO[]>('/reviews');
+}
+
+function candidateQuery(input: KnowledgeCandidateListQuery = {}): string {
+  const params = new URLSearchParams();
+  if (input.status) params.set('status', input.status);
+  if (input.riskFactor) params.set('riskFactor', input.riskFactor);
+  if (input.provenanceKind) params.set('provenanceKind', input.provenanceKind);
+  if (input.workspaceId) params.set('workspaceId', input.workspaceId);
+  const query = params.toString();
+  return query ? `?${query}` : '';
+}
+
+export function fetchCandidates(input: KnowledgeCandidateListQuery = {}): Promise<KnowledgeCandidate[]> {
+  return request<KnowledgeCandidate[]>(`/candidates${candidateQuery(input)}`);
+}
+
+export function fetchCandidate(id: string): Promise<KnowledgeCandidate> {
+  return request<KnowledgeCandidate>(`/candidates/${id}`);
+}
+
+export function createCandidate(input: CreateKnowledgeCandidate): Promise<KnowledgeCandidate> {
+  return request<KnowledgeCandidate>('/candidates', { method: 'POST', body: JSON.stringify(input) });
+}
+
+export function updateCandidateStatus(id: string, status: CandidateStatus): Promise<KnowledgeCandidate> {
+  return request<KnowledgeCandidate>(`/candidates/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) });
 }
 
 export function fetchConnections(id: string): Promise<DocumentConnections> {

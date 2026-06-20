@@ -2,6 +2,7 @@ import type { Queue } from 'bullmq';
 import type { Db } from 'mongodb';
 import {
   createDocumentsRepo,
+  createCandidateRepository,
   createJobsRepo,
   createRuntimeConfigRepo,
   createSettingsRepo,
@@ -17,6 +18,8 @@ import {
   type AgentPreviewResult,
   type AgentPreviewRun,
   type AppSettings,
+  type CandidateStatus,
+  type CreateKnowledgeCandidate,
   type CreateUserBody,
   type DocumentConnections,
   type DocumentDTO,
@@ -27,6 +30,8 @@ import {
   type JobRef,
   type JobType,
   type KnowledgeItem,
+  type KnowledgeCandidate,
+  type KnowledgeCandidateListQuery,
   type KnowledgeQuery,
   type MsResolveBody,
   type MultiSourceGroup,
@@ -51,7 +56,7 @@ import {
   normalizeEntityName,
 } from '@wf/shared';
 import { buildReplayedIngestResult } from './store.js';
-import type { ApproveResult, IngestInput, IngestResult, LoginResult, OkResult, SettingsResult, UserResult, WekiFlowStore } from './store.js';
+import type { ApproveResult, CandidateResult, IngestInput, IngestResult, LoginResult, OkResult, SettingsResult, UserResult, WekiFlowStore } from './store.js';
 
 function normalizePreviewState(state: string | undefined): AgentPreviewRun['status'] {
   if (state === 'completed') return 'completed';
@@ -68,6 +73,7 @@ function parsePreviewResult(value: unknown): AgentPreviewResult | undefined {
 
 export class MongoWekiFlowStore implements WekiFlowStore {
   private readonly docs: ReturnType<typeof createDocumentsRepo>;
+  private readonly candidates: ReturnType<typeof createCandidateRepository>;
   private readonly jobs: ReturnType<typeof createJobsRepo>;
   private readonly usersRepo: ReturnType<typeof createUsersRepo>;
   private readonly settingsRepo: ReturnType<typeof createSettingsRepo>;
@@ -79,6 +85,7 @@ export class MongoWekiFlowStore implements WekiFlowStore {
     private readonly graphQueue: Queue,
   ) {
     this.docs = createDocumentsRepo(db);
+    this.candidates = createCandidateRepository(db);
     this.jobs = createJobsRepo(db);
     this.usersRepo = createUsersRepo(db);
     this.settingsRepo = createSettingsRepo(db);
@@ -270,6 +277,31 @@ export class MongoWekiFlowStore implements WekiFlowStore {
 
   async reject(id: string): Promise<DocumentDTO | undefined> {
     return this.docs.reject(id);
+  }
+
+  async createCandidate(input: CreateKnowledgeCandidate): Promise<KnowledgeCandidate> {
+    return this.candidates.createCandidate(input);
+  }
+
+  async listCandidates(filter: KnowledgeCandidateListQuery): Promise<KnowledgeCandidate[]> {
+    return this.candidates.listCandidates(filter);
+  }
+
+  async getCandidate(id: string): Promise<KnowledgeCandidate | undefined> {
+    return this.candidates.getCandidate(id);
+  }
+
+  async updateCandidateStatus(id: string, status: CandidateStatus): Promise<CandidateResult> {
+    try {
+      const candidate = await this.candidates.updateCandidateStatus(id, status);
+      return candidate ? { ok: true, candidate } : { ok: false, statusCode: 404, error: 'Not found' };
+    } catch (error) {
+      return {
+        ok: false,
+        statusCode: 400,
+        error: error instanceof Error ? error.message : 'Invalid candidate status transition',
+      };
+    }
   }
 
   async listKnowledge(q: KnowledgeQuery): Promise<KnowledgeItem[]> {

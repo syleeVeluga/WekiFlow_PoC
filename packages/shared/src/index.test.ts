@@ -3,9 +3,12 @@ import {
   DocumentStatusSchema,
   CANDIDATE_STATUS_LABEL,
   CANDIDATE_TO_DOC_STATUS,
+  CreateKnowledgeCandidateSchema,
   CandidateContractSchema,
   CandidateProvenanceSchema,
   DOC_STATUS_TO_CANDIDATE,
+  KnowledgeCandidateSchema,
+  RISK_FACTOR_LABEL,
   KnowledgeFreshnessSchema,
   TagClassificationSchema,
   TripletArraySchema,
@@ -192,6 +195,33 @@ describe('@wf/shared', () => {
     expect(canTransitionCandidate('NEEDS_APPROVAL', 'PUBLISHED')).toBe(true);
     expect(canTransitionCandidate('PUBLISHED', 'AI_ORGANIZED')).toBe(false);
     expect(canTransitionCandidate('CONFLICTED', 'PUBLISHED')).toBe(false);
+  });
+
+  it('validates first-class knowledge candidate DTOs', () => {
+    const create = CreateKnowledgeCandidateSchema.parse({
+      title: '승인 정책 후보',
+      provenance: { kind: 'conversation', ref: 'chat://1' },
+      riskFactors: ['official_answer'],
+    });
+    expect(create.summary).toBe('');
+    expect(create.provenance).toMatchObject({ needsSource: true });
+    expect(RISK_FACTOR_LABEL.official_answer).toBe('공식 답변');
+
+    expect(
+      KnowledgeCandidateSchema.parse({
+        id: 'candidate-1',
+        title: create.title,
+        status: 'NEEDS_CHECK',
+        riskFactors: create.riskFactors,
+        provenance: create.provenance,
+        createdAt: '2026-06-20T00:00:00.000Z',
+        updatedAt: '2026-06-20T00:00:00.000Z',
+      }),
+    ).toMatchObject({
+      bodyMarkdown: '',
+      conflictWith: [],
+      summary: '',
+    });
   });
 
   it('normalizes Korean entity surface forms consistently', () => {

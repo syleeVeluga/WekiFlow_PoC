@@ -18,6 +18,7 @@ describe('ensureIndexes', () => {
 
     expect(calls).toContain('documents');
     expect(calls).toContain('kg_nodes');
+    expect(calls).toContain('knowledge_candidates');
     expect(calls).toContain('sandbox_runs');
   });
 });
