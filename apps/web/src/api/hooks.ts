@@ -5,7 +5,7 @@ import {
   useQueryClient,
   type UseQueryResult,
 } from '@tanstack/react-query';
-import type { AgentPreviewResult, AgentStepDTO, CandidateStatus, DocumentDTO, KnowledgeCandidateListQuery, TreeNode } from '@wf/shared';
+import type { AgentPreviewResult, AgentStepDTO, CandidateStatus, ConversationIngestRequest, DocumentDTO, KnowledgeCandidateListQuery, TreeNode } from '@wf/shared';
 import * as api from './client.js';
 
 export const queryKeys = {
@@ -60,6 +60,14 @@ export function useUpdateCandidateStatus() {
       void qc.invalidateQueries({ queryKey: ['candidates'] });
       void qc.invalidateQueries({ queryKey: queryKeys.candidate(candidate.id) });
     },
+  });
+}
+
+export function useConversationIngest() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: ConversationIngestRequest) => api.conversationIngest(input),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['candidates'] }),
   });
 }
 

@@ -464,6 +464,40 @@ describe('@wf/api routes', () => {
     await app.close();
   });
 
+  it('can bypass conversation queue for interactive save results', async () => {
+    const queued: unknown[] = [];
+    const app = buildServer({
+      conversationQueue: {
+        add: async (_name: string, data: unknown) => {
+          queued.push(data);
+          return { id: 'conversation-queued-1' };
+        },
+      } as never,
+    });
+    const ownerToken = await login(app, 'admin01@veluga.io', 'admin01@veluga.io');
+
+    const queuedResult = await app.inject({
+      method: 'POST',
+      url: '/api/conversation-ingest',
+      headers: { authorization: `Bearer ${ownerToken}` },
+      payload: { source: 'manual', transcript: 'Jin: Decision: pricing answers require approval.' },
+    });
+    expect(queuedResult.statusCode).toBe(200);
+    expect(queuedResult.json()).toMatchObject({ jobId: 'conversation-queued-1', candidates: [] });
+    expect(queued).toHaveLength(1);
+
+    const syncResult = await app.inject({
+      method: 'POST',
+      url: '/api/conversation-ingest?sync=1',
+      headers: { authorization: `Bearer ${ownerToken}` },
+      payload: { source: 'manual', transcript: 'Jin: Decision: pricing answers require approval.' },
+    });
+    expect(syncResult.statusCode).toBe(200);
+    expect(syncResult.json().candidates.length).toBeGreaterThan(0);
+
+    await app.close();
+  });
+
   it('runs owner-only agent preview and streams persisted steps', async () => {
     const app = buildServer();
     const ownerToken = await login(app, 'admin01@veluga.io', 'admin01@veluga.io');

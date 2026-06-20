@@ -128,6 +128,7 @@ export function Lnb() {
       />
       <NavItem page="kb" active={activePage} icon="◈" label="조직 지식" badge={published.length} badgeClass="nb-blue" onClick={nav} />
       <div className="sb-sec-label">System</div>
+      <NavItem page="conversation" active={activePage} icon="C" label="대화 저장" onClick={nav} />
       <NavItem page="sources" active={activePage} icon="⌁" label="데이터 소스" onClick={nav} />
       <NavItem page="rules" active={activePage} icon="⚙" label="처리 규칙" onClick={nav} />
       <NavItem page="history" active={activePage} icon="↺" label="변경 이력" onClick={nav} />

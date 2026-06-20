@@ -4,6 +4,8 @@ import type {
   AppSettings,
   AuthResult,
   CandidateStatus,
+  ConversationIngestRequest,
+  ConversationIngestResult,
   CreateKnowledgeCandidate,
   CreateUserBody,
   DocumentConnections,
@@ -155,6 +157,10 @@ export function createCandidate(input: CreateKnowledgeCandidate): Promise<Knowle
 
 export function updateCandidateStatus(id: string, status: CandidateStatus): Promise<KnowledgeCandidate> {
   return request<KnowledgeCandidate>(`/candidates/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) });
+}
+
+export function conversationIngest(input: ConversationIngestRequest): Promise<ConversationIngestResult> {
+  return request<ConversationIngestResult>('/conversation-ingest?sync=1', { method: 'POST', body: JSON.stringify(input) });
 }
 
 export function fetchConnections(id: string): Promise<DocumentConnections> {
