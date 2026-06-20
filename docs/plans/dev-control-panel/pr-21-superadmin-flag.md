@@ -1,7 +1,7 @@
 # PR-21 — 직교 슈퍼어드민 플래그 (`isSuperAdmin`)
 
 > 원본 계획 §A. 제어판 전체의 **접근 통제 토대**. 이후 PR-22~25가 이 게이트 위에 올라간다.
-> 상태: 미착수 · 선행: 없음 (첫 PR) · 후행: PR-22, PR-25
+> 상태: 완료 · 구현 PR: #31 · 선행: 없음 (첫 PR) · 후행: PR-22, PR-25
 
 ## 목표
 역할 랭크 사다리(`OWNER>APPROVER>...`)와 **직교**하는 `isSuperAdmin` 플래그를 도입해, 향후 WKF 권한 개편과 충돌 없이 개발자 제어판 접근을 통제한다. 이 PR은 게이트만 만든다 — 제어판 기능(config/prompt/policy/UI)은 후속 PR.
@@ -30,8 +30,12 @@
 - 수동: 슈퍼어드민 유저로 더미 admin 라우트 200, 일반 유저 403.
 
 ## 완료 기준
-- `isSuperAdmin`가 role과 완전 분리되어 동작, 랭크 가드 로직 불변.
-- `/api/admin/*` 게이트가 모든 후속 라우트의 단일 진입 가드로 재사용 가능.
+- [x] `isSuperAdmin`가 role과 완전 분리되어 동작, 랭크 가드 로직 불변.
+- [x] `/api/admin/*` 게이트가 모든 후속 라우트의 단일 진입 가드로 재사용 가능.
+
+## 완료 기록
+- 병합: PR #31 (`Add superadmin gate for dev control panel`)
+- 검증: `corepack pnpm verify:testing`
 
 ## 범위 밖
 - 제어판 실제 기능(config/prompt/policy/UI) — PR-22~25.
