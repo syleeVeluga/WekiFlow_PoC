@@ -264,7 +264,13 @@ describe('createCandidateRepository', () => {
           async findOneAndUpdate(query: { _id: ObjectId }, update: { $set: Record<string, unknown> }) {
             const row = rows.find((entry) => entry._id.equals(query._id));
             if (!row) return null;
-            Object.assign(row, update.$set);
+            for (const [key, value] of Object.entries(update.$set)) {
+              if (key === 'provenance.needsSource') {
+                row.provenance = { ...(row.provenance as Record<string, unknown>), needsSource: value };
+              } else {
+                row[key] = value;
+              }
+            }
             return row;
           },
         };
@@ -287,8 +293,20 @@ describe('createCandidateRepository', () => {
       workspaceId: 'workspace-a',
     });
 
-    await expect(repo.updateCandidateStatus(created.id, 'SOURCE_VERIFIED')).resolves.toMatchObject({ status: 'SOURCE_VERIFIED' });
-    await expect(repo.updateCandidateStatus(created.id, 'AI_ORGANIZED')).rejects.toThrow('Invalid candidate status transition');
+    await expect(
+      repo.updateCandidateStatus(created.id, {
+        status: 'SOURCE_VERIFIED',
+        linkedDocId: 'doc-source-1',
+        provenanceNeedsSource: false,
+        removeRiskFactor: 'no_source',
+      }),
+    ).resolves.toMatchObject({
+      status: 'SOURCE_VERIFIED',
+      linkedDocId: 'doc-source-1',
+      provenance: { needsSource: false },
+      riskFactors: [],
+    });
+    await expect(repo.updateCandidateStatus(created.id, { status: 'AI_ORGANIZED' })).rejects.toThrow('Invalid candidate status transition');
   });
 });
 

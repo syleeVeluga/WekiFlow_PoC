@@ -25,10 +25,10 @@ import {
   type UpdateAppSettings,
   type JobRef,
   type IngestionInfo,
-  type CandidateStatus,
   type CreateKnowledgeCandidate,
   type KnowledgeCandidate,
   type KnowledgeCandidateListQuery,
+  type UpdateKnowledgeCandidateStatus,
   type SourceRef,
   type TreeNode,
   type User,
@@ -138,7 +138,7 @@ export interface WekiFlowStore {
   createCandidate(input: CreateKnowledgeCandidate): Promise<KnowledgeCandidate>;
   listCandidates(filter: KnowledgeCandidateListQuery): Promise<KnowledgeCandidate[]>;
   getCandidate(id: string): Promise<KnowledgeCandidate | undefined>;
-  updateCandidateStatus(id: string, status: CandidateStatus): Promise<CandidateResult>;
+  updateCandidateStatus(id: string, patch: UpdateKnowledgeCandidateStatus): Promise<CandidateResult>;
   listKnowledge(q: KnowledgeQuery): Promise<KnowledgeItem[]>;
   getKnowledge(id: string): Promise<KnowledgeItem | null>;
   patchKnowledge(id: string, body: { contentMarkdown: string }): Promise<KnowledgeItem | null>;
@@ -595,13 +595,20 @@ export class InMemoryWekiFlowStore implements WekiFlowStore {
     return this.candidates.get(id);
   }
 
-  async updateCandidateStatus(id: string, status: CandidateStatus): Promise<CandidateResult> {
+  async updateCandidateStatus(id: string, patch: UpdateKnowledgeCandidateStatus): Promise<CandidateResult> {
     const candidate = this.candidates.get(id);
     if (!candidate) return { ok: false, statusCode: 404, error: 'Not found' };
-    if (!canTransitionCandidate(candidate.status, status)) {
-      return { ok: false, statusCode: 400, error: `Invalid candidate status transition: ${candidate.status} -> ${status}` };
+    if (!canTransitionCandidate(candidate.status, patch.status)) {
+      return { ok: false, statusCode: 400, error: `Invalid candidate status transition: ${candidate.status} -> ${patch.status}` };
     }
-    const updated = { ...candidate, status, updatedAt: new Date().toISOString() };
+    const updated = {
+      ...candidate,
+      status: patch.status,
+      ...(patch.linkedDocId !== undefined ? { linkedDocId: patch.linkedDocId } : {}),
+      ...(patch.provenanceNeedsSource !== undefined ? { provenance: { ...candidate.provenance, needsSource: patch.provenanceNeedsSource } } : {}),
+      ...(patch.removeRiskFactor ? { riskFactors: candidate.riskFactors.filter((risk) => risk !== patch.removeRiskFactor) } : {}),
+      updatedAt: new Date().toISOString(),
+    };
     this.candidates.set(id, updated);
     return { ok: true, candidate: updated };
   }

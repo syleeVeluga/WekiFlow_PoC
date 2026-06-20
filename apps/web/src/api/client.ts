@@ -3,7 +3,8 @@ import type {
   AgentPreviewRun,
   AppSettings,
   AuthResult,
-  CandidateStatus,
+  ConversationIngestRequest,
+  ConversationIngestResult,
   CreateKnowledgeCandidate,
   CreateUserBody,
   DocumentConnections,
@@ -17,6 +18,7 @@ import type {
   RuntimeConfigResponse,
   TrashEntry,
   TreeNode,
+  UpdateKnowledgeCandidateStatus,
   UpdateUserRoleBody,
   User,
   UserRole,
@@ -153,8 +155,12 @@ export function createCandidate(input: CreateKnowledgeCandidate): Promise<Knowle
   return request<KnowledgeCandidate>('/candidates', { method: 'POST', body: JSON.stringify(input) });
 }
 
-export function updateCandidateStatus(id: string, status: CandidateStatus): Promise<KnowledgeCandidate> {
-  return request<KnowledgeCandidate>(`/candidates/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) });
+export function updateCandidateStatus(id: string, patch: UpdateKnowledgeCandidateStatus): Promise<KnowledgeCandidate> {
+  return request<KnowledgeCandidate>(`/candidates/${id}`, { method: 'PATCH', body: JSON.stringify(patch) });
+}
+
+export function conversationIngest(input: ConversationIngestRequest): Promise<ConversationIngestResult> {
+  return request<ConversationIngestResult>('/conversation-ingest?sync=1', { method: 'POST', body: JSON.stringify(input) });
 }
 
 export function fetchConnections(id: string): Promise<DocumentConnections> {

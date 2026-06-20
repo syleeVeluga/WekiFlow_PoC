@@ -728,8 +728,9 @@ export function buildServer({
     if (!me || !canEdit(me.role)) return reply.code(403).send({ error: 'Forbidden' });
     const body = ConversationIngestRequestSchema.parse(request.body);
     const createdAt = new Date().toISOString();
+    const sync = (request.query as { sync?: string }).sync === '1';
 
-    if (conversationQueue) {
+    if (conversationQueue && !sync) {
       const job = await conversationQueue.add('INGEST_CONVERSATION', body);
       return { jobId: String(job.id), type: 'INGEST_CONVERSATION' as const, candidates: [], createdAt };
     }
@@ -784,7 +785,7 @@ export function buildServer({
     if (!me || !canEdit(me.role)) return reply.code(403).send({ error: 'Forbidden' });
     const { id } = request.params as { id: string };
     const body = UpdateKnowledgeCandidateStatusSchema.parse(request.body);
-    const result = await store.updateCandidateStatus(id, body.status);
+    const result = await store.updateCandidateStatus(id, body);
     if (!result.ok) return reply.code(result.statusCode).send({ error: result.error });
     return result.candidate;
   });

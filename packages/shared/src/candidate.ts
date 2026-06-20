@@ -195,6 +195,9 @@ export type KnowledgeCandidateListQuery = z.infer<typeof KnowledgeCandidateListQ
 
 export const UpdateKnowledgeCandidateStatusSchema = z.object({
   status: CandidateStatusSchema,
+  linkedDocId: z.string().min(1).nullable().optional(),
+  provenanceNeedsSource: z.boolean().optional(),
+  removeRiskFactor: RiskFactorSchema.optional(),
 });
 
 export type UpdateKnowledgeCandidateStatus = z.infer<typeof UpdateKnowledgeCandidateStatusSchema>;

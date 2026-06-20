@@ -7,6 +7,7 @@ import { DocPage } from './components/doc/DocPage.js';
 import { ReviewDetailPanel, ReviewPage } from './components/review/ReviewPage.js';
 import { UsersPage } from './components/users/UsersPage.js';
 import { AgentPreviewPage } from './components/agent/AgentPreviewPage.js';
+import { ConversationPage } from './components/conversation/ConversationPage.js';
 import { DevPanel } from './components/admin/DevPanel.js';
 import { AddPage } from './components/add/AddPage.js';
 import { TrashPage } from './components/trash/TrashPage.js';
@@ -36,6 +37,7 @@ function ActivePage() {
   if (activePage === 'doc') return <DocPage />;
   if (activePage === 'users') return <UsersPage />;
   if (activePage === 'agent') return <AgentPreviewPage />;
+  if (activePage === 'conversation') return <ConversationPage />;
   if (activePage === 'dev') return <DevPanel />;
   if (activePage === 'trash') return <TrashPage />;
   if (activePage === 'sources') return <StubPage title="데이터 소스" />;
