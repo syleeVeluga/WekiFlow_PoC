@@ -7,6 +7,7 @@ import { extractText, getDocumentProxy } from 'unpdf';
 import { z, ZodError } from 'zod';
 import {
   AgentPreviewRequestSchema,
+  ConversationIngestRequestSchema,
   CreateKnowledgeCandidateSchema,
   CreateUserBodySchema,
   ExternalIngestionRequestSchema,
@@ -27,6 +28,8 @@ import {
   canManageUsers,
   canReview,
 } from '@wf/shared';
+import { extractConversationCandidates } from '@wf/agent-tools';
+import { getConnector } from '@wf/connectors';
 import { PolicyError, PolicySchema, defaultPolicy, enforcePolicy, loadEffectivePolicy, parse as parseWkf, type Policy } from '@wekiflow/wkf';
 import { InMemoryWekiFlowStore, type IngestInput, type IngestResult, type WekiFlowStore } from './store.js';
 
@@ -102,6 +105,7 @@ class RedisFixedWindowRateLimiter implements FixedWindowRateLimiter {
 export interface BuildServerOptions {
   store?: WekiFlowStore;
   jobQueue?: Queue;
+  conversationQueue?: Queue;
   jobEvents?: QueueEvents;
   rateLimiter?: FixedWindowRateLimiter;
   externalRateLimit?: { max: number; windowMs: number };
@@ -113,6 +117,7 @@ export interface BuildServerOptions {
 export function buildServer({
   store = new InMemoryWekiFlowStore(),
   jobQueue,
+  conversationQueue,
   jobEvents,
   rateLimiter,
   externalRateLimit = { max: EXTERNAL_RATE_LIMIT_MAX, windowMs: EXTERNAL_RATE_LIMIT_WINDOW_MS },
@@ -717,6 +722,46 @@ export function buildServer({
   });
 
   app.get('/api/reviews', async () => store.reviews());
+
+  app.post('/api/conversation-ingest', async (request, reply) => {
+    const me = await currentUser(request);
+    if (!me || !canEdit(me.role)) return reply.code(403).send({ error: 'Forbidden' });
+    const body = ConversationIngestRequestSchema.parse(request.body);
+    const createdAt = new Date().toISOString();
+
+    if (conversationQueue) {
+      const job = await conversationQueue.add('INGEST_CONVERSATION', body);
+      return { jobId: String(job.id), type: 'INGEST_CONVERSATION' as const, candidates: [], createdAt };
+    }
+
+    const resolved = body.transcript?.trim()
+      ? {
+          transcript: body.transcript,
+          sourceRef: body.ref ?? 'conversation://manual',
+          sourceLabel: body.source === 'manual' ? 'Manual conversation' : body.source,
+        }
+      : body.ref && body.source !== 'manual'
+        ? await getConnector(body.source === 'slack' ? 'slack' : 'meeting')
+            .fetch(body.ref)
+            .then((fetched) => ({
+              transcript: fetched.text,
+              sourceRef: fetched.ref.ref,
+              sourceLabel: fetched.ref.title ?? fetched.provenance.label ?? body.source,
+            }))
+        : undefined;
+    if (!resolved) return reply.code(422).send({ error: 'Conversation transcript or supported ref is required' });
+
+    const drafts = extractConversationCandidates(resolved.transcript, {
+      sourceRef: resolved.sourceRef,
+      sourceLabel: resolved.sourceLabel,
+      ...(body.workspaceId ? { workspaceId: body.workspaceId } : {}),
+    });
+    const candidates = [];
+    for (const draft of drafts) {
+      candidates.push(await store.createCandidate(draft));
+    }
+    return { jobId: `conversation-sync-${Date.now()}`, type: 'INGEST_CONVERSATION' as const, candidates, createdAt };
+  });
 
   app.get('/api/candidates', async (request) => store.listCandidates(KnowledgeCandidateListQuerySchema.parse(request.query)));
 

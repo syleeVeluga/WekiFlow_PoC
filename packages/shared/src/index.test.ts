@@ -3,12 +3,16 @@ import {
   DocumentStatusSchema,
   CANDIDATE_STATUS_LABEL,
   CANDIDATE_TO_DOC_STATUS,
+  ConversationIngestRequestSchema,
+  ConversationIngestResultSchema,
   CreateKnowledgeCandidateSchema,
   CandidateContractSchema,
   CandidateProvenanceSchema,
   DOC_STATUS_TO_CANDIDATE,
   KnowledgeCandidateSchema,
   RISK_FACTOR_LABEL,
+  JobQueueSchema,
+  JobTypeSchema,
   KnowledgeFreshnessSchema,
   TagClassificationSchema,
   TripletArraySchema,
@@ -247,5 +251,33 @@ describe('@wf/shared', () => {
     expect(chunks.length).toBeGreaterThan(1);
     expect(chunks.every((c) => c.tokens <= 10)).toBe(true);
     expect(chunks.every((c) => c.headingPath[0] === 'H')).toBe(true);
+  });
+
+  it('validates conversation ingest contracts', () => {
+    expect(ConversationIngestRequestSchema.parse({ transcript: 'A: Decision made.' })).toMatchObject({
+      source: 'manual',
+      transcript: 'A: Decision made.',
+    });
+    expect(() => ConversationIngestRequestSchema.parse({ source: 'manual' })).toThrow();
+    expect(JobQueueSchema.parse('conversation')).toBe('conversation');
+    expect(JobTypeSchema.parse('INGEST_CONVERSATION')).toBe('INGEST_CONVERSATION');
+    expect(
+      ConversationIngestResultSchema.parse({
+        jobId: 'job-1',
+        type: 'INGEST_CONVERSATION',
+        candidates: [
+          {
+            id: 'candidate-1',
+            title: 'Conversation decision',
+            createdAt: '2026-06-20T00:00:00.000Z',
+            updatedAt: '2026-06-20T00:00:00.000Z',
+            status: 'NEEDS_CHECK',
+            riskFactors: ['no_source'],
+            provenance: { kind: 'conversation', ref: 'conversation://manual', speaker: 'A' },
+          },
+        ],
+        createdAt: '2026-06-20T00:00:00.000Z',
+      }),
+    ).toMatchObject({ type: 'INGEST_CONVERSATION' });
   });
 });

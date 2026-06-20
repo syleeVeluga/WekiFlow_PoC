@@ -416,6 +416,54 @@ describe('@wf/api routes', () => {
     await app.close();
   });
 
+  it('creates needs-check candidates from conversation ingest inputs', async () => {
+    const app = buildServer();
+    const ownerToken = await login(app, 'admin01@veluga.io', 'admin01@veluga.io');
+
+    const denied = await app.inject({
+      method: 'POST',
+      url: '/api/conversation-ingest',
+      payload: { source: 'manual', transcript: 'Jin: Decision: pricing answers require approval.' },
+    });
+    expect(denied.statusCode).toBe(403);
+
+    const manual = await app.inject({
+      method: 'POST',
+      url: '/api/conversation-ingest',
+      headers: { authorization: `Bearer ${ownerToken}` },
+      payload: {
+        source: 'manual',
+        transcript: 'Jin: Decision: pricing answers require approval.',
+        workspaceId: 'workspace-default',
+      },
+    });
+    expect(manual.statusCode).toBe(200);
+    expect(manual.json()).toMatchObject({ type: 'INGEST_CONVERSATION' });
+    expect(manual.json().candidates[0]).toMatchObject({
+      status: 'NEEDS_CHECK',
+      riskFactors: expect.arrayContaining(['pricing', 'no_source']),
+      provenance: {
+        kind: 'conversation',
+        speaker: 'Jin',
+        createdFromConversation: true,
+        needsSource: true,
+      },
+      workspaceId: 'workspace-default',
+    });
+
+    const meeting = await app.inject({
+      method: 'POST',
+      url: '/api/conversation-ingest',
+      headers: { authorization: `Bearer ${ownerToken}` },
+      payload: { source: 'meeting', ref: 'meeting://transcripts/product-sync-2026-06-20' },
+    });
+    expect(meeting.statusCode).toBe(200);
+    expect(meeting.json().candidates.length).toBeGreaterThan(0);
+    expect(meeting.json().candidates[0].provenance.kind).toBe('conversation');
+
+    await app.close();
+  });
+
   it('runs owner-only agent preview and streams persisted steps', async () => {
     const app = buildServer();
     const ownerToken = await login(app, 'admin01@veluga.io', 'admin01@veluga.io');

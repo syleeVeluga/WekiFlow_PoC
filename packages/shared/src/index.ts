@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { KnowledgeCandidateSchema } from './candidate.js';
 import { DepartmentSchema } from './wiki/enums.js';
 
 export const documentStatuses = [
@@ -12,8 +13,8 @@ export const documentStatuses = [
 ] as const;
 
 export const userRoles = ['OWNER', 'APPROVER', 'REVIEWER', 'EDITOR', 'VIEWER'] as const;
-export const jobQueues = ['main', 'graph', 'curation', 'learner'] as const;
-export const jobTypes = ['INGEST', 'MERGE', 'EXTRACT_TRIPLETS', 'PREVIEW', 'SCAN_STALE', 'CURATE_CONCEPT', 'LEARN_TRAJECTORY'] as const;
+export const jobQueues = ['main', 'graph', 'curation', 'learner', 'conversation'] as const;
+export const jobTypes = ['INGEST', 'MERGE', 'EXTRACT_TRIPLETS', 'PREVIEW', 'SCAN_STALE', 'CURATE_CONCEPT', 'LEARN_TRAJECTORY', 'INGEST_CONVERSATION'] as const;
 
 export const DocumentStatusSchema = z.enum(documentStatuses);
 export const UserRoleSchema = z.enum(userRoles);
@@ -87,6 +88,19 @@ export const JobRefSchema = z.object({
 });
 
 export type JobRef = z.infer<typeof JobRefSchema>;
+
+export const ConversationIngestRequestSchema = z
+  .object({
+    source: z.enum(['manual', 'slack', 'meeting']).default('manual'),
+    transcript: z.string().min(1).optional(),
+    ref: z.string().min(1).optional(),
+    workspaceId: z.string().min(1).optional(),
+  })
+  .refine((value) => Boolean(value.transcript?.trim() || value.ref?.trim()), {
+    message: 'transcript or ref is required',
+  });
+
+export type ConversationIngestRequest = z.infer<typeof ConversationIngestRequestSchema>;
 
 export const TripletSchema = z.object({
   subject: z.string().min(1),
@@ -464,6 +478,15 @@ export const VerifyResultSchema = z.object({
 
 export type VerifyResult = z.infer<typeof VerifyResultSchema>;
 
+export const ConversationIngestResultSchema = z.object({
+  jobId: z.string().min(1),
+  type: z.literal('INGEST_CONVERSATION'),
+  candidates: z.array(KnowledgeCandidateSchema),
+  createdAt: z.string(),
+});
+
+export type ConversationIngestResult = z.infer<typeof ConversationIngestResultSchema>;
+
 export type EmbedFn = (texts: string[]) => Promise<number[][]>;
 
 export const EnvSchema = z.object({
@@ -501,6 +524,9 @@ export const EnvSchema = z.object({
   LEARNER_WORKER_CONCURRENCY: z.coerce.number().int().positive().default(1),
   LEARNER_QUEUE_RATE_MAX: z.coerce.number().int().nonnegative().default(30),
   LEARNER_QUEUE_RATE_DURATION_MS: z.coerce.number().int().positive().default(60_000),
+  CONVERSATION_WORKER_CONCURRENCY: z.coerce.number().int().positive().default(1),
+  CONVERSATION_QUEUE_RATE_MAX: z.coerce.number().int().nonnegative().default(30),
+  CONVERSATION_QUEUE_RATE_DURATION_MS: z.coerce.number().int().positive().default(60_000),
   WKF_BUNDLE_PATH: z.string().min(1).optional(),
   ADMIN_EMAIL: z.string().default('admin01@veluga.io'),
   ADMIN_PASSWORD: z.string().default('admin01@veluga.io'),
