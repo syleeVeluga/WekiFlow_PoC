@@ -131,8 +131,6 @@ export function Lnb() {
       <NavItem page="map" active={activePage} icon="◎" label="지식 맵" onClick={nav} />
       <div className="sb-sec-label">System</div>
       <NavItem page="conversation" active={activePage} icon="C" label="대화 저장" onClick={nav} />
-      <NavItem page="sources" active={activePage} icon="⌁" label="데이터 소스" onClick={nav} />
-      <NavItem page="rules" active={activePage} icon="⚙" label="처리 규칙" onClick={nav} />
       <NavItem page="history" active={activePage} icon="↺" label="변경 이력" onClick={nav} />
       {user && canEdit(user.role) ? <NavItem page="trash" active={activePage} icon="🗑" label="휴지통" onClick={nav} /> : null}
       <NavItem page="add" active={activePage} icon="+" label="직접 추가" onClick={nav} />
