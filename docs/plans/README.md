@@ -8,7 +8,9 @@
 
 ## 2. OKF enrichment 제품 흐름 재정렬 (Open)
 
-- [`okf-enrichment-product-flow/Overview.md`](./okf-enrichment-product-flow/Overview.md) — Google OKF의 최소 포맷·enrichment agent·Markdown 링크 visualization을 WekiFlow의 파일/대화/회의록 지식화 제품 흐름으로 재매핑한다. 상세 PR 계획 전 갭 분석부터 진행한다.
+- [`okf-enrichment-product-flow/Overview.md`](./okf-enrichment-product-flow/Overview.md) — Google OKF의 최소 포맷·enrichment agent·Markdown 링크 visualization을 WekiFlow의 파일/대화/회의록 지식화 제품 흐름으로 재매핑한다.
+  - [`Gap-Analysis.md`](./okf-enrichment-product-flow/Gap-Analysis.md) — Overview 목표 방향 대비 현재 코드 구현 갭 분석.
+  - [`PR-Plan.md`](./okf-enrichment-product-flow/PR-Plan.md) — 갭 기반 상세 구현 계획 인덱스(PR-26~35). 외부 API는 구조·mock만.
 
 ## 3. OKF 선택(🟡) PR — 완료
 
