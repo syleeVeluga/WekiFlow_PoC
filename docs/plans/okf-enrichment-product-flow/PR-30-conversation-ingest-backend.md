@@ -1,6 +1,6 @@
 # PR-30 — Conversation Ingest API·Worker + provenance (T3 백엔드)
 
-> Track T3 · 상태: 계획 · 선행: [PR-26](./PR-26-candidate-contract.md), [PR-27](./PR-27-candidate-model-and-trust-labels.md), [PR-29](./PR-29-source-connector-interface.md) · 근거: [`Overview.md`](./Overview.md) §3.2·§5.1-3, [`Gap-Analysis.md`](./Gap-Analysis.md) §2.3·§2.7
+> Track T3 · 상태: 완료(PR #42) · 선행: [PR-26](./PR-26-candidate-contract.md), [PR-27](./PR-27-candidate-model-and-trust-labels.md), [PR-29](./PR-29-source-connector-interface.md) · 근거: [`Overview.md`](./Overview.md) §3.2·§5.1-3, [`Gap-Analysis.md`](./Gap-Analysis.md) §2.3·§2.7
 > 외부 API 메모: Slack/회의록 입력은 PR-29 mock connector를 통해 수신(라이브 미연결).
 
 ## 목표
@@ -41,10 +41,10 @@
 
 ## DoD
 
-- [ ] 대화/회의록 입력으로부터 후보를 생성하는 API·워커가 존재한다.
-- [ ] 대화 후보가 발화 인용·화자·`needsSource` provenance를 갖는다.
-- [ ] 대화 후보는 승인/원본연결 없이 공식 지식이 되지 않는다.
-- [ ] PR-29 mock connector로 전체 경로가 검증된다.
+- [x] 대화/회의록 입력으로부터 후보를 생성하는 API·워커가 존재한다.
+- [x] 대화 후보가 발화 인용·화자·`needsSource` provenance를 갖는다.
+- [x] 대화 후보는 승인/원본연결 없이 공식 지식이 되지 않는다.
+- [x] PR-29 mock connector로 전체 경로가 검증된다.
 
 ## 리스크·메모
 
