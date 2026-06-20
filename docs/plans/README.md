@@ -8,7 +8,7 @@
 
 ## 2. 개발자/슈퍼어드민 제어판 (런타임 config)
 
-- [`dev-control-panel.md`](./dev-control-panel.md) — 에이전트 프롬프트·인자/한도·모델·정책(policy.yaml)을 재배포 없이 런타임 편집하는 슈퍼어드민 전용 패널. 접근은 역할 사다리와 분리된 직교 플래그 `isSuperAdmin`로 통제(WKF 후 권한 개편에 영향 없음). **진행 중: PR-21 완료, PR-22~25 남음.**
+- [`dev-control-panel.md`](./dev-control-panel.md) — 에이전트 프롬프트·인자/한도·모델·정책(policy.yaml)을 재배포 없이 런타임 편집하는 슈퍼어드민 전용 패널. 접근은 역할 사다리와 분리된 직교 플래그 `isSuperAdmin`로 통제(WKF 후 권한 개편에 영향 없음). **진행 중: PR-21~22 완료, PR-23~25 남음.**
 
 ## 3. OKF 선택(🟡) PR — 완료
 
