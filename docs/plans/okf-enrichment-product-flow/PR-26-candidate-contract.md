@@ -1,6 +1,6 @@
 # PR-26 — Candidate Contract & 상태기계 (GA-02 기반)
 
-> Track T1(선행) · 상태: 계획 · 선행: 없음(전체 트랙의 루트) · 근거: [`Overview.md`](./Overview.md) §2.2·§6 GA-02, [`Gap-Analysis.md`](./Gap-Analysis.md) §4.1
+> Track T1(선행) · 상태: 완료(PR #38) · 선행: 없음(전체 트랙의 루트) · 근거: [`Overview.md`](./Overview.md) §2.2·§6 GA-02, [`Gap-Analysis.md`](./Gap-Analysis.md) §4.1
 > 외부 API 메모: 본 PR은 순수 contract/스키마이며 외부 연결 없음.
 
 ## 목표
@@ -41,10 +41,10 @@
 
 ## DoD
 
-- [ ] 후보 상태·위험도·provenance·auto-publish가 단일 모듈에서 타입+순수함수로 정의된다.
-- [ ] `documentStatuses` ↔ candidate status 매핑이 상수로 존재한다.
-- [ ] 상태 전이 다이어그램 문서가 `contracts/`에 있다.
-- [ ] 후속 PR(27~35)이 본 모듈만 import하면 상태 정의가 일치한다.
+- [x] 후보 상태·위험도·provenance·auto-publish가 단일 모듈에서 타입+순수함수로 정의된다.
+- [x] `documentStatuses` ↔ candidate status 매핑이 상수로 존재한다.
+- [x] 상태 전이 다이어그램 문서가 `contracts/`에 있다.
+- [x] 후속 PR(27~35)이 본 모듈만 import하면 상태 정의가 일치한다.
 
 ## 리스크·메모
 
