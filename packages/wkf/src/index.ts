@@ -59,6 +59,7 @@ export {
   PolicySchema,
   defaultPolicy,
   enforcePolicy,
+  loadEffectivePolicy,
   loadPolicy,
   type Policy,
   type PolicyAction,

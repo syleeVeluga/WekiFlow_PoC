@@ -705,6 +705,40 @@ describe('@wf/api routes', () => {
     });
     expect(invalid.statusCode).toBe(400);
 
+    const policyBefore = await app.inject({
+      method: 'GET',
+      url: '/api/admin/policy',
+      headers: { authorization: `Bearer ${ownerToken}` },
+    });
+    expect(policyBefore.statusCode).toBe(200);
+    expect(policyBefore.json().effective.review.approver_roles).toEqual(['OWNER', 'APPROVER']);
+
+    const policyPatch = await app.inject({
+      method: 'PUT',
+      url: '/api/admin/policy',
+      headers: { authorization: `Bearer ${ownerToken}` },
+      payload: { ...defaultPolicy, review: { ...defaultPolicy.review, approver_roles: ['OWNER'], overrides: {} } },
+    });
+    expect(policyPatch.statusCode).toBe(200);
+    expect(policyPatch.json().overrides.review.approver_roles).toEqual(['OWNER']);
+
+    const invalidPolicy = await app.inject({
+      method: 'PUT',
+      url: '/api/admin/policy',
+      headers: { authorization: `Bearer ${ownerToken}` },
+      payload: { ...defaultPolicy, review: { ...defaultPolicy.review, approver_roles: ['ADMIN'], overrides: {} } },
+    });
+    expect(invalidPolicy.statusCode).toBe(400);
+
+    const policyRestored = await app.inject({
+      method: 'PUT',
+      url: '/api/admin/policy',
+      headers: { authorization: `Bearer ${ownerToken}`, 'content-type': 'application/json' },
+      payload: 'null',
+    });
+    expect(policyRestored.statusCode).toBe(200);
+    expect(policyRestored.json().overrides).toBeNull();
+
     await app.close();
   });
 
@@ -731,6 +765,57 @@ describe('@wf/api routes', () => {
         contentMarkdown: `---
 type: REGULATION
 title: Regulation
+---
+# Body`,
+      },
+    });
+    const id = created.json().doc.id;
+
+    const denied = await app.inject({
+      method: 'POST',
+      url: `/api/documents/${id}/approve`,
+      headers: { authorization: `Bearer ${approverToken}` },
+    });
+    expect(denied.statusCode).toBe(403);
+    expect(denied.json().error).toContain('cannot approve REGULATION');
+
+    const approved = await app.inject({
+      method: 'POST',
+      url: `/api/documents/${id}/approve`,
+      headers: { authorization: `Bearer ${ownerToken}` },
+    });
+    expect(approved.statusCode).toBe(200);
+
+    await app.close();
+  });
+
+  it('applies runtime policy overrides on document approval', async () => {
+    const app = buildServer();
+    const ownerToken = await login(app, 'admin01@veluga.io', 'admin01@veluga.io');
+    const approverToken = await login(app, 'lee.jisoo@veluga.io', 'lee.jisoo@veluga.io');
+
+    const policyPatch = await app.inject({
+      method: 'PUT',
+      url: '/api/admin/policy',
+      headers: { authorization: `Bearer ${ownerToken}` },
+      payload: { ...defaultPolicy, review: { ...defaultPolicy.review, overrides: { REGULATION: ['OWNER'] } } },
+    });
+    expect(policyPatch.statusCode).toBe(200);
+
+    await app.inject({
+      method: 'PATCH',
+      url: '/api/settings',
+      headers: { authorization: `Bearer ${ownerToken}` },
+      payload: { reviewApprovalEnabled: true },
+    });
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/ingest',
+      payload: {
+        title: 'Runtime Regulation',
+        contentMarkdown: `---
+type: REGULATION
+title: Runtime Regulation
 ---
 # Body`,
       },

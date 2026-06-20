@@ -9,6 +9,8 @@ import type {
   IngestRequest,
   JobRef,
   LoginBody,
+  RuntimeConfigPatch,
+  RuntimeConfigResponse,
   TrashEntry,
   TreeNode,
   UpdateUserRoleBody,
@@ -18,6 +20,13 @@ import type {
 } from '@wf/shared';
 
 const BASE = '/api';
+
+export type RuntimePolicy = Record<string, unknown>;
+export interface RuntimePolicyResponse {
+  defaults: RuntimePolicy;
+  overrides: RuntimePolicy | null;
+  effective: RuntimePolicy;
+}
 
 let authToken: string | null = null;
 
@@ -72,6 +81,22 @@ export function fetchSettings(): Promise<AppSettings> {
 
 export function updateSettings(body: UpdateAppSettings): Promise<AppSettings> {
   return request('/settings', { method: 'PATCH', body: JSON.stringify(body) });
+}
+
+export function fetchRuntimeConfig(): Promise<RuntimeConfigResponse> {
+  return request('/admin/config');
+}
+
+export function updateRuntimeConfig(body: RuntimeConfigPatch): Promise<RuntimeConfigResponse> {
+  return request('/admin/config', { method: 'PATCH', body: JSON.stringify(body) });
+}
+
+export function fetchPolicy(): Promise<RuntimePolicyResponse> {
+  return request('/admin/policy');
+}
+
+export function updatePolicy(body: RuntimePolicy | null): Promise<RuntimePolicyResponse> {
+  return request('/admin/policy', { method: 'PUT', body: JSON.stringify(body) });
 }
 
 export function listUsers(): Promise<User[]> {

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { canApprove, canEdit, canManageOwners, canManageUsers, roleLabels } from '@wf/shared';
+import { canAccessDevPanel, canApprove, canEdit, canManageOwners, canManageUsers, roleLabels } from '@wf/shared';
 import { usePublished, useReviews, useSettings, useUpdateSettings } from '../../api/hooks.js';
 import { logout } from '../../api/client.js';
 import { useAuthStore } from '../../auth/store.js';
@@ -165,6 +165,9 @@ export function Lnb() {
             ) : null}
             {user && canManageOwners(user.role) ? (
               <button type="button" onClick={() => { setMenuOpen(false); go('agent'); }}>에이전트 미리보기</button>
+            ) : null}
+            {user && canAccessDevPanel(user) ? (
+              <button type="button" onClick={() => { setMenuOpen(false); go('dev'); }}>개발자 설정</button>
             ) : null}
             <button type="button" onClick={onLogout}>로그아웃</button>
           </div>

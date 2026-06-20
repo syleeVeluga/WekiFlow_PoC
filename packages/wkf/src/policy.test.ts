@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { defaultPolicy, enforcePolicy, loadPolicy, PolicyError } from './policy.js';
+import { defaultPolicy, enforcePolicy, loadEffectivePolicy, loadPolicy, PolicyError, PolicySchema } from './policy.js';
 
 const regulationDoc = {
   frontmatter: { type: 'REGULATION', source_tier: 'external' as const, tags: [] },
@@ -31,5 +31,13 @@ describe('policy engine', () => {
     expect(() => enforcePolicy('ingest', regulationDoc, defaultPolicy)).toThrow('external requires review');
     expect(() => enforcePolicy('review', regulationDoc, defaultPolicy, { role: 'APPROVER' })).not.toThrow();
     expect(() => enforcePolicy('review', regulationDoc, defaultPolicy, { role: 'REVIEWER' })).toThrow('cannot approve REGULATION');
+  });
+
+  it('rejects unknown roles and prefers runtime overrides when resolving policy', async () => {
+    expect(() => PolicySchema.parse({ review: { approver_roles: ['ADMIN'] } })).toThrow('Unknown role: ADMIN');
+    const runtimePolicy = { ...defaultPolicy, review: { ...defaultPolicy.review, approver_roles: ['OWNER'], overrides: {} } };
+    await expect(loadEffectivePolicy(runtimePolicy, process.cwd())).resolves.toMatchObject({
+      review: { approver_roles: ['OWNER'] },
+    });
   });
 });
