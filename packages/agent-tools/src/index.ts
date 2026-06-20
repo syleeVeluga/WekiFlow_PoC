@@ -4,7 +4,7 @@ import { cosineSimilarity, generateObject, tool, type LanguageModel } from 'ai';
 import { z } from 'zod';
 import type { Db } from 'mongodb';
 import { createChunksRepo, createDocumentsRepo, searchKnowledgeGraph, type GraphPath } from '@wf/db';
-import { appendLog, assertNoShrinkage, parse, serialize, type StaleConcept, type WkfDoc } from '@wekiflow/wkf';
+import { appendLog, assertNoShrinkage, parse, parseCitations, serialize, type Policy, type StaleConcept, type WkfDoc } from '@wekiflow/wkf';
 import {
   MergeResultSchema,
   TripletArraySchema,
@@ -15,6 +15,7 @@ import {
 } from '@wf/shared';
 import type { SandboxRunner } from '@wf/sandbox';
 import { decomposeQuestion, rerankDiscoveryContexts } from './discovery.js';
+import { createFetchUrlState, toolFetchUrl } from './fetchUrl.js';
 
 export type { EmbedFn } from '@wf/shared';
 
@@ -49,6 +50,7 @@ export interface CurationToolContext {
   /** Host directory mounted read-only at /docs inside the sandbox. */
   docsSnapshotDir: string;
   concept: StaleConcept;
+  policy: Policy;
   now?: Date;
   recordStep?: (step: AgentStep) => void | Promise<void>;
 }
@@ -100,7 +102,8 @@ Rules:
 2. Verify source facts with tool_grep_verify before deciding. If the source facts are unchanged, do not rewrite the document; call tool_write_concept with decision "verify".
 3. If facts changed, only produce additive updates. Preserve existing frontmatter keys, keep type/title/resource verbatim, union tags, and preserve every existing # heading in the same order and wording.
 4. If the topic does not clearly belong in the existing concept, use decision "create" only when the new reference is concrete, non-meta, citeable, and reusable. Otherwise use decision "skip".
-5. When in doubt, skip. Only cite sources that were actually read or verified.`;
+5. For external web sources, call tool_fetch_url. The tool enforces allowed_hosts and web_max_pages. Do not retry rejected URLs.
+6. When in doubt, skip. Only cite sources that were actually read or verified.`;
 
 const MERGE_SYSTEM_PROMPT = `너는 사내 지식 문서 편집기다. 기존 문서(original)에 수집된 팩트(facts)를 정확히 병합한 마크다운 초안을 만든다.
 규칙:
@@ -148,6 +151,12 @@ function graphPathContent(path: GraphPath): string {
   return path.edges
     .map((edge) => `${edge.subject} -[${edge.predicate}, strength=${edge.strength}]-> ${edge.object}`)
     .join(' | ');
+}
+
+function citationUrls(markdown: string): string[] {
+  return parseCitations(markdown)
+    .flatMap((line) => [...line.matchAll(/https?:\/\/[^\s)>\]]+/g)].map((match) => match[0]!))
+    .map((url) => url.replace(/[.,;:]+$/g, ''));
 }
 
 function rrf(rank: number, constant = 60): number {
@@ -198,6 +207,7 @@ export function fuseHybridRetrieval(input: {
 
 export function createCurationTools(ctx: CurationToolContext) {
   const documents = createDocumentsRepo(ctx.db);
+  const fetchState = createFetchUrlState();
 
   const record = async (step: AgentStep) => {
     await ctx.recordStep?.(step);
@@ -254,6 +264,30 @@ export function createCurationTools(ctx: CurationToolContext) {
       },
     }),
 
+    tool_fetch_url: tool({
+      description: 'Fetch one external URL. Enforces policy.sources.allowed_hosts, policy.enrichment.web_max_pages, and rejected URL no-retry.',
+      inputSchema: z.object({
+        url: z.string().url(),
+      }),
+      execute: async ({ url }) => {
+        const started = Date.now();
+        const result = await toolFetchUrl(url, ctx.policy, fetchState);
+        await record({
+          tool: 'tool_fetch_url',
+          args: { url },
+          result: {
+            status: result.status,
+            reason: result.reason,
+            fetchedCount: result.fetchedCount,
+            finalUrl: result.finalUrl,
+            contentType: result.contentType,
+          },
+          tookMs: Date.now() - started,
+        });
+        return result;
+      },
+    }),
+
     tool_write_concept: tool({
       description: 'Record the curation decision. verify only updates last_verified; enhance/create moves additive drafts to REVIEW; skip writes nothing.',
       inputSchema: z.object({
@@ -301,6 +335,23 @@ export function createCurationTools(ctx: CurationToolContext) {
         }
 
         if (!mergedMarkdown?.trim()) throw new Error(`${decision} requires mergedMarkdown`);
+        const urls = citationUrls(mergedMarkdown);
+        const existingUrls =
+          decision === 'enhance'
+            ? new Set(citationUrls((await readFile(conceptPath(), 'utf8').catch(() => '')).toString()))
+            : new Set<string>();
+        const inventedUrl = urls.find((url) => !fetchState.fetchedUrls.has(url) && !existingUrls.has(url));
+        if (inventedUrl) {
+          const reason = 'External citations must be actual fetched URLs';
+          await record({
+            tool: 'tool_write_concept',
+            args: { decision, slug: ctx.concept.slug, changeSummary },
+            result: { status: 'rejected', reason, url: inventedUrl },
+            tookMs: Date.now() - started,
+          });
+          throw new Error(reason);
+        }
+        const fetchedCitation = urls.find((url) => fetchState.fetchedUrls.has(url));
         if (decision === 'enhance') {
           const before = parse(await readFile(conceptPath(), 'utf8'));
           const after = parseDraftWithFallback(mergedMarkdown, before);
@@ -332,13 +383,23 @@ export function createCurationTools(ctx: CurationToolContext) {
           return { decision, status: 'review' as const, documentId: updated.id };
         }
 
+        if (fetchedCitation && createdSlug && !createdSlug.startsWith('references/')) {
+          const reason = 'External create drafts must be stored under references/';
+          await record({
+            tool: 'tool_write_concept',
+            args: { decision, slug: createdSlug, changeSummary },
+            result: { status: 'rejected', reason },
+            tookMs: Date.now() - started,
+          });
+          throw new Error(reason);
+        }
         const created = await documents.createDraft({
           title: createdTitle ?? createdSlug ?? ctx.concept.slug,
           contentMarkdown: mergedMarkdown,
           ...(createdSlug ? { slug: createdSlug } : {}),
-          sourceType: 'manual',
-          sourceRef: `wkf://${createdSlug ?? ctx.concept.slug}`,
-          sourceLabel: 'curation',
+          sourceType: fetchedCitation ? 'datasource' : 'manual',
+          sourceRef: fetchedCitation ?? `wkf://${createdSlug ?? ctx.concept.slug}`,
+          sourceLabel: fetchedCitation ?? 'curation',
         });
         await documents.setDraft(created.id, mergedMarkdown);
         await appendLog(conceptDir(ctx.bundlePath, ctx.concept.path), {
@@ -618,6 +679,13 @@ export function extractTripletsDeterministic(markdown: string): { triplets: Trip
 
   return TripletArraySchema.parse({ triplets });
 }
+
+export {
+  createFetchUrlState,
+  toolFetchUrl,
+  type FetchUrlResult,
+  type FetchUrlState,
+} from './fetchUrl.js';
 
 export {
   DISCOVERY_DECOMPOSE_PROMPT,

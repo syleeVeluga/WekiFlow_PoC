@@ -251,6 +251,52 @@ describe('runCurationAgent', () => {
     expect(persisted?.draftMarkdown).toBeUndefined();
   });
 
+  it('rejects external citations that were not fetched by tool_fetch_url', async () => {
+    const root = await bundle();
+    const db = makeFakeDb([{ _id: new ObjectId(), slug: 'policy', title: 'Policy', contentMarkdown: '# Body\nOriginal fact', status: 'PUBLISHED' }]);
+    const model = new MockLanguageModelV3({
+      doGenerate: mockValues(
+        {
+          content: [
+            {
+              type: 'tool-call',
+              toolCallId: 'w1',
+              toolName: 'tool_write_concept',
+              input: JSON.stringify({
+                decision: 'enhance',
+                mergedMarkdown: '# Body\nOriginal fact\nNew claim\n\n# Citations\n1. [Invented](https://example.com/not-fetched)',
+                changeSummary: 'Added external claim.',
+              }),
+            },
+          ],
+          finishReason: 'tool-calls',
+          usage: { inputTokens: { total: 1 }, outputTokens: { total: 1 } },
+          warnings: [],
+        },
+        {
+          content: [{ type: 'text', text: 'rejected' }],
+          finishReason: 'stop',
+          usage: { inputTokens: { total: 1 }, outputTokens: { total: 1 } },
+          warnings: [],
+        },
+      ),
+    } as never);
+
+    await expect(
+      runCurationAgent(concept, {
+        db,
+        sandbox: sandboxStub,
+        bundlePath: root,
+        docsSnapshotDir: root,
+        jobId: 'curate-invented-url',
+        model,
+        policy: defaultPolicy,
+      }),
+    ).rejects.toThrow('External citations must be actual fetched URLs');
+    const persisted = await db.collection('documents').findOne({ slug: 'policy' });
+    expect(persisted?.draftMarkdown).toBeUndefined();
+  });
+
   it('skips doubtful cases without writes', async () => {
     const root = await bundle();
     const db = makeFakeDb([{ _id: new ObjectId(), slug: 'policy', title: 'Policy', contentMarkdown: '# Body\nOriginal fact', status: 'PUBLISHED' }]);
