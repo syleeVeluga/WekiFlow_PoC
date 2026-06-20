@@ -13,6 +13,7 @@
 | [PR-23](./pr-23-prompt-injection-seam.md) | 프롬프트 주입 seam + 인자 배선 | C(+B) | 완료 — 프롬프트 6키 seam, 워커 prompts·agentParams 주입 |
 | [PR-24](./pr-24-policy-runtime-override.md) | 정책 런타임 오버라이드 + role 정합 | D | `loadEffectivePolicy`, role 검증, policy API (PR-19 직결) |
 | [PR-25](./pr-25-web-dev-panel.md) | Web UI 개발자 패널 | E | DevPanel 4탭, 훅, LNB 진입점 |
+| [후속 점검](./pr-24-25-impact-follow-up.md) | 영향 범위·사용자 흐름 체크리스트 | PR-24~25 | 체크/추가/변경 대상 파일 단위 정리 |
 
 ## 의존성 그래프
 
@@ -30,6 +31,8 @@ PR-21 (게이트) ──┬─→ PR-22 (config 저장소) ──┬─→ PR-23
 
 ## 권장 순서
 PR-21 → PR-22 → (PR-23 ∥ PR-24) → PR-25.
+
+PR-24/25 구현 전에는 [후속 영향 점검 및 사용자 흐름 계획](./pr-24-25-impact-follow-up.md)을 먼저 확인한다.
 
 ## 공통 검증 게이트 (모든 PR)
 `pnpm -r build` → `pnpm -r typecheck` → `pnpm -r test`
