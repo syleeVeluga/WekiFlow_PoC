@@ -18,7 +18,7 @@ GA-05를 마무리한다. 새 표면 모델 도입 후 남은 내부 pipeline te
 
 ## 변경 파일
 
-- 🔧 `docs/plans/okf-enrichment-product-flow/contracts/terminology-map.md` — 내부↔사용자 용어 매핑·유지/숨김/리네임/제거 표(조기 작성됨).
+- 🔧 `contracts/terminology-map.md` — 내부↔사용자 용어 매핑·유지/숨김/리네임/제거 표(조기 작성됨).
 - 🔧 `apps/web/src/**` — 잔존 내부 용어(pipeline A/B/C/D, WKF/OKF, tool_*) 사용자 화면 노출 제거·리네임.
 - 🔧 `apps/web/src/store.ts` — `sources/rules/history` stub 결정 반영.
 - 🔧 `docs/README.md`, `docs/plans/README.md` — 완료 항목 archive 이동·링크 갱신.

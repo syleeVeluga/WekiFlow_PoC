@@ -6,11 +6,9 @@
 
 - [`workspace-authorization.md`](./workspace-authorization.md) — `POST /api/workspaces/:workspaceId/ingestions`가 `workspaceId`를 검증 없이 신뢰한다. 워크스페이스 레지스트리/멤버십 모델 부재로 인한 인가 공백. 멱등성 스코프 소유자 바인딩으로 부분 완화됨, 나머지는 미해결.
 
-## 2. OKF enrichment 제품 흐름 재정렬 (Open)
+## 2. OKF enrichment 제품 흐름 재정렬 — 완료
 
-- [`okf-enrichment-product-flow/Overview.md`](./okf-enrichment-product-flow/Overview.md) — Google OKF의 최소 포맷·enrichment agent·Markdown 링크 visualization을 WekiFlow의 파일/대화/회의록 지식화 제품 흐름으로 재매핑한다.
-  - [`Gap-Analysis.md`](./okf-enrichment-product-flow/Gap-Analysis.md) — Overview 목표 방향 대비 현재 코드 구현 갭 분석.
-  - [`PR-Plan.md`](./okf-enrichment-product-flow/PR-Plan.md) — 갭 기반 상세 구현 계획 인덱스(PR-26~35). 외부 API는 구조·mock만.
+OKF enrichment 제품 흐름 재정렬 계획과 PR-26~35 구현 기록은 완료되어 [`../archive/okf-enrichment-product-flow/`](../archive/okf-enrichment-product-flow/)로 이동했다.
 
 ## 3. OKF 선택(🟡) PR — 완료
 

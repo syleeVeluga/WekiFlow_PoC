@@ -21,7 +21,7 @@
 
 - 🆕 `packages/shared/src/candidate.ts` — `CandidateStatusSchema`, `RiskFactorSchema`, `CandidateProvenanceSchema`, `needsReview()` 순수 함수, `canAutoPublish()` 순수 함수.
 - 🔧 `packages/shared/src/index.ts` — re-export 및 `documentStatuses` ↔ candidate status 매핑 상수(`CANDIDATE_TO_DOC_STATUS`).
-- 🆕 `docs/plans/okf-enrichment-product-flow/contracts/candidate-state-machine.md` — 상태 전이 다이어그램·표(설계 근거 문서).
+- 🆕 `contracts/candidate-state-machine.md` — 상태 전이 다이어그램·표(설계 근거 문서).
 
 ## 구현 단계
 
