@@ -3,7 +3,8 @@ import { ObjectId } from 'mongodb';
 import type { Db } from 'mongodb';
 import { MockLanguageModelV3 } from 'ai/test';
 import type { SandboxRunner } from '@wf/sandbox';
-import { createMainTools, extractTripletsDeterministic, fuseHybridRetrieval, type AgentStep } from './index.js';
+import { DEFAULT_AGENT_PARAMS } from '@wf/shared';
+import { createMainTools, extractTripletsDeterministic, fuseHybridRetrieval, MERGE_SYSTEM_PROMPT, type AgentStep } from './index.js';
 
 /** Minimal in-memory MongoDB stand-in covering the methods the tools touch. */
 function makeFakeDb(seed: Record<string, Record<string, unknown>[]> = {}): Db {
@@ -46,6 +47,14 @@ const baseCtx = {
   embed: async (texts: string[]) => texts.map(() => [1, 0]),
   model: new MockLanguageModelV3(),
 };
+
+function parseInput(tool: { inputSchema: unknown }, input: unknown) {
+  return (tool.inputSchema as { parse: (input: unknown) => unknown }).parse(input) as Record<string, unknown>;
+}
+
+function systemPrompt(call: unknown): unknown {
+  return (call as { prompt?: Array<{ role: string; content: unknown }> }).prompt?.find((message) => message.role === 'system')?.content;
+}
 
 describe('@wf/agent-tools', () => {
   it('extracts stable schema-valid PoC triplets', () => {
@@ -208,10 +217,12 @@ describe('@wf/agent-tools', () => {
   });
 
   it('flags unverified claims via sandbox grep (allVerified=false when evidence missing)', async () => {
+    const runs: Array<{ timeoutMs?: number }> = [];
     const tools = createMainTools({
       ...baseCtx,
       db: makeFakeDb(),
-      sandbox: sandboxStub(async ({ code }) => {
+      sandbox: sandboxStub(async ({ code, timeoutMs }) => {
+        runs.push({ timeoutMs });
         const found = code.includes('연차 15일');
         return {
           stdout: found ? 'leave.md:2:연차 15일' : '',
@@ -230,6 +241,7 @@ describe('@wf/agent-tools', () => {
     expect(allVerified).toBe(false);
     expect(results.find((r) => r.claim === '연차 15일')!.verified).toBe(true);
     expect(results.find((r) => r.claim === '연차 30일')!.verified).toBe(false);
+    expect(runs.map((run) => run.timeoutMs)).toEqual([8_000, 8_000]);
   });
 
   it('produces a merged draft via the injected model', async () => {
@@ -258,5 +270,88 @@ describe('@wf/agent-tools', () => {
     );
 
     expect(result).toEqual(merged);
+  });
+
+  it('uses the merge prompt override when provided and the constant fallback otherwise', async () => {
+    const id = new ObjectId();
+    const merged = { mergedMarkdown: '# Merged', changeSummary: 'merged' };
+    const model = new MockLanguageModelV3({
+      doGenerate: {
+        content: [{ type: 'text', text: JSON.stringify(merged) }],
+        finishReason: 'stop',
+        usage: { inputTokens: { total: 1 }, outputTokens: { total: 1 } },
+        warnings: [],
+      },
+    } as never);
+    const tools = createMainTools({
+      ...baseCtx,
+      documentId: id.toString(),
+      model,
+      prompts: { merge: 'MERGE OVERRIDE PROMPT' },
+      db: makeFakeDb({
+        documents: [{ _id: id, title: 'Doc', slug: 'doc', contentMarkdown: '# Doc', status: 'PROCESSING' }],
+      }),
+      sandbox: sandboxStub(async () => ({ stdout: '', stderr: '', exitCode: 0, truncated: false })),
+    });
+
+    await tools.tool_merge.execute!(
+      { facts: [{ source: 'test', content: 'fact' }] },
+      { toolCallId: 'merge-override', messages: [] },
+    );
+
+    expect(systemPrompt(model.doGenerateCalls[0])).toBe('MERGE OVERRIDE PROMPT');
+
+    const fallbackModel = new MockLanguageModelV3({
+      doGenerate: {
+        content: [{ type: 'text', text: JSON.stringify(merged) }],
+        finishReason: 'stop',
+        usage: { inputTokens: { total: 1 }, outputTokens: { total: 1 } },
+        warnings: [],
+      },
+    } as never);
+    const fallbackTools = createMainTools({
+      ...baseCtx,
+      documentId: id.toString(),
+      model: fallbackModel,
+      db: makeFakeDb({
+        documents: [{ _id: id, title: 'Doc', slug: 'doc', contentMarkdown: '# Doc', status: 'PROCESSING' }],
+      }),
+      sandbox: sandboxStub(async () => ({ stdout: '', stderr: '', exitCode: 0, truncated: false })),
+    });
+
+    await fallbackTools.tool_merge.execute!(
+      { facts: [{ source: 'test', content: 'fact' }] },
+      { toolCallId: 'merge-fallback', messages: [] },
+    );
+
+    expect(systemPrompt(fallbackModel.doGenerateCalls[0])).toBe(MERGE_SYSTEM_PROMPT);
+  });
+
+  it('uses runtime agentParams as tool schema defaults without changing built-in fallbacks', () => {
+    const fallbackTools = createMainTools({
+      ...baseCtx,
+      db: makeFakeDb(),
+      sandbox: sandboxStub(async () => ({ stdout: '', stderr: '', exitCode: 0, truncated: false })),
+    });
+    expect(parseInput(fallbackTools.tool_search_vector, { query: 'q' }).k).toBe(DEFAULT_AGENT_PARAMS.vectorK);
+    expect(parseInput(fallbackTools.tool_hybrid_retrieve, { query: 'q' })).toMatchObject({
+      k: DEFAULT_AGENT_PARAMS.hybridK,
+      maxDepth: DEFAULT_AGENT_PARAMS.graphMaxDepth,
+    });
+    expect(parseInput(fallbackTools.tool_search_graph, { startEntity: 'A' }).maxDepth).toBe(DEFAULT_AGENT_PARAMS.graphMaxDepth);
+    expect(parseInput(fallbackTools.tool_execute_sandbox_terminal, { code: 'true' }).timeoutMs).toBe(
+      DEFAULT_AGENT_PARAMS.sandboxTimeoutMs,
+    );
+
+    const overrideTools = createMainTools({
+      ...baseCtx,
+      agentParams: { vectorK: 13, hybridK: 7, graphMaxDepth: 3, sandboxTimeoutMs: 12_345 },
+      db: makeFakeDb(),
+      sandbox: sandboxStub(async () => ({ stdout: '', stderr: '', exitCode: 0, truncated: false })),
+    });
+    expect(parseInput(overrideTools.tool_search_vector, { query: 'q' }).k).toBe(13);
+    expect(parseInput(overrideTools.tool_hybrid_retrieve, { query: 'q' })).toMatchObject({ k: 7, maxDepth: 3 });
+    expect(parseInput(overrideTools.tool_search_graph, { startEntity: 'A' }).maxDepth).toBe(3);
+    expect(parseInput(overrideTools.tool_execute_sandbox_terminal, { code: 'true' }).timeoutMs).toBe(12_345);
   });
 });

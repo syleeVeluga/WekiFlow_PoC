@@ -1,7 +1,7 @@
 import { ToolLoopAgent, stepCountIs, type LanguageModel } from 'ai';
 import type { Db } from 'mongodb';
 import { createDocumentsRepo } from '@wf/db';
-import { MergeResultSchema, type MergeResult } from '@wf/shared';
+import { DEFAULT_AGENT_PARAMS, MergeResultSchema, type MergeResult, type RuntimeConfig } from '@wf/shared';
 import type { SandboxRunner } from '@wf/sandbox';
 import {
   MAIN_AGENT_SYSTEM_PROMPT,
@@ -24,6 +24,8 @@ export interface MainPipelineContext {
   preview?: boolean;
   /** Hard step cap to prevent runaway loops (default 12). */
   stepLimit?: number;
+  prompts?: Partial<RuntimeConfig['prompts']>;
+  agentParams?: Partial<RuntimeConfig['agentParams']>;
   /** Progress callback fired after each agent step (wired to SSE). */
   onStep?: (step: unknown) => void | Promise<void>;
   /** Audit callback for jobs.agentSteps. */
@@ -75,6 +77,8 @@ export async function runMainPipeline(
     documentId,
     embed: ctx.embed,
     model: ctx.model,
+    ...(ctx.prompts ? { prompts: ctx.prompts } : {}),
+    ...(ctx.agentParams ? { agentParams: ctx.agentParams } : {}),
     ...(ctx.recordStep ? { recordStep: ctx.recordStep } : {}),
   });
   const composedTools = {
@@ -83,15 +87,17 @@ export async function runMainPipeline(
       jobId: ctx.jobId,
       model: ctx.model,
       tools,
+      ...(ctx.prompts ? { prompts: ctx.prompts } : {}),
+      ...(ctx.agentParams ? { agentParams: ctx.agentParams } : {}),
       ...(ctx.recordStep ? { recordStep: ctx.recordStep } : {}),
     }),
   };
 
   const agent = new ToolLoopAgent({
     model: ctx.model,
-    instructions: MAIN_AGENT_SYSTEM_PROMPT,
+    instructions: ctx.prompts?.main ?? MAIN_AGENT_SYSTEM_PROMPT,
     tools: composedTools,
-    stopWhen: stepCountIs(ctx.stepLimit ?? 12),
+    stopWhen: stepCountIs(ctx.stepLimit ?? ctx.agentParams?.mainStepLimit ?? DEFAULT_AGENT_PARAMS.mainStepLimit),
   });
 
   const result = await agent.generate({

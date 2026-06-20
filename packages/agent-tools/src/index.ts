@@ -6,11 +6,13 @@ import type { Db } from 'mongodb';
 import { createChunksRepo, createDocumentsRepo, searchKnowledgeGraph, type GraphPath } from '@wf/db';
 import { appendLog, assertNoShrinkage, parse, parseCitations, serialize, type Policy, type StaleConcept, type WkfDoc } from '@wekiflow/wkf';
 import {
+  DEFAULT_AGENT_PARAMS,
   DEFAULT_RUNTIME_PROMPTS,
   MergeResultSchema,
   TripletArraySchema,
   type DocumentDTO,
   type EmbedFn,
+  type RuntimeConfig,
   type Triplet,
   type VectorHit,
 } from '@wf/shared';
@@ -27,6 +29,9 @@ export interface AgentStep {
   tookMs?: number;
 }
 
+export type RuntimePromptOverrides = Partial<RuntimeConfig['prompts']>;
+export type RuntimeAgentParamOverrides = Partial<RuntimeConfig['agentParams']>;
+
 export interface MainToolContext {
   db: Db;
   sandbox: SandboxRunner;
@@ -40,6 +45,8 @@ export interface MainToolContext {
   model: LanguageModel;
   /** Enable LLM question decomposition before hybrid retrieval. Off by default to preserve ingest loop determinism. */
   decomposeHybridRetrieve?: boolean;
+  prompts?: RuntimePromptOverrides;
+  agentParams?: RuntimeAgentParamOverrides;
   recordStep?: (step: AgentStep) => void | Promise<void>;
 }
 
@@ -53,6 +60,7 @@ export interface CurationToolContext {
   concept: StaleConcept;
   policy: Policy;
   now?: Date;
+  agentParams?: RuntimeAgentParamOverrides;
   recordStep?: (step: AgentStep) => void | Promise<void>;
 }
 
@@ -186,6 +194,7 @@ export function createCurationTools(ctx: CurationToolContext) {
   const record = async (step: AgentStep) => {
     await ctx.recordStep?.(step);
   };
+  const sandboxTimeoutMs = ctx.agentParams?.sandboxTimeoutMs ?? DEFAULT_AGENT_PARAMS.sandboxTimeoutMs;
 
   const conceptPath = () => resolveBundlePath(ctx.bundlePath, ctx.concept.path);
   const referencePath = () => resolveBundlePath(join(ctx.bundlePath, '.ref'), ctx.concept.path);
@@ -218,7 +227,7 @@ export function createCurationTools(ctx: CurationToolContext) {
       description: 'Run a fixed-string rg check against the read-only /docs snapshot.',
       inputSchema: z.object({
         query: z.string().min(1),
-        timeoutMs: z.number().int().min(1_000).max(30_000).default(10_000),
+        timeoutMs: z.number().int().min(1_000).max(30_000).default(sandboxTimeoutMs),
       }),
       execute: async ({ query, timeoutMs }) => {
         const started = Date.now();
@@ -401,6 +410,10 @@ export function createMainTools(ctx: MainToolContext) {
   const record = async (step: AgentStep) => {
     await ctx.recordStep?.(step);
   };
+  const vectorK = ctx.agentParams?.vectorK ?? DEFAULT_AGENT_PARAMS.vectorK;
+  const hybridK = ctx.agentParams?.hybridK ?? DEFAULT_AGENT_PARAMS.hybridK;
+  const graphMaxDepth = ctx.agentParams?.graphMaxDepth ?? DEFAULT_AGENT_PARAMS.graphMaxDepth;
+  const sandboxTimeoutMs = ctx.agentParams?.sandboxTimeoutMs ?? DEFAULT_AGENT_PARAMS.sandboxTimeoutMs;
 
   const searchVector = async (query: string, k: number, documentId?: string): Promise<VectorHit[]> => {
     const [queryEmbedding] = await ctx.embed([query]);
@@ -442,7 +455,7 @@ export function createMainTools(ctx: MainToolContext) {
       description: '의미론적으로 유사한 문서 청크를 벡터 유사도로 탐색한다.',
       inputSchema: z.object({
         query: z.string().describe('검색 의도(자연어)'),
-        k: z.number().int().min(1).max(50).default(8),
+        k: z.number().int().min(1).max(50).default(vectorK),
         documentId: z.string().optional(),
       }),
       execute: async ({ query, k, documentId }) => {
@@ -464,14 +477,20 @@ export function createMainTools(ctx: MainToolContext) {
       inputSchema: z.object({
         query: z.string(),
         startEntity: z.string().optional(),
-        k: z.number().int().min(1).max(20).default(8),
-        maxDepth: z.number().int().min(1).max(3).default(2),
+        k: z.number().int().min(1).max(20).default(hybridK),
+        maxDepth: z.number().int().min(1).max(3).default(graphMaxDepth),
         predicates: z.array(z.string()).optional(),
         documentId: z.string().optional(),
       }),
       execute: async ({ query, startEntity, k, maxDepth, predicates, documentId }) => {
         const started = Date.now();
-        const queries = ctx.decomposeHybridRetrieve ? await decomposeQuestion(ctx.model, query).catch(() => [query]) : [query];
+        const queries = ctx.decomposeHybridRetrieve
+          ? await decomposeQuestion(
+              ctx.model,
+              query,
+              ctx.prompts?.discoveryDecompose ? { prompt: ctx.prompts.discoveryDecompose } : {},
+            ).catch(() => [query])
+          : [query];
         const batches = await Promise.all(
           queries.map(async (nextQuery) => ({
             query: nextQuery,
@@ -514,7 +533,7 @@ export function createMainTools(ctx: MainToolContext) {
       inputSchema: z.object({
         language: z.enum(['bash', 'python']).default('bash'),
         code: z.string().describe('실행할 명령 또는 스크립트'),
-        timeoutMs: z.number().int().min(1_000).max(30_000).default(10_000),
+        timeoutMs: z.number().int().min(1_000).max(30_000).default(sandboxTimeoutMs),
       }),
       execute: async ({ language, code, timeoutMs }) => {
         const started = Date.now();
@@ -549,7 +568,7 @@ export function createMainTools(ctx: MainToolContext) {
         const { object } = await generateObject({
           model: ctx.model,
           schema: MergeResultSchema,
-          system: MERGE_SYSTEM_PROMPT,
+          system: ctx.prompts?.merge ?? MERGE_SYSTEM_PROMPT,
           prompt: `--- 기존 문서 (original) ---\n${original}\n--- 끝 ---\n\n--- 수집된 팩트 (facts) ---\n${factsBlock}\n--- 끝 ---\n\n${instruction ? `추가 지시: ${instruction}\n\n` : ''}위 팩트를 반영한 병합 초안을 작성하라.`,
         });
         await record({
@@ -580,7 +599,7 @@ export function createMainTools(ctx: MainToolContext) {
             // and `--` stops a claim that starts with `-` from being read as an rg flag.
             code: `rg -n -F -- ${shSingleQuote(claim)} /docs`,
             docsSnapshotDir: ctx.docsSnapshotDir,
-            timeoutMs: 8_000,
+            timeoutMs: ctx.agentParams?.sandboxTimeoutMs ?? 8_000,
           });
           const verified = run.exitCode === 0 && run.stdout.trim().length > 0;
           results.push({ claim, verified, evidence: run.stdout.trim().slice(0, 500) });
@@ -600,7 +619,7 @@ export function createMainTools(ctx: MainToolContext) {
       description: '지식 그래프에서 시작 엔티티로부터 멀티홉 관계를 탐색한다.',
       inputSchema: z.object({
         startEntity: z.string(),
-        maxDepth: z.number().int().min(1).max(3).default(2),
+        maxDepth: z.number().int().min(1).max(3).default(graphMaxDepth),
         predicates: z.array(z.string()).optional(),
       }),
       execute: async ({ startEntity, maxDepth, predicates }) => {

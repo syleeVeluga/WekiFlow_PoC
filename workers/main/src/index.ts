@@ -5,10 +5,10 @@ import type { Job } from 'bullmq';
 import { embedMany } from 'ai';
 import { openai } from '@ai-sdk/openai';
 import { config as loadDotenv } from 'dotenv';
-import { createDocumentsRepo, createJobsRepo, createSandboxRunsRepo, createSettingsRepo, getDb } from '@wf/db';
+import { createDocumentsRepo, createJobsRepo, createSandboxRunsRepo, createSettingsRepo, getDb, loadRuntimeConfig } from '@wf/db';
 import { MAIN_QUEUE_NAME, createGraphQueue, createWorker, defaultJobOptions } from '@wf/queue';
 import { DockerSandboxRunner } from '@wf/sandbox';
-import { loadEnv, type DocumentDTO, type EmbedFn } from '@wf/shared';
+import { loadEnv, type DocumentDTO, type EmbedFn, type RuntimeConfig } from '@wf/shared';
 import { createTripletExtractionModels, runGraphPipeline } from '@wf/graph-worker/pipeline';
 import { runMainPipeline } from './pipeline.js';
 
@@ -26,12 +26,21 @@ const sandboxRuns = createSandboxRunsRepo(db);
 const settings = createSettingsRepo(db);
 const graphQueue = createGraphQueue();
 
-const model = openai(env.AGENT_MODEL);
 const tripletModels = createTripletExtractionModels(env);
-const embeddingModel = openai.textEmbeddingModel(env.EMBEDDING_MODEL);
-const embed: EmbedFn = async (texts) => (await embedMany({ model: embeddingModel, values: texts })).embeddings;
 
 type MainJob = Job<{ documentId: string; commit?: boolean }>;
+
+async function loadJobRuntime(): Promise<{
+  effective: RuntimeConfig;
+  model: ReturnType<typeof openai>;
+  embed: EmbedFn;
+}> {
+  const { effective } = await loadRuntimeConfig(db);
+  const model = openai(effective.models?.agentModel ?? env.AGENT_MODEL);
+  const embeddingModel = openai.textEmbeddingModel(effective.models?.embeddingModel ?? env.EMBEDDING_MODEL);
+  const embed: EmbedFn = async (texts) => (await embedMany({ model: embeddingModel, values: texts })).embeddings;
+  return { effective, model, embed };
+}
 
 /** Sync the document into a per-job temp dir mounted read-only at /docs. */
 async function writeDocSnapshot(snapshotDir: string, doc: DocumentDTO): Promise<void> {
@@ -56,6 +65,7 @@ function progressOnStep(job: MainJob) {
 /** Normal ingest: run the agent, then either hold for REVIEW or auto-publish based on settings. */
 async function runIngestJob(job: MainJob, doc: DocumentDTO, jobId: string, documentId: string) {
   await job.updateProgress(5);
+  const runtime = await loadJobRuntime();
   const snapshotDir = await mkdtemp(path.join(tmpdir(), 'wf-docs-'));
   try {
     await writeDocSnapshot(snapshotDir, doc);
@@ -64,9 +74,11 @@ async function runIngestJob(job: MainJob, doc: DocumentDTO, jobId: string, docum
       sandbox: createSandbox(jobId),
       docsSnapshotDir: snapshotDir,
       jobId,
-      embed,
-      model,
-      embeddingModel: env.EMBEDDING_MODEL,
+      embed: runtime.embed,
+      model: runtime.model,
+      embeddingModel: runtime.effective.models?.embeddingModel ?? env.EMBEDDING_MODEL,
+      prompts: runtime.effective.prompts,
+      agentParams: runtime.effective.agentParams,
       onStep: progressOnStep(job),
       recordStep: (step) => jobs.appendAgentStep(jobId, { ...step, phase: 'main' }),
     });
@@ -99,6 +111,7 @@ async function runPreviewJob(job: MainJob, doc: DocumentDTO, jobId: string, docu
   const lifecycle = { queue: MAIN_QUEUE_NAME, type: 'PREVIEW' as const, documentId, title: doc.title };
   await jobs.recordLifecycle(jobId, { ...lifecycle, status: 'active', attempts });
   await job.updateProgress(5);
+  const runtime = await loadJobRuntime();
   const snapshotDir = await mkdtemp(path.join(tmpdir(), 'wf-docs-'));
   try {
     await writeDocSnapshot(snapshotDir, doc);
@@ -107,9 +120,11 @@ async function runPreviewJob(job: MainJob, doc: DocumentDTO, jobId: string, docu
       sandbox: createSandbox(jobId),
       docsSnapshotDir: snapshotDir,
       jobId,
-      embed,
-      model,
-      embeddingModel: env.EMBEDDING_MODEL,
+      embed: runtime.embed,
+      model: runtime.model,
+      embeddingModel: runtime.effective.models?.embeddingModel ?? env.EMBEDDING_MODEL,
+      prompts: runtime.effective.prompts,
+      agentParams: runtime.effective.agentParams,
       preview: true,
       onStep: progressOnStep(job),
       recordStep: (step) => jobs.appendAgentStep(jobId, { ...step, phase: 'main' }),
@@ -118,7 +133,7 @@ async function runPreviewJob(job: MainJob, doc: DocumentDTO, jobId: string, docu
     await job.updateProgress({ type: 'phase', phase: 'graph', progress: 70 });
     const graphResult = await runGraphPipeline(documentId, {
       db,
-      models: tripletModels.length > 0 ? tripletModels : [{ label: `openai:${env.AGENT_MODEL}`, model }],
+      models: tripletModels.length > 0 ? tripletModels : [{ label: `openai:${runtime.effective.models?.agentModel ?? env.AGENT_MODEL}`, model: runtime.model }],
       persist: false,
       maxChunks: PREVIEW_MAX_TRIPLET_CHUNKS,
       recordStep: (step) => jobs.appendAgentStep(jobId, { ...step, phase: 'graph' }),
@@ -153,6 +168,7 @@ async function runCommitPreviewJob(job: MainJob, doc: DocumentDTO, jobId: string
   const lifecycle = { queue: MAIN_QUEUE_NAME, type: 'PREVIEW' as const, documentId, title: doc.title };
   await jobs.recordLifecycle(jobId, { ...lifecycle, status: 'active', attempts });
   await job.updateProgress(5);
+  const runtime = await loadJobRuntime();
   const snapshotDir = await mkdtemp(path.join(tmpdir(), 'wf-docs-'));
   try {
     await writeDocSnapshot(snapshotDir, doc);
@@ -161,9 +177,11 @@ async function runCommitPreviewJob(job: MainJob, doc: DocumentDTO, jobId: string
       sandbox: createSandbox(jobId),
       docsSnapshotDir: snapshotDir,
       jobId,
-      embed,
-      model,
-      embeddingModel: env.EMBEDDING_MODEL,
+      embed: runtime.embed,
+      model: runtime.model,
+      embeddingModel: runtime.effective.models?.embeddingModel ?? env.EMBEDDING_MODEL,
+      prompts: runtime.effective.prompts,
+      agentParams: runtime.effective.agentParams,
       onStep: progressOnStep(job),
       recordStep: (step) => jobs.appendAgentStep(jobId, { ...step, phase: 'main' }),
     });
@@ -171,7 +189,7 @@ async function runCommitPreviewJob(job: MainJob, doc: DocumentDTO, jobId: string
     await job.updateProgress({ type: 'phase', phase: 'graph', progress: 70 });
     const graphResult = await runGraphPipeline(documentId, {
       db,
-      models: tripletModels.length > 0 ? tripletModels : [{ label: `openai:${env.AGENT_MODEL}`, model }],
+      models: tripletModels.length > 0 ? tripletModels : [{ label: `openai:${runtime.effective.models?.agentModel ?? env.AGENT_MODEL}`, model: runtime.model }],
       persist: false,
       maxChunks: PREVIEW_MAX_TRIPLET_CHUNKS,
       recordStep: (step) => jobs.appendAgentStep(jobId, { ...step, phase: 'graph' }),

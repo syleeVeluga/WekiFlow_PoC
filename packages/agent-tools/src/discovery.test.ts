@@ -3,7 +3,13 @@ import { MockLanguageModelV3, mockValues } from 'ai/test';
 import type { Db } from 'mongodb';
 import type { SandboxRunner } from '@wf/sandbox';
 import { createMainTools } from './index.js';
-import { decomposeQuestion, discoveryAgentAsTool, rerankDiscoveryContexts } from './discovery.js';
+import {
+  DISCOVERY_DECOMPOSE_PROMPT,
+  DISCOVERY_SYSTEM_PROMPT,
+  decomposeQuestion,
+  discoveryAgentAsTool,
+  rerankDiscoveryContexts,
+} from './discovery.js';
 
 function makeFakeDb(seed: Record<string, Record<string, unknown>[]> = {}): Db {
   const store: Record<string, Record<string, unknown>[]> = { documents: [], chunks: [], ...seed };
@@ -22,6 +28,10 @@ function makeFakeDb(seed: Record<string, Record<string, unknown>[]> = {}): Db {
 
 const sandbox: SandboxRunner = { run: async () => ({ stdout: '', stderr: '', exitCode: 0, truncated: false }) };
 
+function systemPrompt(call: unknown): unknown {
+  return (call as { prompt?: Array<{ role: string; content: unknown }> }).prompt?.find((message) => message.role === 'system')?.content;
+}
+
 describe('discovery', () => {
   it('decomposes into baseline plus unique variants', async () => {
     const model = new MockLanguageModelV3({
@@ -34,6 +44,22 @@ describe('discovery', () => {
     } as never);
 
     await expect(decomposeQuestion(model, 'leave policy')).resolves.toEqual(['leave policy', 'annual leave']);
+  });
+
+  it('uses decomposition prompt overrides and preserves the constant fallback', async () => {
+    const response = {
+      content: [{ type: 'text', text: JSON.stringify({ baseline: 'leave policy', variants: [] }) }],
+      finishReason: 'stop',
+      usage: { inputTokens: { total: 1 }, outputTokens: { total: 1 } },
+      warnings: [],
+    } as const;
+    const model = new MockLanguageModelV3({ doGenerate: response } as never);
+    await decomposeQuestion(model, 'leave policy', { prompt: 'DISCOVERY DECOMPOSE OVERRIDE' });
+    expect(systemPrompt(model.doGenerateCalls[0])).toBe('DISCOVERY DECOMPOSE OVERRIDE');
+
+    const fallbackModel = new MockLanguageModelV3({ doGenerate: response } as never);
+    await decomposeQuestion(fallbackModel, 'leave policy');
+    expect(systemPrompt(fallbackModel.doGenerateCalls[0])).toBe(DISCOVERY_DECOMPOSE_PROMPT);
   });
 
   it('deduplicates and reranks contexts across decomposed queries', () => {
@@ -102,5 +128,30 @@ describe('discovery', () => {
     const result = await wrapped.execute!({ question: 'What is A?' }, { toolCallId: 'd1', messages: [] });
     expect(result).toEqual({ answer: 'Answer from context.' });
     expect(steps).toHaveLength(1);
+  });
+
+  it('uses discovery system prompt overrides and preserves the constant fallback', async () => {
+    const response = {
+      content: [{ type: 'text', text: 'Answer from context.' }],
+      finishReason: 'stop',
+      usage: { inputTokens: { total: 1 }, outputTokens: { total: 1 } },
+      warnings: [],
+    } as const;
+    const model = new MockLanguageModelV3({ doGenerate: response } as never);
+    await discoveryAgentAsTool({
+      jobId: 'job-1',
+      model,
+      tools: {},
+      prompts: { discoverySystem: 'DISCOVERY SYSTEM OVERRIDE' },
+      agentParams: { discoveryStepLimit: 3 },
+    }).execute!({ question: 'What is A?' }, { toolCallId: 'd2', messages: [] });
+    expect(systemPrompt(model.doGenerateCalls[0])).toBe('DISCOVERY SYSTEM OVERRIDE');
+
+    const fallbackModel = new MockLanguageModelV3({ doGenerate: response } as never);
+    await discoveryAgentAsTool({ jobId: 'job-1', model: fallbackModel, tools: {} }).execute!(
+      { question: 'What is A?' },
+      { toolCallId: 'd3', messages: [] },
+    );
+    expect(systemPrompt(fallbackModel.doGenerateCalls[0])).toBe(DISCOVERY_SYSTEM_PROMPT);
   });
 });

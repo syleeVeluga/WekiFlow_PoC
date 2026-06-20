@@ -1,6 +1,6 @@
 import { generateObject, tool, ToolLoopAgent, stepCountIs, type LanguageModel } from 'ai';
 import { z } from 'zod';
-import { DEFAULT_RUNTIME_PROMPTS } from '@wf/shared';
+import { DEFAULT_AGENT_PARAMS, DEFAULT_RUNTIME_PROMPTS, type RuntimeConfig } from '@wf/shared';
 
 interface DiscoveryContext {
   source: 'vector' | 'graph';
@@ -21,11 +21,15 @@ export type DiscoveryDecomposition = z.infer<typeof DiscoveryDecompositionSchema
 export const DISCOVERY_DECOMPOSE_PROMPT = DEFAULT_RUNTIME_PROMPTS.discoveryDecompose;
 export const DISCOVERY_SYSTEM_PROMPT = DEFAULT_RUNTIME_PROMPTS.discoverySystem;
 
-export async function decomposeQuestion(model: LanguageModel, question: string): Promise<string[]> {
+export async function decomposeQuestion(
+  model: LanguageModel,
+  question: string,
+  options: { prompt?: string } = {},
+): Promise<string[]> {
   const { object } = await generateObject({
     model,
     schema: DiscoveryDecompositionSchema,
-    system: DISCOVERY_DECOMPOSE_PROMPT,
+    system: options.prompt ?? DISCOVERY_DECOMPOSE_PROMPT,
     prompt: question,
   });
   const seen = new Set<string>();
@@ -71,15 +75,17 @@ export interface DiscoveryAgentContext {
   model: LanguageModel;
   tools: Record<string, unknown>;
   stepLimit?: number;
+  prompts?: Partial<RuntimeConfig['prompts']>;
+  agentParams?: Partial<RuntimeConfig['agentParams']>;
   recordStep?: (step: { tool: string; args: unknown; result?: unknown; tookMs?: number }) => void | Promise<void>;
 }
 
 export function createDiscoveryAgent(ctx: DiscoveryAgentContext) {
   return new ToolLoopAgent({
     model: ctx.model,
-    instructions: DISCOVERY_SYSTEM_PROMPT,
+    instructions: ctx.prompts?.discoverySystem ?? DISCOVERY_SYSTEM_PROMPT,
     tools: ctx.tools as never,
-    stopWhen: stepCountIs(ctx.stepLimit ?? 8) as never,
+    stopWhen: stepCountIs(ctx.stepLimit ?? ctx.agentParams?.discoveryStepLimit ?? DEFAULT_AGENT_PARAMS.discoveryStepLimit) as never,
   });
 }
 

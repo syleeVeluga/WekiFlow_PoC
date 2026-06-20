@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { MockLanguageModelV3 } from 'ai/test';
-import { judgeTrajectory, redactPii, summarizeSteps } from './learner.js';
+import { LEARNER_JUDGE_PROMPT, judgeTrajectory, redactPii, summarizeSteps } from './learner.js';
+
+function systemPrompt(call: unknown): unknown {
+  return (call as { prompt?: Array<{ role: string; content: unknown }> }).prompt?.find((message) => message.role === 'system')?.content;
+}
 
 describe('learner tools', () => {
   it('redacts PII from trajectory summaries', () => {
@@ -48,5 +52,29 @@ describe('learner tools', () => {
     });
 
     expect(result.proposals[0]).toMatchObject({ gapType: 'MISSING_CITATION', targetSlug: 'hr/leave' });
+  });
+
+  it('uses learner judge prompt overrides and preserves the constant fallback', async () => {
+    const response = {
+      content: [{ type: 'text', text: JSON.stringify({ proposals: [] }) }],
+      finishReason: 'stop',
+      usage: { inputTokens: { total: 1 }, outputTokens: { total: 1 } },
+      warnings: [],
+    } as const;
+    const steps = [{ tool: 'tool_verify_integrity', args: {}, result: { allVerified: true } }];
+    const model = new MockLanguageModelV3({ doGenerate: response } as never);
+
+    await judgeTrajectory({
+      model,
+      jobId: 'job-override',
+      steps,
+      prompts: { learnerJudge: 'LEARNER JUDGE OVERRIDE' },
+    });
+
+    expect(systemPrompt(model.doGenerateCalls[0])).toBe('LEARNER JUDGE OVERRIDE');
+
+    const fallbackModel = new MockLanguageModelV3({ doGenerate: response } as never);
+    await judgeTrajectory({ model: fallbackModel, jobId: 'job-fallback', steps });
+    expect(systemPrompt(fallbackModel.doGenerateCalls[0])).toBe(LEARNER_JUDGE_PROMPT);
   });
 });
