@@ -2,6 +2,7 @@ import type { Queue } from 'bullmq';
 import { ToolLoopAgent, stepCountIs, type LanguageModel } from 'ai';
 import type { Db } from 'mongodb';
 import type { SandboxRunner } from '@wf/sandbox';
+import { DEFAULT_AGENT_PARAMS, type RuntimeConfig } from '@wf/shared';
 import {
   buildCurationPrompt,
   createCurationTools,
@@ -44,6 +45,8 @@ export interface CurationAgentContext {
   policy?: Policy;
   now?: Date;
   stepLimit?: number;
+  prompts?: Partial<RuntimeConfig['prompts']>;
+  agentParams?: Partial<RuntimeConfig['agentParams']>;
   onStep?: (step: unknown) => void | Promise<void>;
   recordStep?: (step: AgentStep) => void | Promise<void>;
 }
@@ -114,6 +117,7 @@ export async function runCurationAgent(job: CurationConceptJob, ctx: CurationAge
     concept: job.concept,
     policy,
     ...(ctx.now ? { now: ctx.now } : {}),
+    ...(ctx.agentParams ? { agentParams: ctx.agentParams } : {}),
     recordStep: async (step) => {
       recordedSteps.push(step);
       await ctx.recordStep?.(step);
@@ -121,9 +125,11 @@ export async function runCurationAgent(job: CurationConceptJob, ctx: CurationAge
   });
   const agent = new ToolLoopAgent({
     model: ctx.model,
-    instructions: CURATION_SYSTEM_PROMPT,
+    instructions: ctx.prompts?.curation ?? CURATION_SYSTEM_PROMPT,
     tools,
-    stopWhen: stepCountIs(ctx.stepLimit ?? policy.enrichment.agent_step_limit),
+    stopWhen: stepCountIs(
+      ctx.stepLimit ?? ctx.agentParams?.curationStepLimit ?? policy.enrichment.agent_step_limit ?? DEFAULT_AGENT_PARAMS.curationStepLimit,
+    ),
   });
 
   const result = await agent.generate({

@@ -7,6 +7,7 @@ import { ObjectId, type Db } from 'mongodb';
 import { MockLanguageModelV3, mockValues } from 'ai/test';
 import { defaultPolicy } from '@wekiflow/wkf';
 import type { SandboxRunner } from '@wf/sandbox';
+import { CURATION_SYSTEM_PROMPT } from '@wf/agent-tools';
 import {
   CURATION_SCAN_JOB_ID,
   extractCurationResult,
@@ -60,6 +61,10 @@ const sandboxStub: SandboxRunner = {
   },
 };
 
+function systemPrompt(call: unknown): unknown {
+  return (call as { prompt?: Array<{ role: string; content: unknown }> }).prompt?.find((message) => message.role === 'system')?.content;
+}
+
 async function bundle(): Promise<string> {
   const root = join(tmpdir(), `curation-${randomUUID()}`);
   await mkdir(join(root, '.ref'), { recursive: true });
@@ -112,6 +117,45 @@ describe('curation pipeline scaffold', () => {
 });
 
 describe('runCurationAgent', () => {
+  it('uses curation prompt overrides and preserves the constant fallback', async () => {
+    const root = await bundle();
+    const db = makeFakeDb([{ _id: new ObjectId(), slug: 'policy', title: 'Policy', contentMarkdown: '# Body\nOriginal fact', status: 'PUBLISHED' }]);
+    const response = {
+      content: [{ type: 'text', text: 'skip' }],
+      finishReason: 'stop',
+      usage: { inputTokens: { total: 1 }, outputTokens: { total: 1 } },
+      warnings: [],
+    } as const;
+    const model = new MockLanguageModelV3({ doGenerate: response } as never);
+
+    await runCurationAgent(concept, {
+      db,
+      sandbox: sandboxStub,
+      bundlePath: root,
+      docsSnapshotDir: root,
+      jobId: 'curate-prompt',
+      model,
+      policy: defaultPolicy,
+      prompts: { curation: 'CURATION PROMPT OVERRIDE' },
+      agentParams: { curationStepLimit: 4, sandboxTimeoutMs: 11_000 },
+    });
+
+    expect(systemPrompt(model.doGenerateCalls[0])).toBe('CURATION PROMPT OVERRIDE');
+
+    const fallbackModel = new MockLanguageModelV3({ doGenerate: response } as never);
+    await runCurationAgent(concept, {
+      db,
+      sandbox: sandboxStub,
+      bundlePath: root,
+      docsSnapshotDir: root,
+      jobId: 'curate-prompt-fallback',
+      model: fallbackModel,
+      policy: defaultPolicy,
+    });
+
+    expect(systemPrompt(fallbackModel.doGenerateCalls[0])).toBe(CURATION_SYSTEM_PROMPT);
+  });
+
   it('updates last_verified without moving a draft to review when source facts are unchanged', async () => {
     const root = await bundle();
     const db = makeFakeDb([{ _id: new ObjectId(), slug: 'policy', title: 'Policy', contentMarkdown: '# Body\nOriginal fact', status: 'PUBLISHED' }]);

@@ -2,6 +2,7 @@ import type { LanguageModel } from 'ai';
 import type { Db } from 'mongodb';
 import { createEnrichmentProposalsRepo, createJobsRepo, createRetrievalGoldensRepo, type StoredEnrichmentProposal } from '@wf/db';
 import { judgeTrajectory } from '@wf/agent-tools';
+import type { RuntimeConfig } from '@wf/shared';
 
 export interface LearnerJob {
   type: 'LEARN_TRAJECTORY';
@@ -15,12 +16,15 @@ export interface LearnerResult {
   proposals: StoredEnrichmentProposal[];
 }
 
-export async function runLearnerJob(job: LearnerJob, ctx: { db: Db; model: LanguageModel }): Promise<LearnerResult> {
+export async function runLearnerJob(
+  job: LearnerJob,
+  ctx: { db: Db; model: LanguageModel; prompts?: Partial<RuntimeConfig['prompts']> },
+): Promise<LearnerResult> {
   const jobs = createJobsRepo(ctx.db);
   const proposalsRepo = createEnrichmentProposalsRepo(ctx.db);
   const goldens = createRetrievalGoldensRepo(ctx.db);
   const steps = await jobs.getAgentSteps(job.jobId);
-  const analysis = await judgeTrajectory({ model: ctx.model, jobId: job.jobId, steps });
+  const analysis = await judgeTrajectory({ model: ctx.model, jobId: job.jobId, steps, ...(ctx.prompts ? { prompts: ctx.prompts } : {}) });
   const proposals = await proposalsRepo.insertMany(job.jobId, analysis.proposals);
   const goldenCount = await goldens.upsertFromProposals(proposals);
   return { jobId: job.jobId, proposalCount: proposals.length, goldenCount, proposals };

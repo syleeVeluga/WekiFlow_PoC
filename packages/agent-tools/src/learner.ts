@@ -1,6 +1,6 @@
 import { generateObject, type LanguageModel } from 'ai';
 import { z } from 'zod';
-import { DEFAULT_RUNTIME_PROMPTS, type AgentStepDTO } from '@wf/shared';
+import { DEFAULT_RUNTIME_PROMPTS, type AgentStepDTO, type RuntimeConfig } from '@wf/shared';
 
 export const LearnerGapTypeSchema = z.enum([
   'MISSING_CITATION',
@@ -58,12 +58,13 @@ export async function judgeTrajectory(input: {
   model: LanguageModel;
   jobId: string;
   steps: AgentStepDTO[];
+  prompts?: Partial<RuntimeConfig['prompts']>;
 }): Promise<TrajectoryAnalysisResult> {
   if (input.steps.length === 0) return { proposals: [] };
   const { object } = await generateObject({
     model: input.model,
     schema: TrajectoryAnalysisResultSchema,
-    system: LEARNER_JUDGE_PROMPT,
+    system: input.prompts?.learnerJudge ?? LEARNER_JUDGE_PROMPT,
     prompt: `Job: ${input.jobId}\n\n${summarizeSteps(input.steps)}`,
   });
   return {

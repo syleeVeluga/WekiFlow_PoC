@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { ObjectId, type Db } from 'mongodb';
 import { MockLanguageModelV3, mockValues } from 'ai/test';
 import type { SandboxRunner } from '@wf/sandbox';
-import type { AgentStep } from '@wf/agent-tools';
+import { MAIN_AGENT_SYSTEM_PROMPT, type AgentStep } from '@wf/agent-tools';
 import { extractMergeResult, runMainPipeline } from './pipeline.js';
 
 function makeFakeDb(
@@ -40,6 +40,10 @@ const sandboxStub: SandboxRunner = {
   },
 };
 
+function systemPrompt(call: unknown): unknown {
+  return (call as { prompt?: Array<{ role: string; content: unknown }> }).prompt?.find((message) => message.role === 'system')?.content;
+}
+
 describe('extractMergeResult', () => {
   it('returns the most recent valid tool_merge output from steps', () => {
     const merged = extractMergeResult([
@@ -55,6 +59,55 @@ describe('extractMergeResult', () => {
 });
 
 describe('runMainPipeline (agent loop)', () => {
+  it('uses main prompt overrides and preserves the constant fallback', async () => {
+    const id = new ObjectId();
+    const db = makeFakeDb([
+      { _id: id, title: 'Prompt', slug: 'prompt', contentMarkdown: '# Prompt', status: 'PROCESSING' },
+    ]);
+    const model = new MockLanguageModelV3({
+      doGenerate: {
+        content: [{ type: 'text', text: 'no merge' }],
+        finishReason: 'stop',
+        usage: { inputTokens: { total: 1 }, outputTokens: { total: 1 } },
+        warnings: [],
+      },
+    } as never);
+
+    await runMainPipeline(id.toString(), {
+      db,
+      sandbox: sandboxStub,
+      docsSnapshotDir: '/tmp/docs',
+      jobId: 'job-main-prompt',
+      embed: async (texts) => texts.map(() => [1, 0]),
+      model,
+      embeddingModel: 'text-embedding-3-large',
+      prompts: { main: 'MAIN PROMPT OVERRIDE' },
+      agentParams: { mainStepLimit: 5 },
+    });
+
+    expect(systemPrompt(model.doGenerateCalls[0])).toBe('MAIN PROMPT OVERRIDE');
+
+    const fallbackModel = new MockLanguageModelV3({
+      doGenerate: {
+        content: [{ type: 'text', text: 'no merge' }],
+        finishReason: 'stop',
+        usage: { inputTokens: { total: 1 }, outputTokens: { total: 1 } },
+        warnings: [],
+      },
+    } as never);
+    await runMainPipeline(id.toString(), {
+      db,
+      sandbox: sandboxStub,
+      docsSnapshotDir: '/tmp/docs',
+      jobId: 'job-main-fallback',
+      embed: async (texts) => texts.map(() => [1, 0]),
+      model: fallbackModel,
+      embeddingModel: 'text-embedding-3-large',
+    });
+
+    expect(systemPrompt(fallbackModel.doGenerateCalls[0])).toBe(MAIN_AGENT_SYSTEM_PROMPT);
+  });
+
   it('drives the agent to merge, persists the draft, and transitions to REVIEW', async () => {
     const id = new ObjectId();
     const db = makeFakeDb([

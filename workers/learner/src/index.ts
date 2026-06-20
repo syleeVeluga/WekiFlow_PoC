@@ -1,7 +1,7 @@
 import { config as loadDotenv } from 'dotenv';
 import path from 'node:path';
 import { openai } from '@ai-sdk/openai';
-import { createJobsRepo, getDb, closeMongoClient } from '@wf/db';
+import { createJobsRepo, getDb, closeMongoClient, loadRuntimeConfig } from '@wf/db';
 import { createRedisConnection, createWorker, LEARNER_QUEUE_NAME } from '@wf/queue';
 import { loadEnv } from '@wf/shared';
 import { runLearnerJob, type LearnerJob } from './pipeline.js';
@@ -10,7 +10,6 @@ loadDotenv({ path: path.resolve(process.cwd(), '../../.env'), quiet: true });
 const env = loadEnv();
 const db = await getDb();
 const jobs = createJobsRepo(db);
-const model = openai(env.AGENT_MODEL);
 const connection = createRedisConnection();
 
 const worker = createWorker<LearnerJob>(
@@ -27,7 +26,12 @@ const worker = createWorker<LearnerJob>(
       title: data.jobId,
     });
     try {
-      const result = await runLearnerJob(data, { db, model });
+      const { effective } = await loadRuntimeConfig(db);
+      const result = await runLearnerJob(data, {
+        db,
+        model: openai(effective.models?.agentModel ?? env.AGENT_MODEL),
+        prompts: effective.prompts,
+      });
       await jobs.recordLifecycle(workerJobId, {
         queue: LEARNER_QUEUE_NAME,
         type: 'LEARN_TRAJECTORY',

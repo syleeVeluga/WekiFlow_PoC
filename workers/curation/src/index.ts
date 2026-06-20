@@ -1,7 +1,7 @@
 import { config as loadDotenv } from 'dotenv';
 import path from 'node:path';
 import { openai } from '@ai-sdk/openai';
-import { createJobsRepo, createSandboxRunsRepo, getDb, closeMongoClient } from '@wf/db';
+import { createJobsRepo, createSandboxRunsRepo, getDb, closeMongoClient, loadRuntimeConfig } from '@wf/db';
 import { CURATION_QUEUE_NAME, createCurationQueue, createRedisConnection, createWorker } from '@wf/queue';
 import { DockerSandboxRunner } from '@wf/sandbox';
 import { loadEnv } from '@wf/shared';
@@ -13,7 +13,6 @@ const bundlePath = env.WKF_BUNDLE_PATH ?? 'knowledge';
 const db = await getDb();
 const jobs = createJobsRepo(db);
 const sandboxRuns = createSandboxRunsRepo(db);
-const model = openai(env.AGENT_MODEL);
 const connection = createRedisConnection();
 const queue = createCurationQueue(connection);
 
@@ -34,6 +33,7 @@ const worker = createWorker<{ type: 'SCAN_STALE' } | Parameters<typeof runCurati
       title: data.concept.slug,
     });
     try {
+      const { effective, overrides } = await loadRuntimeConfig(db);
       const result = await runCurationAgent(data, {
         db,
         sandbox: new DockerSandboxRunner({
@@ -43,7 +43,9 @@ const worker = createWorker<{ type: 'SCAN_STALE' } | Parameters<typeof runCurati
         bundlePath,
         docsSnapshotDir: bundlePath,
         jobId,
-        model,
+        model: openai(effective.models?.agentModel ?? env.AGENT_MODEL),
+        prompts: effective.prompts,
+        ...(overrides.agentParams ? { agentParams: overrides.agentParams } : {}),
         recordStep: (step) => jobs.appendAgentStep(jobId, step),
       });
       await jobs.recordLifecycle(jobId, {
