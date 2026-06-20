@@ -12,6 +12,9 @@
     "typecheck": "corepack pnpm --filter @wf/shared build && corepack pnpm -r typecheck",
     "test": "corepack pnpm -r test",
     "lint": "corepack pnpm -r lint",
+    "e2e": "playwright test",
+    "e2e:ui": "playwright test --ui",
+    "e2e:install": "playwright install chromium",
     "poc:sandbox": "tsx scripts/poc-sandbox-grep.ts",
     "poc:lightrag": "tsx scripts/poc-lightrag-extract.ts",
     "seed:wiki": "tsx scripts/seed-wiki.ts",
@@ -23,6 +26,7 @@
     "verify:goal": "corepack pnpm build && corepack pnpm test && corepack pnpm poc:lightrag && corepack pnpm poc:hybrid"
   },
   "devDependencies": {
+    "@playwright/test": "1.61.0",
     "@types/node": "^24.10.1",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
