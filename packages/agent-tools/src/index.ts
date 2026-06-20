@@ -732,6 +732,14 @@ export {
 } from './connectors/index.js';
 
 export {
+  extractConversationCandidates,
+  parseConversationTranscript,
+  type ConversationCandidateDraft,
+  type ConversationExtractionOptions,
+  type ConversationSegment,
+} from './conversation.js';
+
+export {
   decideDisposition,
   detectRiskFactors,
   DispositionActionSchema,

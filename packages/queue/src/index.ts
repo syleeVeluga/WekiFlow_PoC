@@ -6,6 +6,7 @@ export const MAIN_QUEUE_NAME = 'main';
 export const GRAPH_QUEUE_NAME = 'graph';
 export const CURATION_QUEUE_NAME = 'curation';
 export const LEARNER_QUEUE_NAME = 'learner';
+export const CONVERSATION_QUEUE_NAME = 'conversation';
 
 export function createRedisConnection() {
   const env = loadEnv();
@@ -28,6 +29,10 @@ export function createLearnerQueue(connection = createRedisConnection()) {
   return new Queue(LEARNER_QUEUE_NAME, { connection, prefix: 'wf:learner' });
 }
 
+export function createConversationQueue(connection = createRedisConnection()) {
+  return new Queue(CONVERSATION_QUEUE_NAME, { connection, prefix: 'wf:conversation' });
+}
+
 export function createMainQueueEvents(connection = createRedisConnection()) {
   return new QueueEvents(MAIN_QUEUE_NAME, { connection, prefix: 'wf:main' });
 }
@@ -47,7 +52,12 @@ export interface WorkerRuntimeOptions {
 }
 
 function workerRuntimeOptions(
-  queueName: typeof MAIN_QUEUE_NAME | typeof GRAPH_QUEUE_NAME | typeof CURATION_QUEUE_NAME | typeof LEARNER_QUEUE_NAME,
+  queueName:
+    | typeof MAIN_QUEUE_NAME
+    | typeof GRAPH_QUEUE_NAME
+    | typeof CURATION_QUEUE_NAME
+    | typeof LEARNER_QUEUE_NAME
+    | typeof CONVERSATION_QUEUE_NAME,
   options: WorkerRuntimeOptions = {},
 ) {
   const env = loadEnv();
@@ -59,7 +69,9 @@ function workerRuntimeOptions(
         ? env.GRAPH_WORKER_CONCURRENCY
         : queueName === CURATION_QUEUE_NAME
           ? env.CURATION_WORKER_CONCURRENCY
-          : env.LEARNER_WORKER_CONCURRENCY);
+          : queueName === LEARNER_QUEUE_NAME
+            ? env.LEARNER_WORKER_CONCURRENCY
+            : env.CONVERSATION_WORKER_CONCURRENCY);
   const rateMax =
     queueName === MAIN_QUEUE_NAME
       ? env.MAIN_QUEUE_RATE_MAX
@@ -67,7 +79,9 @@ function workerRuntimeOptions(
         ? env.GRAPH_QUEUE_RATE_MAX
         : queueName === CURATION_QUEUE_NAME
           ? env.CURATION_QUEUE_RATE_MAX
-          : env.LEARNER_QUEUE_RATE_MAX;
+          : queueName === LEARNER_QUEUE_NAME
+            ? env.LEARNER_QUEUE_RATE_MAX
+            : env.CONVERSATION_QUEUE_RATE_MAX;
   const rateDuration =
     queueName === MAIN_QUEUE_NAME
       ? env.MAIN_QUEUE_RATE_DURATION_MS
@@ -75,13 +89,20 @@ function workerRuntimeOptions(
         ? env.GRAPH_QUEUE_RATE_DURATION_MS
         : queueName === CURATION_QUEUE_NAME
           ? env.CURATION_QUEUE_RATE_DURATION_MS
-          : env.LEARNER_QUEUE_RATE_DURATION_MS;
+          : queueName === LEARNER_QUEUE_NAME
+            ? env.LEARNER_QUEUE_RATE_DURATION_MS
+            : env.CONVERSATION_QUEUE_RATE_DURATION_MS;
   const limiter = options.limiter ?? (rateMax > 0 ? { max: rateMax, duration: rateDuration } : undefined);
   return limiter ? { concurrency, limiter } : { concurrency };
 }
 
 export function createWorker<T>(
-  queueName: typeof MAIN_QUEUE_NAME | typeof GRAPH_QUEUE_NAME | typeof CURATION_QUEUE_NAME | typeof LEARNER_QUEUE_NAME,
+  queueName:
+    | typeof MAIN_QUEUE_NAME
+    | typeof GRAPH_QUEUE_NAME
+    | typeof CURATION_QUEUE_NAME
+    | typeof LEARNER_QUEUE_NAME
+    | typeof CONVERSATION_QUEUE_NAME,
   processor: Processor<T>,
   connection = createRedisConnection(),
   options: WorkerRuntimeOptions = {},
@@ -95,7 +116,9 @@ export function createWorker<T>(
           ? 'wf:graph'
           : queueName === CURATION_QUEUE_NAME
             ? 'wf:curation'
-            : 'wf:learner',
+            : queueName === LEARNER_QUEUE_NAME
+              ? 'wf:learner'
+              : 'wf:conversation',
     ...workerRuntimeOptions(queueName, options),
   });
 }
