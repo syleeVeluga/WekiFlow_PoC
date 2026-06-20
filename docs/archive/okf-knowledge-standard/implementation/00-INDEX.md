@@ -49,8 +49,8 @@
 | [PR-16](./PR-16-regression-goldens.md) | `evalCandidate` → 회귀 골든셋 | 15 | 회귀 감지 |
 | [PR-17](./PR-17-discovery-decomposition.md) | Discovery 질문분해 + 다중쿼리 + 리랭크 | — | 검색 전처리 |
 | [PR-18](./PR-18-discovery-agent-composition.md) | Q&A 에이전트 + `AgentTool` 합성 | 17 | 멀티에이전트 |
-| [PR-19](./PR-19-external-enrichment.md) | (선택) 외부 allowlist 크롤 enrichment | 11 | 외부 보강 |
-| [PR-20](./PR-20-mcp-and-connectors.md) | (선택) `wkf mcp` + 멀티소스 커넥터 | 05 | 생태계 |
+| [PR-19](../../okf-pr-19-external-enrichment.md) | (선택) 외부 allowlist 크롤 enrichment | 완료 | 외부 보강 |
+| [PR-20](../../okf-pr-20-mcp-and-connectors.md) | (선택) `wkf mcp` + 멀티소스 커넥터 | 완료 | 생태계 |
 
 ---
 
@@ -77,4 +77,4 @@ PR-11 ─ PR-19 ;  PR-05 ─ PR-20   (선택)
 - 트랙 E(러너): 03→15→16
 
 ## 범위 표기
-🟢 핵심(확정) · 🟡 선택(opt-in: PR-14·19·20) — 선택 PR은 핵심 게이트 통과 후 착수.
+🟢 핵심(확정) · 🟡 선택(opt-in: PR-14·19·20). PR-19/20은 완료되어 상위 `docs/archive/` 문서로 보존한다.
