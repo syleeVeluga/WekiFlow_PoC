@@ -65,6 +65,7 @@ export {
   type PolicyAction,
   type PolicyContext,
 } from './policy.js';
+export { routeCandidate } from './reviewRouting.js';
 export { scanStale, type ScanStaleOptions, type StaleConcept } from './scan.js';
 export {
   handleWkfMcpRequest,

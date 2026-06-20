@@ -11,6 +11,8 @@ import type {
   DocumentDTO,
   IngestRequest,
   JobRef,
+  CandidateReviewItem,
+  CandidateRouteResolveAction,
   KnowledgeCandidate,
   KnowledgeCandidateListQuery,
   LoginBody,
@@ -147,6 +149,10 @@ export function fetchCandidates(input: KnowledgeCandidateListQuery = {}): Promis
   return request<KnowledgeCandidate[]>(`/candidates${candidateQuery(input)}`);
 }
 
+export function fetchCandidateReviewRoutes(input: KnowledgeCandidateListQuery = {}): Promise<CandidateReviewItem[]> {
+  return request<CandidateReviewItem[]>(`/candidate-review-routes${candidateQuery(input)}`);
+}
+
 export function fetchCandidate(id: string): Promise<KnowledgeCandidate> {
   return request<KnowledgeCandidate>(`/candidates/${id}`);
 }
@@ -157,6 +163,10 @@ export function createCandidate(input: CreateKnowledgeCandidate): Promise<Knowle
 
 export function updateCandidateStatus(id: string, patch: UpdateKnowledgeCandidateStatus): Promise<KnowledgeCandidate> {
   return request<KnowledgeCandidate>(`/candidates/${id}`, { method: 'PATCH', body: JSON.stringify(patch) });
+}
+
+export function resolveCandidateRoute(id: string, action: CandidateRouteResolveAction): Promise<KnowledgeCandidate> {
+  return request<KnowledgeCandidate>(`/candidates/${id}/route`, { method: 'POST', body: JSON.stringify({ action }) });
 }
 
 export function conversationIngest(input: ConversationIngestRequest): Promise<ConversationIngestResult> {

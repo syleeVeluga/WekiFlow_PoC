@@ -1,7 +1,7 @@
 import { lazy, Suspense, useState } from 'react';
-import type { DocumentDTO, MultiSourceGroup, ReviewItem } from '@wf/shared';
+import type { CandidateReviewItem, CandidateRouteResolveAction, DocumentDTO, MultiSourceGroup, ReviewItem } from '@wf/shared';
 import { DOC_STATUS_TO_CANDIDATE, canApprove, canReview } from '@wf/shared';
-import { useApprove, useReject, useReviews, useSettings } from '../../api/hooks.js';
+import { useApprove, useCandidateReviewRoutes, useReject, useResolveCandidateRoute, useReviews, useSettings } from '../../api/hooks.js';
 import { useMultiSource, useMultiSourceActions, useResolveMultiSource, useResolveReview, useReviewBoard } from '../../data/hooks.js';
 import { useAuthStore } from '../../auth/store.js';
 import { useUiStore } from '../../store.js';
@@ -12,6 +12,98 @@ const MonacoDiffPane = lazy(async () => {
   const module = await import('../monaco/MonacoDiffPane.js');
   return { default: module.MonacoDiffPane };
 });
+
+const routeTitles: Record<CandidateReviewItem['route']['action'], string> = {
+  auto_publish: '자동 게시 가능',
+  needs_approval: '승인 필요',
+  needs_source: '출처 확인 필요',
+  reject: '충돌 보류',
+};
+
+function CandidateTriageCard({ item }: { item: CandidateReviewItem }) {
+  const { showToast } = useUiStore();
+  const resolve = useResolveCandidateRoute();
+  const { candidate, route } = item;
+
+  const act = (action: CandidateRouteResolveAction) => {
+    resolve.mutate(
+      { id: candidate.id, action },
+      {
+        onSuccess: () => showToast('후보 상태를 업데이트했습니다.', 'ok'),
+        onError: (error) => showToast(error instanceof Error ? error.message : '후보 처리에 실패했습니다.', 'warn'),
+      },
+    );
+  };
+
+  return (
+    <article className={`card ri-card triage-card triage-${route.action}`}>
+      <div>
+        <div className="row">
+          <TrustLabel status={candidate.status} riskFactors={route.reasons} />
+          <Badge tone={route.action === 'reject' || route.action === 'needs_source' ? 'warn' : 'info'}>{routeTitles[route.action]}</Badge>
+        </div>
+        <h3>{candidate.title}</h3>
+        {candidate.summary ? <p className="muted">{candidate.summary}</p> : null}
+        <p>{route.recommendedAction}</p>
+        <div className="reason-list">
+          {(route.reasonLabels.length > 0 ? route.reasonLabels : ['위험 요인 없음']).map((reason) => (
+            <span key={`${candidate.id}-${reason}`}>{reason}</span>
+          ))}
+        </div>
+        <div className="row sm">
+          <span>{candidate.provenance.label ?? candidate.provenance.ref}</span>
+          <span>{candidate.provenance.kind}</span>
+          {route.approverRoles.length > 0 ? <span>승인: {route.approverRoles.join(', ')}</span> : null}
+        </div>
+      </div>
+      <div className="ri-actions">
+        {route.action === 'auto_publish' ? (
+          <button type="button" onClick={() => act('auto_publish')} disabled={resolve.isPending}>게시</button>
+        ) : null}
+        {route.action === 'needs_source' ? (
+          <button type="button" onClick={() => act('request_source')} disabled={resolve.isPending}>출처 요청</button>
+        ) : null}
+        {route.action === 'needs_approval' ? (
+          <button type="button" onClick={() => act('approve')} disabled={!route.canApprove || resolve.isPending}>승인</button>
+        ) : null}
+        <button type="button" onClick={() => act('reject')} disabled={resolve.isPending}>보류</button>
+      </div>
+    </article>
+  );
+}
+
+function CandidateTriageSection({ items }: { items: CandidateReviewItem[] }) {
+  const groups = items.reduce<Record<CandidateReviewItem['route']['action'], CandidateReviewItem[]>>(
+    (acc, item) => {
+      acc[item.route.action].push(item);
+      return acc;
+    },
+    { needs_approval: [], needs_source: [], reject: [], auto_publish: [] },
+  );
+  const ordered = (['needs_approval', 'needs_source', 'reject', 'auto_publish'] as const).filter((action) => groups[action].length > 0);
+
+  return (
+    <section className="candidate-triage">
+      <div className="rv-head">
+        <div>
+          <p className="eyebrow">Triage</p>
+          <h2>승인 사유 inbox</h2>
+        </div>
+      </div>
+      {ordered.length === 0 ? <div className="empty">승인 사유 기반 후보가 없습니다.</div> : null}
+      {ordered.map((action) => (
+        <div className="reason-group" key={action}>
+          <h3>{routeTitles[action]}</h3>
+          <div className="review-grid">
+            {groups[action].map((item) => (
+              <CandidateTriageCard item={item} key={item.candidate.id} />
+            ))}
+          </div>
+        </div>
+      ))}
+    </section>
+  );
+}
 
 function Layer1ReviewSection({ items }: { items: DocumentDTO[] }) {
   const role = useAuthStore((s) => s.user?.role ?? 'VIEWER');
@@ -281,15 +373,17 @@ export function ReviewPage() {
   const { review } = useUiStore();
   const { data: settings, isLoading: isSettingsLoading } = useSettings();
   const { data: layer1Reviews = [] } = useReviews();
+  const { data: candidateRoutes = [] } = useCandidateReviewRoutes();
   const { data: items = [] } = useReviewBoard();
   const { data: groups = [] } = useMultiSource();
   const reviewApprovalEnabled = settings?.reviewApprovalEnabled ?? false;
   const visibleItems = items.filter((item) => !item.resolved && !review.rvDone[item.id]);
   const visibleGroups = groups.filter((group) => !group.resolved);
-  const showPendingQueues = reviewApprovalEnabled || layer1Reviews.length > 0;
+  const showPendingQueues = reviewApprovalEnabled || layer1Reviews.length > 0 || candidateRoutes.length > 0;
   const pending = showPendingQueues
     ? layer1Reviews.length + (reviewApprovalEnabled ? visibleItems.length + visibleGroups.length : 0)
     : 0;
+  const totalPending = pending + candidateRoutes.length;
   // The progress bar charts the legacy review board, which keeps resolved items as a stable
   // denominator. Layer 1 reviews leave the dataset on approval (REVIEW → GRAPH_INDEXED), so they
   // have no completed-count to chart — they're surfaced via `pending` and their own section. Guard
@@ -297,7 +391,7 @@ export function ReviewPage() {
   const legacyTotal = items.length + groups.length;
   const legacyCompleted = legacyTotal - visibleItems.length - visibleGroups.length;
   const progress =
-    pending > 0 ? (legacyTotal === 0 ? 0 : Math.round((legacyCompleted / legacyTotal) * 100)) : 100;
+    totalPending > 0 ? (legacyTotal === 0 ? 0 : Math.round((legacyCompleted / legacyTotal) * 100)) : 100;
 
   return (
     <section className="page">
@@ -306,7 +400,7 @@ export function ReviewPage() {
           <p className="eyebrow">Review</p>
           <h1>신규 검토 대상</h1>
         </div>
-        <Badge tone="warn">{pending}건</Badge>
+        <Badge tone="warn">{totalPending}건</Badge>
       </div>
       {isSettingsLoading ? (
         <div className="empty">검토 설정을 불러오는 중입니다.</div>
@@ -320,11 +414,12 @@ export function ReviewPage() {
       ) : (
         <>
       <div className="rv-prog"><span style={{ width: `${progress}%` }} /></div>
+      <CandidateTriageSection items={candidateRoutes} />
       <Layer1ReviewSection items={layer1Reviews} />
       <div className="review-grid">
         {reviewApprovalEnabled ? visibleItems.map((item) => <ReviewCard item={item} key={item.id} />) : null}
         {reviewApprovalEnabled ? visibleGroups.map((group) => <MultiSourceCard group={group} key={group.id} />) : null}
-        {pending === 0 ? <div className="empty">신규 검토 대상이 없습니다.</div> : null}
+        {totalPending === 0 ? <div className="empty">신규 검토 대상이 없습니다.</div> : null}
       </div>
         </>
       )}

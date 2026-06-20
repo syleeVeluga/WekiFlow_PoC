@@ -16,6 +16,7 @@ import {
   KnowledgeCandidateListQuerySchema,
   LoginBodySchema,
   MsResolveBodySchema,
+  ResolveCandidateRouteBodySchema,
   RuntimeConfigPatchSchema,
   UpdateKnowledgeCandidateStatusSchema,
   UpdateAppSettingsSchema,
@@ -30,7 +31,7 @@ import {
 } from '@wf/shared';
 import { extractConversationCandidates } from '@wf/agent-tools';
 import { getConnector } from '@wf/connectors';
-import { PolicyError, PolicySchema, defaultPolicy, enforcePolicy, loadEffectivePolicy, parse as parseWkf, type Policy } from '@wekiflow/wkf';
+import { PolicyError, PolicySchema, defaultPolicy, enforcePolicy, loadEffectivePolicy, parse as parseWkf, routeCandidate, type Policy } from '@wekiflow/wkf';
 import { InMemoryWekiFlowStore, type IngestInput, type IngestResult, type WekiFlowStore } from './store.js';
 
 // Shared cap for both upload routes (/api/ingest/file and /api/agent-preview).
@@ -793,9 +794,9 @@ export function buildServer({
     if (!me || !canEdit(me.role)) return reply.code(403).send({ error: 'Forbidden' });
     const { id } = request.params as { id: string };
     const body = UpdateKnowledgeCandidateStatusSchema.parse(request.body);
+    const candidate = await store.getCandidate(id);
+    if (!candidate) return reply.code(404).send({ error: 'Not found' });
     if (body.status === 'SOURCE_VERIFIED' || body.provenanceNeedsSource === false || body.removeRiskFactor === 'no_source') {
-      const candidate = await store.getCandidate(id);
-      if (!candidate) return reply.code(404).send({ error: 'Not found' });
       if (!body.linkedDocId) return reply.code(400).send({ error: 'linkedDocId is required to verify a source' });
       const linkedDoc = await store.getDocument(body.linkedDocId);
       if (!linkedDoc) return reply.code(400).send({ error: 'Linked source document not found' });
@@ -804,7 +805,61 @@ export function buildServer({
         return reply.code(400).send({ error: 'Linked source document belongs to a different workspace' });
       }
     }
+    if (body.status === 'PUBLISHED') {
+      const route = routeCandidate(candidate, await currentRuntimePolicy(), { role: me.role });
+      if (route.action === 'reject') return reply.code(409).send({ error: 'Conflicted candidates cannot be published' });
+      if (route.action === 'needs_source') return reply.code(409).send({ error: 'Candidate needs a verified source before publishing' });
+      if (route.action === 'needs_approval' && !route.canApprove) {
+        return reply.code(403).send({ error: `Approval requires one of: ${route.approverRoles.join(', ')}` });
+      }
+    }
     const result = await store.updateCandidateStatus(id, body);
+    if (!result.ok) return reply.code(result.statusCode).send({ error: result.error });
+    return result.candidate;
+  });
+
+  app.get('/api/candidate-review-routes', async (request, reply) => {
+    const me = await currentUser(request);
+    if (!me || !canReview(me.role)) return reply.code(403).send({ error: 'Forbidden' });
+    const policy = await currentRuntimePolicy();
+    const candidates = await store.listCandidates(KnowledgeCandidateListQuerySchema.parse(request.query));
+    return candidates
+      .filter((candidate) => candidate.status !== 'PUBLISHED')
+      .map((candidate) => ({ candidate, route: routeCandidate(candidate, policy, { role: me.role }) }));
+  });
+
+  app.post('/api/candidates/:id/route', async (request, reply) => {
+    const me = await currentUser(request);
+    if (!me || !canReview(me.role)) return reply.code(403).send({ error: 'Forbidden' });
+    const { id } = request.params as { id: string };
+    const body = ResolveCandidateRouteBodySchema.parse(request.body);
+    const candidate = await store.getCandidate(id);
+    if (!candidate) return reply.code(404).send({ error: 'Not found' });
+    const route = routeCandidate(candidate, await currentRuntimePolicy(), { role: me.role });
+
+    if (body.action === 'auto_publish') {
+      if (route.action !== 'auto_publish') return reply.code(409).send({ error: `Candidate route is ${route.action}` });
+      const result = await store.updateCandidateStatus(id, { status: 'PUBLISHED' });
+      if (!result.ok) return reply.code(result.statusCode).send({ error: result.error });
+      return result.candidate;
+    }
+
+    if (body.action === 'approve') {
+      if (route.action === 'reject') return reply.code(409).send({ error: 'Conflicted candidates cannot be approved' });
+      if (route.action === 'needs_source') return reply.code(409).send({ error: 'Candidate needs a verified source before approval' });
+      if (!route.canApprove) return reply.code(403).send({ error: `Approval requires one of: ${route.approverRoles.join(', ')}` });
+      const result = await store.updateCandidateStatus(id, { status: 'PUBLISHED' });
+      if (!result.ok) return reply.code(result.statusCode).send({ error: result.error });
+      return result.candidate;
+    }
+
+    if (body.action === 'request_source') {
+      const result = await store.updateCandidateStatus(id, { status: 'NEEDS_CHECK' });
+      if (!result.ok) return reply.code(result.statusCode).send({ error: result.error });
+      return result.candidate;
+    }
+
+    const result = await store.updateCandidateStatus(id, { status: 'CONFLICTED' });
     if (!result.ok) return reply.code(result.statusCode).send({ error: result.error });
     return result.candidate;
   });

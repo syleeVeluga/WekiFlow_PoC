@@ -461,6 +461,93 @@ describe('@wf/api routes', () => {
     await app.close();
   });
 
+  it('routes candidate review triage by risk, source, conflict, and approver role', async () => {
+    const app = buildServer();
+    const ownerToken = await login(app, 'admin01@veluga.io', 'admin01@veluga.io');
+    const approverToken = await login(app, 'lee.jisoo@veluga.io', 'lee.jisoo@veluga.io');
+    const reviewerToken = await login(app, 'park.minji@veluga.io', 'park.minji@veluga.io');
+
+    const create = async (payload: Record<string, unknown>) => {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/candidates',
+        headers: { authorization: `Bearer ${ownerToken}` },
+        payload: {
+          title: 'Candidate',
+          provenance: { kind: 'file', ref: 'file://candidate.md' },
+          ...payload,
+        },
+      });
+      expect(response.statusCode).toBe(200);
+      return response.json() as { id: string };
+    };
+
+    const auto = await create({ title: 'Low risk', status: 'SOURCE_VERIFIED' });
+    const approval = await create({ title: 'Regulation', riskFactors: ['regulation'] });
+    const source = await create({
+      title: 'Conversation no source',
+      provenance: { kind: 'conversation', ref: 'chat://1' },
+      riskFactors: ['official_answer', 'no_source'],
+    });
+    const conflict = await create({ title: 'Conflicting', riskFactors: ['security', 'conflict'], conflictWith: ['k01'] });
+
+    const routes = await app.inject({
+      method: 'GET',
+      url: '/api/candidate-review-routes',
+      headers: { authorization: `Bearer ${reviewerToken}` },
+    });
+    expect(routes.statusCode).toBe(200);
+    const byId = new Map(routes.json().map((item: { candidate: { id: string }; route: { action: string; canApprove: boolean } }) => [item.candidate.id, item.route]));
+    expect(byId.get(auto.id)).toMatchObject({ action: 'auto_publish' });
+    expect(byId.get(approval.id)).toMatchObject({ action: 'needs_approval', canApprove: false });
+    expect(byId.get(source.id)).toMatchObject({ action: 'needs_source' });
+    expect(byId.get(conflict.id)).toMatchObject({ action: 'reject' });
+
+    const reviewerApprove = await app.inject({
+      method: 'POST',
+      url: `/api/candidates/${approval.id}/route`,
+      headers: { authorization: `Bearer ${reviewerToken}` },
+      payload: { action: 'approve' },
+    });
+    expect(reviewerApprove.statusCode).toBe(403);
+
+    const approverApprove = await app.inject({
+      method: 'POST',
+      url: `/api/candidates/${approval.id}/route`,
+      headers: { authorization: `Bearer ${approverToken}` },
+      payload: { action: 'approve' },
+    });
+    expect(approverApprove.statusCode).toBe(200);
+    expect(approverApprove.json().status).toBe('PUBLISHED');
+
+    const sourceApprove = await app.inject({
+      method: 'POST',
+      url: `/api/candidates/${source.id}/route`,
+      headers: { authorization: `Bearer ${ownerToken}` },
+      payload: { action: 'approve' },
+    });
+    expect(sourceApprove.statusCode).toBe(409);
+
+    const conflictApprove = await app.inject({
+      method: 'POST',
+      url: `/api/candidates/${conflict.id}/route`,
+      headers: { authorization: `Bearer ${ownerToken}` },
+      payload: { action: 'approve' },
+    });
+    expect(conflictApprove.statusCode).toBe(409);
+
+    const published = await app.inject({
+      method: 'POST',
+      url: `/api/candidates/${auto.id}/route`,
+      headers: { authorization: `Bearer ${reviewerToken}` },
+      payload: { action: 'auto_publish' },
+    });
+    expect(published.statusCode).toBe(200);
+    expect(published.json().status).toBe('PUBLISHED');
+
+    await app.close();
+  });
+
   it('creates needs-check candidates from conversation ingest inputs', async () => {
     const app = buildServer();
     const ownerToken = await login(app, 'admin01@veluga.io', 'admin01@veluga.io');

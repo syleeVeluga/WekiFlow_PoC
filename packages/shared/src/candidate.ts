@@ -21,8 +21,13 @@ export const riskFactors = [
   'external_exposure',
 ] as const;
 
+export const candidateRouteActions = ['auto_publish', 'needs_approval', 'needs_source', 'reject'] as const;
+export const candidateRouteResolveActions = ['approve', 'reject', 'request_source', 'auto_publish'] as const;
+
 export const CandidateStatusSchema = z.enum(candidateStatuses);
 export const RiskFactorSchema = z.enum(riskFactors);
+export const CandidateRouteActionSchema = z.enum(candidateRouteActions);
+export const CandidateRouteResolveActionSchema = z.enum(candidateRouteResolveActions);
 const CandidateDocumentStatusSchema = z.enum([
   'DRAFT',
   'PROCESSING',
@@ -36,6 +41,8 @@ type CandidateDocumentStatus = z.infer<typeof CandidateDocumentStatusSchema>;
 
 export type CandidateStatus = z.infer<typeof CandidateStatusSchema>;
 export type RiskFactor = z.infer<typeof RiskFactorSchema>;
+export type CandidateRouteAction = z.infer<typeof CandidateRouteActionSchema>;
+export type CandidateRouteResolveAction = z.infer<typeof CandidateRouteResolveActionSchema>;
 
 export const CANDIDATE_STATUS_LABEL: Record<CandidateStatus, string> = {
   AI_ORGANIZED: 'AI 정리됨',
@@ -169,6 +176,31 @@ export const KnowledgeCandidateSchema = CandidateContractSchema.extend({
 });
 
 export type KnowledgeCandidate = z.infer<typeof KnowledgeCandidateSchema>;
+
+export const CandidateRouteSchema = z.object({
+  action: CandidateRouteActionSchema,
+  reasons: z.array(RiskFactorSchema).default([]),
+  reasonLabels: z.array(z.string()).default([]),
+  approverRoles: z.array(z.string()).default([]),
+  canApprove: z.boolean().default(false),
+  recommendedAction: z.string(),
+});
+
+export type CandidateRoute = z.infer<typeof CandidateRouteSchema>;
+
+export const CandidateReviewItemSchema = z.object({
+  candidate: KnowledgeCandidateSchema,
+  route: CandidateRouteSchema,
+});
+
+export type CandidateReviewItem = z.infer<typeof CandidateReviewItemSchema>;
+
+export const ResolveCandidateRouteBodySchema = z.object({
+  action: CandidateRouteResolveActionSchema,
+  linkedDocId: z.string().min(1).optional(),
+});
+
+export type ResolveCandidateRouteBody = z.infer<typeof ResolveCandidateRouteBodySchema>;
 
 export const CreateKnowledgeCandidateSchema = z.object({
   title: z.string().min(1),
