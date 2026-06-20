@@ -26,6 +26,7 @@ import {
   type TreeCategory,
   type TreeNode,
   type UpdateAppSettings,
+  type UpdateUserRoleBody,
   type User,
   type UserRole,
   UNCLASSIFIED_TOPIC_NAME,
@@ -455,17 +456,24 @@ export class MongoWekiFlowStore implements WekiFlowStore {
     const existing = await this.usersRepo.findByEmailWithPassword(body.email);
     if (existing) return { ok: false, statusCode: 409, error: '이미 존재하는 이메일입니다.' };
     // PoC: 비밀번호는 이메일과 동일하게 발급.
-    const user = await this.usersRepo.create({ email: body.email, name: body.name, role: body.role, password: body.email });
+    const user = await this.usersRepo.create({
+      email: body.email,
+      name: body.name,
+      role: body.role,
+      isSuperAdmin: body.isSuperAdmin,
+      password: body.email,
+    });
     return { ok: true, user };
   }
 
-  async updateUserRole(id: string, role: UserRole): Promise<UserResult> {
+  async updateUserRole(id: string, body: UpdateUserRoleBody): Promise<UserResult> {
     const current = await this.usersRepo.getById(id);
     if (!current) return { ok: false, statusCode: 404, error: '사용자를 찾을 수 없습니다.' };
+    const role = body.role;
     if (current.role === 'OWNER' && role !== 'OWNER' && (await this.usersRepo.countByRole('OWNER')) <= 1) {
       return { ok: false, statusCode: 400, error: '마지막 소유자의 권한은 변경할 수 없습니다.' };
     }
-    const updated = await this.usersRepo.updateRole(id, role);
+    const updated = await this.usersRepo.updateUser(id, body);
     if (!updated) return { ok: false, statusCode: 404, error: '사용자를 찾을 수 없습니다.' };
     return { ok: true, user: updated };
   }

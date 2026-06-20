@@ -1,6 +1,6 @@
 import { ObjectId } from 'mongodb';
 import { describe, expect, it } from 'vitest';
-import { createDocumentsRepo, getDocumentConnections } from './repositories.js';
+import { createDocumentsRepo, createUsersRepo, getDocumentConnections } from './repositories.js';
 
 describe('createDocumentsRepo', () => {
   it('generates distinct slugs for documents with the same title', async () => {
@@ -145,6 +145,92 @@ describe('createDocumentsRepo', () => {
     // An unparseable id must not issue a write.
     await repo.addWikiTags('not-an-object-id', ['복지']);
     expect(updates).toHaveLength(1);
+  });
+});
+
+describe('createUsersRepo', () => {
+  it('persists and returns the orthogonal superadmin flag', async () => {
+    const rows: Array<Record<string, unknown> & { _id: ObjectId }> = [];
+    const sessions: Array<Record<string, unknown>> = [];
+    const db = {
+      collection(name: string) {
+        if (name === 'users') {
+          return {
+            async updateOne(query: { email: string }, update: { $setOnInsert: Record<string, unknown> }) {
+              if (!rows.some((row) => row.email === query.email)) {
+                rows.push({ _id: new ObjectId(), ...update.$setOnInsert });
+              }
+              return { upsertedCount: 1 };
+            },
+            find() {
+              return {
+                sort() {
+                  return {
+                    async toArray() {
+                      return rows;
+                    },
+                  };
+                },
+              };
+            },
+            async findOne(query: Record<string, unknown>) {
+              if (query.email) return rows.find((row) => row.email === query.email) ?? null;
+              if (query._id instanceof ObjectId) return rows.find((row) => row._id.equals(query._id as ObjectId)) ?? null;
+              return null;
+            },
+            async insertOne(doc: Record<string, unknown> & { _id: ObjectId }) {
+              rows.push(doc);
+              return { insertedId: doc._id };
+            },
+            async findOneAndUpdate(query: { _id: ObjectId }, update: { $set: Record<string, unknown> }) {
+              const row = rows.find((entry) => entry._id.equals(query._id));
+              if (!row) return null;
+              Object.assign(row, update.$set);
+              return row;
+            },
+            async countDocuments(query: { role: string }) {
+              return rows.filter((row) => row.role === query.role).length;
+            },
+          };
+        }
+        if (name === 'sessions') {
+          return {
+            async insertOne(doc: Record<string, unknown>) {
+              sessions.push(doc);
+              return { insertedId: doc.token };
+            },
+            async findOne(query: { token: string }) {
+              return sessions.find((row) => row.token === query.token) ?? null;
+            },
+            async deleteOne() {
+              return { deletedCount: 1 };
+            },
+            async deleteMany() {
+              return { deletedCount: 1 };
+            },
+          };
+        }
+        throw new Error(`Unexpected collection ${name}`);
+      },
+    } as never;
+    const repo = createUsersRepo(db);
+
+    await repo.ensureOwner('owner@example.com', 'pw');
+    const owner = await repo.findByEmailWithPassword('owner@example.com');
+    expect(owner).toMatchObject({ role: 'OWNER', isSuperAdmin: true });
+
+    const created = await repo.create({
+      email: 'dev@example.com',
+      name: 'Dev',
+      role: 'EDITOR',
+      isSuperAdmin: true,
+      password: 'dev@example.com',
+    });
+    expect(created).toMatchObject({ role: 'EDITOR', isSuperAdmin: true });
+
+    const updated = await repo.updateUser(created.id, { role: 'EDITOR', isSuperAdmin: false });
+    expect(updated).toMatchObject({ role: 'EDITOR', isSuperAdmin: false });
+    expect((await repo.list()).find((user) => user.id === created.id)).toMatchObject({ isSuperAdmin: false });
   });
 });
 

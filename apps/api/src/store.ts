@@ -18,6 +18,7 @@ import {
   type ReviewItem,
   type Topic,
   type TreeCategory,
+  type UpdateUserRoleBody,
   type UpdateAppSettings,
   type JobRef,
   type IngestionInfo,
@@ -148,7 +149,7 @@ export interface WekiFlowStore {
   logout(token: string): Promise<void>;
   listUsers(): Promise<User[]>;
   createUser(body: CreateUserBody): Promise<UserResult>;
-  updateUserRole(id: string, role: UserRole): Promise<UserResult>;
+  updateUserRole(id: string, body: UpdateUserRoleBody): Promise<UserResult>;
   deleteUser(id: string): Promise<OkResult>;
   settings(): Promise<AppSettings>;
   updateSettings(body: UpdateAppSettings, role: UserRole): Promise<SettingsResult>;
@@ -183,9 +184,9 @@ export class InMemoryWekiFlowStore implements WekiFlowStore {
   private sequence = 0;
   private userSequence = 0;
 
-  private addUser(name: string, email: string, role: UserRole, password: string) {
+  private addUser(name: string, email: string, role: UserRole, password: string, isSuperAdmin = false) {
     const id = `user-${++this.userSequence}`;
-    this.users.set(id, { id, email, name, role, password, createdAt: new Date().toISOString() });
+    this.users.set(id, { id, email, name, role, isSuperAdmin, password, createdAt: new Date().toISOString() });
   }
 
   private countOwners(): number {
@@ -195,7 +196,7 @@ export class InMemoryWekiFlowStore implements WekiFlowStore {
   seed() {
     if (this.users.size === 0) {
       const env = loadEnv();
-      this.addUser('소유자', env.ADMIN_EMAIL, 'OWNER', env.ADMIN_PASSWORD);
+      this.addUser('소유자', env.ADMIN_EMAIL, 'OWNER', env.ADMIN_PASSWORD, true);
       for (const u of seedDemoUsers) this.addUser(u.name, u.email, u.role, u.email);
     }
     if (this.documents.size > 0) return;
@@ -745,18 +746,19 @@ export class InMemoryWekiFlowStore implements WekiFlowStore {
       return { ok: false, statusCode: 409, error: '이미 존재하는 이메일입니다.' };
     }
     // PoC: 비밀번호는 이메일과 동일하게 발급.
-    this.addUser(body.name, body.email, body.role, body.email);
+    this.addUser(body.name, body.email, body.role, body.email, body.isSuperAdmin);
     const created = [...this.users.values()].find((user) => user.email === body.email)!;
     return { ok: true, user: stripPassword(created) };
   }
 
-  async updateUserRole(id: string, role: UserRole): Promise<UserResult> {
+  async updateUserRole(id: string, body: UpdateUserRoleBody): Promise<UserResult> {
     const user = this.users.get(id);
     if (!user) return { ok: false, statusCode: 404, error: '사용자를 찾을 수 없습니다.' };
+    const role = body.role;
     if (user.role === 'OWNER' && role !== 'OWNER' && this.countOwners() <= 1) {
       return { ok: false, statusCode: 400, error: '마지막 소유자의 권한은 변경할 수 없습니다.' };
     }
-    const updated = { ...user, role };
+    const updated = { ...user, role, ...(body.isSuperAdmin !== undefined ? { isSuperAdmin: body.isSuperAdmin } : {}) };
     this.users.set(id, updated);
     return { ok: true, user: stripPassword(updated) };
   }

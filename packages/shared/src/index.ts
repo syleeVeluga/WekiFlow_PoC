@@ -409,12 +409,18 @@ export function canManageOwners(role: UserRole): boolean {
   return role === 'OWNER';
 }
 
+/** Dev control panel access is orthogonal to the role ladder. */
+export function canAccessDevPanel(user: { isSuperAdmin?: boolean }): boolean {
+  return user.isSuperAdmin === true;
+}
+
 // --- User & auth (Phase: 로그인/사용자 관리) ---
 export const UserSchema = z.object({
   id: z.string(),
   email: z.string().email(),
   name: z.string(),
   role: UserRoleSchema,
+  isSuperAdmin: z.boolean().optional().default(false),
   createdAt: z.string(),
 });
 export type User = z.infer<typeof UserSchema>;
@@ -432,10 +438,14 @@ export const CreateUserBodySchema = z.object({
   email: z.string().email(),
   name: z.string().min(1),
   role: UserRoleSchema,
+  isSuperAdmin: z.boolean().optional().default(false),
 });
 export type CreateUserBody = z.infer<typeof CreateUserBodySchema>;
 
-export const UpdateUserRoleBodySchema = z.object({ role: UserRoleSchema });
+export const UpdateUserRoleBodySchema = z.object({
+  role: UserRoleSchema,
+  isSuperAdmin: z.boolean().optional(),
+});
 export type UpdateUserRoleBody = z.infer<typeof UpdateUserRoleBodySchema>;
 
 // 데모 사용자 — 기존 시드 작성자 이름 기반. 비밀번호는 이메일과 동일하게 시드된다.

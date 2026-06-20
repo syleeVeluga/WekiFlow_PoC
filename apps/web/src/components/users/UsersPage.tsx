@@ -10,7 +10,12 @@ export function UsersPage() {
   const showToast = useUiStore((s) => s.showToast);
   const { data: users = [] } = useUsers();
   const { create, updateRole, remove } = useUserMutations();
-  const [form, setForm] = useState<{ name: string; email: string; role: UserRole }>({ name: '', email: '', role: 'VIEWER' });
+  const [form, setForm] = useState<{ name: string; email: string; role: UserRole; isSuperAdmin: boolean }>({
+    name: '',
+    email: '',
+    role: 'VIEWER',
+    isSuperAdmin: false,
+  });
 
   if (!me || !canManageUsers(me.role)) {
     return (
@@ -29,7 +34,7 @@ export function UsersPage() {
     create.mutate(form, {
       onSuccess: () => {
         showToast('사용자를 추가했습니다.', 'ok');
-        setForm({ name: '', email: '', role: 'VIEWER' });
+        setForm({ name: '', email: '', role: 'VIEWER', isSuperAdmin: false });
       },
       onError: toastErr,
     });
@@ -57,6 +62,16 @@ export function UsersPage() {
               <option key={role} value={role}>{roleLabels[role]}</option>
             ))}
           </select>
+          {isOwner ? (
+            <label className="inline-check">
+              <input
+                type="checkbox"
+                checked={form.isSuperAdmin}
+                onChange={(e) => setForm({ ...form, isSuperAdmin: e.target.checked })}
+              />
+              슈퍼어드민
+            </label>
+          ) : null}
           <button className="btn-primary" type="submit" disabled={create.isPending}>추가</button>
         </div>
       </form>
@@ -64,7 +79,7 @@ export function UsersPage() {
       <div className="card">
         <table className="user-table">
           <thead>
-            <tr><th>이름</th><th>이메일</th><th>권한</th><th aria-label="작업" /></tr>
+            <tr><th>이름</th><th>이메일</th><th>권한</th><th>슈퍼어드민</th><th aria-label="작업" /></tr>
           </thead>
           <tbody>
             {users.map((user) => {
@@ -80,7 +95,7 @@ export function UsersPage() {
                       disabled={lockOwnerRow || updateRole.isPending}
                       onChange={(e) =>
                         updateRole.mutate(
-                          { id: user.id, role: e.target.value as UserRole },
+                          { id: user.id, body: { role: e.target.value as UserRole, isSuperAdmin: user.isSuperAdmin } },
                           { onSuccess: () => showToast('권한을 변경했습니다.', 'ok'), onError: toastErr },
                         )
                       }
@@ -89,6 +104,19 @@ export function UsersPage() {
                         <option key={role} value={role}>{roleLabels[role]}</option>
                       ))}
                     </select>
+                  </td>
+                  <td>
+                    <input
+                      type="checkbox"
+                      checked={user.isSuperAdmin === true}
+                      disabled={!isOwner || updateRole.isPending}
+                      onChange={(e) =>
+                        updateRole.mutate(
+                          { id: user.id, body: { role: user.role, isSuperAdmin: e.target.checked } },
+                          { onSuccess: () => showToast('슈퍼어드민 설정을 변경했습니다.', 'ok'), onError: toastErr },
+                        )
+                      }
+                    />
                   </td>
                   <td>
                     <button

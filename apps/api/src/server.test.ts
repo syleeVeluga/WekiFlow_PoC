@@ -605,6 +605,56 @@ describe('@wf/api routes', () => {
     await app.close();
   });
 
+  it('gates /api/admin with isSuperAdmin and lets only owners change that flag', async () => {
+    const app = buildServer();
+    const ownerToken = await login(app, 'admin01@veluga.io', 'admin01@veluga.io');
+    const approverToken = await login(app, 'lee.jisoo@veluga.io', 'lee.jisoo@veluga.io');
+    const reviewerToken = await login(app, 'park.minji@veluga.io', 'park.minji@veluga.io');
+
+    expect((await app.inject({ method: 'GET', url: '/api/admin/health' })).statusCode).toBe(403);
+    expect((await app.inject({ method: 'GET', url: '/api/admin/health', headers: { authorization: `Bearer ${reviewerToken}` } })).statusCode).toBe(403);
+    expect((await app.inject({ method: 'GET', url: '/api/admin/health', headers: { authorization: `Bearer ${ownerToken}` } })).statusCode).toBe(200);
+
+    const forbiddenGrant = await app.inject({
+      method: 'POST',
+      url: '/api/users',
+      headers: { authorization: `Bearer ${approverToken}` },
+      payload: { email: 'blocked.super@veluga.io', name: 'Blocked', role: 'EDITOR', isSuperAdmin: true },
+    });
+    expect(forbiddenGrant.statusCode).toBe(403);
+
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/users',
+      headers: { authorization: `Bearer ${ownerToken}` },
+      payload: { email: 'dev.super@veluga.io', name: 'Dev Super', role: 'EDITOR', isSuperAdmin: true },
+    });
+    expect(created.statusCode).toBe(200);
+    expect(created.json()).toMatchObject({ role: 'EDITOR', isSuperAdmin: true });
+
+    const superToken = await login(app, 'dev.super@veluga.io', 'dev.super@veluga.io');
+    expect((await app.inject({ method: 'GET', url: '/api/admin/health', headers: { authorization: `Bearer ${superToken}` } })).statusCode).toBe(200);
+
+    const forbiddenRevoke = await app.inject({
+      method: 'PATCH',
+      url: `/api/users/${created.json().id}`,
+      headers: { authorization: `Bearer ${approverToken}` },
+      payload: { role: 'EDITOR', isSuperAdmin: false },
+    });
+    expect(forbiddenRevoke.statusCode).toBe(403);
+
+    const revoked = await app.inject({
+      method: 'PATCH',
+      url: `/api/users/${created.json().id}`,
+      headers: { authorization: `Bearer ${ownerToken}` },
+      payload: { role: 'EDITOR', isSuperAdmin: false },
+    });
+    expect(revoked.statusCode).toBe(200);
+    expect(revoked.json()).toMatchObject({ role: 'EDITOR', isSuperAdmin: false });
+
+    await app.close();
+  });
+
   it('applies policy review role overrides on document approval', async () => {
     const ownerOnlyRegulationPolicy = {
       ...defaultPolicy,
