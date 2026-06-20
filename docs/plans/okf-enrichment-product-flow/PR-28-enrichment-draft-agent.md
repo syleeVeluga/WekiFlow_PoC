@@ -1,6 +1,6 @@
 # PR-28 — Enrichment Draft Agent (T2)
 
-> Track T2 · 상태: 계획 · 선행: [PR-26](./PR-26-candidate-contract.md), [PR-27](./PR-27-candidate-model-and-trust-labels.md) · 근거: [`Overview.md`](./Overview.md) §3.1·§5.1-1·§5.1-5, [`Gap-Analysis.md`](./Gap-Analysis.md) §2.1·§2.5
+> Track T2 · 상태: 완료(PR #41) · 선행: [PR-26](./PR-26-candidate-contract.md), [PR-27](./PR-27-candidate-model-and-trust-labels.md) · 근거: [`Overview.md`](./Overview.md) §3.1·§5.1-1·§5.1-5, [`Gap-Analysis.md`](./Gap-Analysis.md) §2.1·§2.5
 > 외부 API 메모: 소스 fetch는 PR-29 Source Connector 인터페이스를 통해서만 호출(여기서는 인터페이스 소비).
 
 ## 목표
@@ -42,10 +42,10 @@
 
 ## DoD
 
-- [ ] 인입이 create/enhance/skip/source-only 4분기를 지원한다.
-- [ ] 산출이 `KnowledgeCandidate`로 저장되고 위험도/충돌이 반영된다.
-- [ ] `wkf regenerate`가 실제 draft agent와 연결된다.
-- [ ] 기존 병합·검증·sandbox 도구는 회귀 없이 동작한다.
+- [x] 인입이 create/enhance/skip/source-only 4분기를 지원한다.
+- [x] 산출이 `KnowledgeCandidate`로 저장되고 위험도/충돌이 반영된다.
+- [x] `wkf regenerate`가 실제 draft agent와 연결된다.
+- [x] 기존 병합·검증·sandbox 도구는 회귀 없이 동작한다.
 
 ## 리스크·메모
 
