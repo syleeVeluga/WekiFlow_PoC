@@ -4,12 +4,17 @@ import {
   KnowledgeFreshnessSchema,
   TagClassificationSchema,
   TripletArraySchema,
+  RuntimeConfigPatchSchema,
+  RuntimeConfigSchema,
   canAccessDevPanel,
   canApprove,
   canManageUsers,
   canReview,
   chunkMarkdown,
+  createDefaultRuntimeConfig,
   createSeedKnowledgeItems,
+  mergeRuntimeConfig,
+  mergeRuntimeConfigPatch,
   normalizeEntityName,
 } from './index.js';
 
@@ -62,6 +67,39 @@ describe('@wf/shared', () => {
     expect(canAccessDevPanel({ isSuperAdmin: true })).toBe(true);
     expect(canAccessDevPanel({ isSuperAdmin: false })).toBe(false);
     expect(canAccessDevPanel({})).toBe(false);
+  });
+
+  it('merges runtime config overrides and treats null patch values as default restore', () => {
+    const defaults = createDefaultRuntimeConfig({
+      AGENT_MODEL: 'gpt-default',
+      EMBEDDING_MODEL: 'embed-default',
+      TRIPLET_GOOGLE_MODEL: 'google-default',
+      TRIPLET_ANTHROPIC_MODEL: 'anthropic-default',
+      TRIPLET_OPENAI_FALLBACK_MODEL: 'openai-default',
+    });
+    const overrides = RuntimeConfigSchema.parse({
+      prompts: { main: 'custom main' },
+      agentParams: { vectorK: 12 },
+      models: { agentModel: 'gpt-custom' },
+    });
+
+    expect(mergeRuntimeConfig(defaults, overrides)).toMatchObject({
+      prompts: { main: 'custom main', merge: defaults.prompts.merge },
+      agentParams: { vectorK: 12, mainStepLimit: 12 },
+      models: { agentModel: 'gpt-custom', embeddingModel: 'embed-default' },
+    });
+
+    const restored = mergeRuntimeConfigPatch(overrides, RuntimeConfigPatchSchema.parse({
+      prompts: { main: null },
+      agentParams: { vectorK: null, graphMaxDepth: 3 },
+      models: { agentModel: null },
+    }));
+    expect(restored).toMatchObject({
+      prompts: {},
+      agentParams: { graphMaxDepth: 3 },
+      models: {},
+      policy: null,
+    });
   });
 
   it('keeps wiki freshness separate from document workflow status', () => {

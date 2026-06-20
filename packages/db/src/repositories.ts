@@ -6,7 +6,12 @@ import {
   chunkMarkdown,
   AppSettingsSchema,
   DEFAULT_APP_SETTINGS,
+  RuntimeConfigSchema,
+  createDefaultRuntimeConfig,
   ingestSourceNote,
+  loadEnv,
+  mergeRuntimeConfig,
+  mergeRuntimeConfigPatch,
   normalizeEntityName,
   type AgentStepDTO,
   type AppSettings,
@@ -19,6 +24,9 @@ import {
   type UpdateAppSettings,
   type KnowledgeItem,
   type RelatedDoc,
+  type RuntimeConfig,
+  type RuntimeConfigPatch,
+  type RuntimeConfigResponse,
   type SourceRef,
   type TreeNode,
   type Triplet,
@@ -581,6 +589,58 @@ export function createSettingsRepo(db: Db) {
       );
       return this.get();
     },
+  };
+}
+
+function toRuntimeConfig(row: Document | null): RuntimeConfig {
+  return RuntimeConfigSchema.parse({
+    prompts: row?.prompts ?? {},
+    agentParams: row?.agentParams ?? {},
+    models: row?.models ?? {},
+    policy: row?.policy ?? null,
+  });
+}
+
+export function createRuntimeConfigRepo(db: Db) {
+  const collection = db.collection<{
+    _id: string;
+    prompts?: RuntimeConfig['prompts'];
+    agentParams?: RuntimeConfig['agentParams'];
+    models?: RuntimeConfig['models'];
+    policy?: RuntimeConfig['policy'];
+    createdAt?: Date;
+    updatedAt?: Date;
+  }>('app_config');
+  const id = 'runtime';
+
+  return {
+    async get(): Promise<RuntimeConfig> {
+      const row = await collection.findOne({ _id: id });
+      return toRuntimeConfig(row);
+    },
+
+    async update(patch: RuntimeConfigPatch): Promise<RuntimeConfig> {
+      const next = mergeRuntimeConfigPatch(await this.get(), patch);
+      await collection.updateOne(
+        { _id: id },
+        {
+          $setOnInsert: { createdAt: new Date() },
+          $set: { ...next, updatedAt: new Date() },
+        },
+        { upsert: true },
+      );
+      return this.get();
+    },
+  };
+}
+
+export async function loadRuntimeConfig(db: Db): Promise<RuntimeConfigResponse> {
+  const defaults = createDefaultRuntimeConfig(loadEnv());
+  const overrides = await createRuntimeConfigRepo(db).get();
+  return {
+    defaults,
+    overrides,
+    effective: mergeRuntimeConfig(defaults, overrides),
   };
 }
 

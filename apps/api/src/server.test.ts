@@ -655,6 +655,59 @@ describe('@wf/api routes', () => {
     await app.close();
   });
 
+  it('serves and patches runtime config under the admin gate', async () => {
+    const app = buildServer();
+    const ownerToken = await login(app, 'admin01@veluga.io', 'admin01@veluga.io');
+    const reviewerToken = await login(app, 'park.minji@veluga.io', 'park.minji@veluga.io');
+
+    const denied = await app.inject({
+      method: 'GET',
+      url: '/api/admin/config',
+      headers: { authorization: `Bearer ${reviewerToken}` },
+    });
+    expect(denied.statusCode).toBe(403);
+
+    const before = await app.inject({
+      method: 'GET',
+      url: '/api/admin/config',
+      headers: { authorization: `Bearer ${ownerToken}` },
+    });
+    expect(before.statusCode).toBe(200);
+    expect(before.json().effective.agentParams.vectorK).toBe(8);
+    expect(before.json().defaults.models.agentModel).toBeTruthy();
+
+    const patched = await app.inject({
+      method: 'PATCH',
+      url: '/api/admin/config',
+      headers: { authorization: `Bearer ${ownerToken}` },
+      payload: { agentParams: { vectorK: 12 }, models: { agentModel: 'gpt-runtime' } },
+    });
+    expect(patched.statusCode).toBe(200);
+    expect(patched.json().overrides.agentParams.vectorK).toBe(12);
+    expect(patched.json().effective.models.agentModel).toBe('gpt-runtime');
+
+    const restored = await app.inject({
+      method: 'PATCH',
+      url: '/api/admin/config',
+      headers: { authorization: `Bearer ${ownerToken}` },
+      payload: { agentParams: { vectorK: null }, models: { agentModel: null } },
+    });
+    expect(restored.statusCode).toBe(200);
+    expect(restored.json().overrides.agentParams.vectorK).toBeUndefined();
+    expect(restored.json().effective.agentParams.vectorK).toBe(8);
+    expect(restored.json().effective.models.agentModel).toBe(restored.json().defaults.models.agentModel);
+
+    const invalid = await app.inject({
+      method: 'PATCH',
+      url: '/api/admin/config',
+      headers: { authorization: `Bearer ${ownerToken}` },
+      payload: { agentParams: { vectorK: 0 } },
+    });
+    expect(invalid.statusCode).toBe(400);
+
+    await app.close();
+  });
+
   it('applies policy review role overrides on document approval', async () => {
     const ownerOnlyRegulationPolicy = {
       ...defaultPolicy,

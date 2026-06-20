@@ -16,6 +16,9 @@ import {
   type MsResolveBody,
   type MultiSourceGroup,
   type ReviewItem,
+  type RuntimeConfig,
+  type RuntimeConfigPatch,
+  type RuntimeConfigResponse,
   type Topic,
   type TreeCategory,
   type UpdateUserRoleBody,
@@ -27,6 +30,7 @@ import {
   type User,
   type UserRole,
   DEFAULT_APP_SETTINGS,
+  RuntimeConfigSchema,
   buildIngestionIdempotencyScope,
   UNCLASSIFIED_TOPIC_NAME,
   buildIngestedKnowledgeItem,
@@ -39,10 +43,13 @@ import {
   createSeedMultiSourceGroups,
   createSeedReviews,
   createDefaultTopics,
+  createDefaultRuntimeConfig,
   deriveTopicsFromItems,
   groupKnowledgeByCategory,
   ingestSourceNote,
   loadEnv,
+  mergeRuntimeConfig,
+  mergeRuntimeConfigPatch,
   normalizeEntityName,
   seedDemoUsers,
 } from '@wf/shared';
@@ -153,6 +160,8 @@ export interface WekiFlowStore {
   deleteUser(id: string): Promise<OkResult>;
   settings(): Promise<AppSettings>;
   updateSettings(body: UpdateAppSettings, role: UserRole): Promise<SettingsResult>;
+  runtimeConfig(): Promise<RuntimeConfigResponse>;
+  updateRuntimeConfig(patch: RuntimeConfigPatch): Promise<RuntimeConfigResponse>;
   agentPreview(input: { title: string; contentMarkdown: string; commit?: boolean }): Promise<{ jobId: string; documentId: string }>;
   getAgentPreview(jobId: string): Promise<AgentPreviewRun | undefined>;
   listAgentPreviews(): Promise<AgentPreviewRun[]>;
@@ -178,6 +187,7 @@ export class InMemoryWekiFlowStore implements WekiFlowStore {
   readonly agentRuns = new Map<string, AgentPreviewRun>();
   readonly trash = new Map<string, { item: KnowledgeItem; trashedAt: string }>();
   private settingsState: AppSettings = DEFAULT_APP_SETTINGS;
+  private runtimeConfigState: RuntimeConfig = RuntimeConfigSchema.parse({});
   // Topic/workspace assigned at ingest, consumed on approve to materialize a KnowledgeItem.
   readonly ingestMeta = new Map<string, { topic?: string; workspace?: string; sourceLabel?: string }>();
 
@@ -786,5 +796,19 @@ export class InMemoryWekiFlowStore implements WekiFlowStore {
         ? this.settingsState
         : { ...this.settingsState, reviewApprovalEnabled: body.reviewApprovalEnabled };
     return { ok: true, settings: this.settingsState };
+  }
+
+  async runtimeConfig(): Promise<RuntimeConfigResponse> {
+    const defaults = createDefaultRuntimeConfig(loadEnv());
+    return {
+      defaults,
+      overrides: this.runtimeConfigState,
+      effective: mergeRuntimeConfig(defaults, this.runtimeConfigState),
+    };
+  }
+
+  async updateRuntimeConfig(patch: RuntimeConfigPatch): Promise<RuntimeConfigResponse> {
+    this.runtimeConfigState = mergeRuntimeConfigPatch(this.runtimeConfigState, patch);
+    return this.runtimeConfig();
   }
 }

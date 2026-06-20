@@ -13,6 +13,7 @@ import {
   KnowledgeQuerySchema,
   LoginBodySchema,
   MsResolveBodySchema,
+  RuntimeConfigPatchSchema,
   UpdateAppSettingsSchema,
   UpdateUserRoleBodySchema,
   type User,
@@ -440,6 +441,13 @@ export function buildServer({
 
   app.get('/api/admin/health', async () => {
     return { ok: true };
+  });
+
+  app.get('/api/admin/config', async () => store.runtimeConfig());
+
+  app.patch('/api/admin/config', async (request) => {
+    const body = RuntimeConfigPatchSchema.parse(request.body);
+    return store.updateRuntimeConfig(body);
   });
 
   // --- User management (소유자 + 승인; 소유자 역할/계정은 소유자만) ---
