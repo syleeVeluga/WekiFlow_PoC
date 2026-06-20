@@ -1,6 +1,6 @@
 # PR-33 — Knowledge Map: Markdown 링크 그래프 + 화면 (T5)
 
-> Track T5 · 상태: 계획 · 선행: [PR-26](./PR-26-candidate-contract.md) (KG는 기구현) · 근거: [`Overview.md`](./Overview.md) §3.5·§5.1-4·§5.2-4, [`Gap-Analysis.md`](./Gap-Analysis.md) §2.4·§3.4
+> Track T5 · 상태: 완료(PR #45, 2026-06-21) · 선행: [PR-26](./PR-26-candidate-contract.md) (KG는 기구현) · 근거: [`Overview.md`](./Overview.md) §3.5·§5.1-4·§5.2-4, [`Gap-Analysis.md`](./Gap-Analysis.md) §2.4·§3.4
 > 외부 API 메모: 없음(내부 bundle 기반).
 
 ## 목표
@@ -38,12 +38,24 @@ OKF `visualize` 패턴에 맞춰 **Markdown 링크 기반 지식 맵**을 만든
 - API: workspace 스코프 노드/엣지 반환.
 - UI: 검색/필터/layout/backlinks 동작, advanced toggle로 typed relations 표시.
 
+## 검증
+
+- PR #45: <https://github.com/syleeVeluga/WekiFlow_PoC/pull/45>
+- `corepack pnpm --filter @wekiflow/wkf test -- linkGraph`
+- `corepack pnpm --filter @wf/web typecheck`
+- `corepack pnpm --filter @wf/api test -- server`
+- `corepack pnpm -r typecheck`
+- `corepack pnpm -r test`
+- `corepack pnpm build`
+- GitHub CI `verify` on PR #45
+- Playwright smoke with mocked `/api/knowledge-map`: rendered nodes, search filter, list mode, typed relation toggle.
+
 ## DoD
 
-- [ ] Markdown 링크 기반 그래프가 추출된다.
-- [ ] `wkf visualize`가 자족 viz.html을 생성한다.
-- [ ] 웹 "지식 맵" 화면에서 탐색·검색·필터·backlinks가 동작한다.
-- [ ] typed relations는 advanced toggle로 분리된다.
+- [x] Markdown 링크 기반 그래프가 추출된다.
+- [x] `wkf visualize`가 자족 viz.html을 생성한다.
+- [x] 웹 "지식 맵" 화면에서 탐색·검색·필터·backlinks가 동작한다.
+- [x] typed relations는 advanced toggle로 분리된다.
 
 ## 리스크·메모
 
