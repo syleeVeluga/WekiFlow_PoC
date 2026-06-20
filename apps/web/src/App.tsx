@@ -13,6 +13,7 @@ import { AddPage } from './components/add/AddPage.js';
 import { TrashPage } from './components/trash/TrashPage.js';
 import { KnowledgeMapPage } from './components/map/KnowledgeMapPage.js';
 import { AskPage } from './components/ask/AskPage.js';
+import { ActivityPage } from './components/history/ActivityPage.js';
 import { LoginPage } from './components/auth/LoginPage.js';
 import { Toast } from './components/common/Primitives.js';
 import { fetchMe, setAuthToken } from './api/client.js';
@@ -20,16 +21,6 @@ import { getStoredToken, useAuthStore } from './auth/store.js';
 import { useUiStore } from './store.js';
 
 const queryClient = new QueryClient();
-
-function StubPage({ title }: { title: string }) {
-  return (
-    <section className="page">
-      <p className="eyebrow">WikiFlow</p>
-      <h1>{title}</h1>
-      <div className="empty">이 영역은 현재 Phase 범위 밖의 내비게이션 스텁입니다.</div>
-    </section>
-  );
-}
 
 function ActivePage() {
   const activePage = useUiStore((state) => state.activePage);
@@ -44,9 +35,7 @@ function ActivePage() {
   if (activePage === 'conversation') return <ConversationPage />;
   if (activePage === 'dev') return <DevPanel />;
   if (activePage === 'trash') return <TrashPage />;
-  if (activePage === 'sources') return <StubPage title="데이터 소스" />;
-  if (activePage === 'rules') return <StubPage title="자동화 규칙" />;
-  if (activePage === 'history') return <StubPage title="변경 이력" />;
+  if (activePage === 'history') return <ActivityPage />;
   return <AddPage />;
 }
 

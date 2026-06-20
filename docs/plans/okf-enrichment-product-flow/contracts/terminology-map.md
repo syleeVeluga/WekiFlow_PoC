@@ -31,3 +31,32 @@
 - PR-33 지식 맵: 화면명은 "지식 맵"을 사용하고, typed relation/KG는 advanced toggle 문구로 제한한다.
 - PR-34 Discovery Trust: 화면명은 "지식에 질문하기"를 사용하고, citation/source는 "출처"와 "신뢰 상태"로 표시한다.
 - PR-35 Simplification Cleanup: 일반 화면 grep 게이트(`WKF|OKF|pipeline|tool_|triplet`)를 이 표의 허용 위치 기준으로 판정한다.
+
+## PR-35 grep gate
+
+일반 사용자 화면(`apps/web/src/components/add`, `ask`, `conversation`, `doc`, `home`, `kb`, `lnb`, `map`, `review`, `trash`)에서는 다음 내부 용어가 보이면 실패로 본다.
+
+- `WKF`
+- `OKF`
+- `pipeline`
+- `tool_`
+- `triplet` / `triple`
+
+허용 위치:
+
+- `apps/web/src/components/agent/AgentPreviewPage.tsx` — OWNER 전용 실행/관계 추출 디버그 화면.
+- `apps/web/src/components/admin/DevPanel.tsx` — super admin 전용 런타임 설정 화면.
+- `apps/web/src/lib/docId.ts` — 사용자에게 보이지 않는 코드 주석.
+- `docs/reference`, `docs/archive`, `docs/plans` — 내부 설계/이력/계획 문서.
+
+## PR-35 acceptance gate
+
+Overview §8 완료 기준은 PR-35 이후 다음 증거로 판정한다.
+
+- 실제 코드 경로: `Gap-Analysis.md`의 화면/API 인벤토리와 PR-26~34 완료 기록.
+- 후보와 published 경계: `candidate-state-machine.md`, PR-27 신뢰 라벨, PR-32 review triage.
+- Enrichment Draft 범위: PR-28 완료 기록과 `agent-surface-contract.md`.
+- 대화 provenance 정책: PR-30/31 완료 기록과 Conversation Save 화면.
+- Knowledge Map v1 범위: PR-33 링크 그래프와 "지식 맵" 화면.
+- PR 단위 계획: `PR-Plan.md`의 PR-26~35 완료 상태.
+- 사용자-facing 용어: 이 문서의 grep gate와 `넣기 → AI 정리 → 확인/승인 → 질문/탐색` 화면 흐름 검증.

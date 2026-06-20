@@ -425,7 +425,7 @@ export function AddPage() {
                   ['idempotencyKey', '문서당 고유 키, 재시도 중복 방지'],
                   ['contentType', 'rawPayload.text의 MIME 타입, 기본값 text/plain'],
                   ['titleHint', '문서 제목 힌트, 선택'],
-                  ['metadata', 'sentFrom, repository, pipeline 등 호출 출처 메타'],
+                  ['metadata', 'sentFrom, repository, 처리 흐름 등 호출 출처 메타'],
                   ['rawPayload.text', '전달할 본문 텍스트, 필수'],
                 ].map(([name, desc]) => (
                   <div key={name}>
