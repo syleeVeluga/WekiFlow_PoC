@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   DocumentStatusSchema,
+  CANDIDATE_STATUS_LABEL,
+  CANDIDATE_TO_DOC_STATUS,
+  CandidateContractSchema,
+  CandidateProvenanceSchema,
+  DOC_STATUS_TO_CANDIDATE,
   KnowledgeFreshnessSchema,
   TagClassificationSchema,
   TripletArraySchema,
@@ -8,14 +13,19 @@ import {
   RuntimeConfigSchema,
   canAccessDevPanel,
   canApprove,
+  canAutoPublish,
   canManageUsers,
   canReview,
+  canTransitionCandidate,
   chunkMarkdown,
   createDefaultRuntimeConfig,
   createSeedKnowledgeItems,
+  defaultCandidateStatusForProvenance,
   mergeRuntimeConfig,
   mergeRuntimeConfigPatch,
+  needsReview,
   normalizeEntityName,
+  riskFactors,
 } from './index.js';
 
 describe('@wf/shared', () => {
@@ -106,6 +116,82 @@ describe('@wf/shared', () => {
     expect(KnowledgeFreshnessSchema.safeParse('latest').success).toBe(true);
     expect(DocumentStatusSchema.safeParse('latest').success).toBe(false);
     expect(createSeedKnowledgeItems()).toHaveLength(88);
+  });
+
+  it('defines candidate status labels and document status projections', () => {
+    expect(CANDIDATE_STATUS_LABEL).toMatchObject({
+      AI_ORGANIZED: 'AI 정리됨',
+      SOURCE_VERIFIED: '출처 확인됨',
+      NEEDS_CHECK: '확인 필요',
+      NEEDS_APPROVAL: '승인 필요',
+      PUBLISHED: '공식 지식',
+      CONFLICTED: '충돌 있음',
+    });
+    expect(CANDIDATE_TO_DOC_STATUS).toMatchObject({
+      AI_ORGANIZED: 'DRAFT',
+      SOURCE_VERIFIED: 'REVIEW',
+      NEEDS_CHECK: 'REVIEW',
+      NEEDS_APPROVAL: 'REVIEW',
+      PUBLISHED: 'PUBLISHED',
+      CONFLICTED: 'REVIEW',
+    });
+    expect(DOC_STATUS_TO_CANDIDATE.GRAPH_INDEXED).toBe('PUBLISHED');
+    expect(DOC_STATUS_TO_CANDIDATE.FAILED).toBe('NEEDS_CHECK');
+  });
+
+  it('marks every declared risk factor as needing review', () => {
+    for (const riskFactor of riskFactors) {
+      expect(needsReview({ riskFactors: [riskFactor] })).toBe(true);
+    }
+    expect(needsReview({ riskFactors: ['policy', 'security'] })).toBe(true);
+    expect(needsReview({ riskFactors: [] })).toBe(false);
+  });
+
+  it('allows auto-publish only for low-risk non-conversation candidates', () => {
+    const provenance = CandidateProvenanceSchema.parse({ kind: 'file', ref: 'upload://handbook.md' });
+
+    expect(canAutoPublish({ status: 'AI_ORGANIZED', riskFactors: [], provenance })).toBe(true);
+    expect(canAutoPublish({ status: 'SOURCE_VERIFIED', riskFactors: [], provenance })).toBe(true);
+    expect(canAutoPublish({ status: 'NEEDS_CHECK', riskFactors: [], provenance })).toBe(false);
+    expect(canAutoPublish({ status: 'AI_ORGANIZED', riskFactors: ['pricing'], provenance })).toBe(false);
+    expect(
+      canAutoPublish({
+        status: 'SOURCE_VERIFIED',
+        riskFactors: [],
+        provenance: CandidateProvenanceSchema.parse({ kind: 'conversation', ref: 'chat://1' }),
+      }),
+    ).toBe(false);
+  });
+
+  it('defaults conversation provenance to needsSource and NEEDS_CHECK', () => {
+    const provenance = CandidateProvenanceSchema.parse({
+      kind: 'conversation',
+      ref: 'meeting://2026-06-20',
+      conversationQuote: '다음 분기부터 승인 절차를 바꿉니다.',
+      speaker: '이지수',
+    });
+
+    expect(provenance).toMatchObject({
+      createdFromConversation: true,
+      needsSource: true,
+    });
+    expect(defaultCandidateStatusForProvenance(provenance)).toBe('NEEDS_CHECK');
+    const manualProvenance = CandidateProvenanceSchema.parse({ kind: 'manual', ref: 'manual://1' });
+    expect(defaultCandidateStatusForProvenance(manualProvenance)).toBe('AI_ORGANIZED');
+  });
+
+  it('validates candidate contracts and transition rules', () => {
+    expect(
+      CandidateContractSchema.parse({
+        status: 'SOURCE_VERIFIED',
+        provenance: { kind: 'url', ref: 'https://example.test/policy' },
+      }),
+    ).toMatchObject({ riskFactors: [] });
+
+    expect(canTransitionCandidate('AI_ORGANIZED', 'SOURCE_VERIFIED')).toBe(true);
+    expect(canTransitionCandidate('NEEDS_APPROVAL', 'PUBLISHED')).toBe(true);
+    expect(canTransitionCandidate('PUBLISHED', 'AI_ORGANIZED')).toBe(false);
+    expect(canTransitionCandidate('CONFLICTED', 'PUBLISHED')).toBe(false);
   });
 
   it('normalizes Korean entity surface forms consistently', () => {
