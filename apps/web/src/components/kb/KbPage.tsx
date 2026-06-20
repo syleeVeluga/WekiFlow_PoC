@@ -3,6 +3,7 @@ import { useAiTagMutations, useAiTagSuggestions, useKnowledgeItems, useTopics, u
 import { avColor, catTint } from '../../lib/format.js';
 import { useUiStore } from '../../store.js';
 import { Modal } from '../common/Primitives.js';
+import { TrustLabel } from '../common/TrustLabel.js';
 import { BlockNotePane } from '../blocknote/BlockNotePane.js';
 
 const STATUS = [
@@ -158,6 +159,7 @@ function KnowledgeCard({ item, onOpen }: { item: KnowledgeItem; onOpen: () => vo
         </div>
       ) : null}
       <div className="kbc-foot">
+        <TrustLabel status="PUBLISHED" />
         <span className="kbc-cat" style={{ background: `${col}1a`, color: col }}>{item.category}</span>
         {item.modCount > 0 ? <span className="kbc-mod">수정 {item.modCount}</span> : null}
         <span className="kbc-author"><span className="kbc-av" style={{ background: avColor(item.authorName) }}>{item.authorName.slice(0, 1)}</span>{item.authorName}</span>

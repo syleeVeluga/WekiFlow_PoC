@@ -42,6 +42,10 @@ export async function ensureIndexes(db: Db): Promise<void> {
     db.collection('enrichment_proposals').createIndex({ status: 1, priority: -1, createdAt: -1 }),
     db.collection('enrichment_proposals').createIndex({ jobId: 1 }),
     db.collection('retrieval_goldens').createIndex({ intent: 1 }, { unique: true }),
+    db.collection('knowledge_candidates').createIndex({ status: 1, createdAt: -1 }),
+    db.collection('knowledge_candidates').createIndex({ riskFactors: 1 }),
+    db.collection('knowledge_candidates').createIndex({ 'provenance.kind': 1 }),
+    db.collection('knowledge_candidates').createIndex({ workspaceId: 1 }),
   ]);
 }
 

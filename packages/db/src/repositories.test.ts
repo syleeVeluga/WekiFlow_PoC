@@ -1,6 +1,6 @@
 import { ObjectId } from 'mongodb';
 import { describe, expect, it } from 'vitest';
-import { createDocumentsRepo, createRuntimeConfigRepo, createUsersRepo, getDocumentConnections } from './repositories.js';
+import { createCandidateRepository, createDocumentsRepo, createRuntimeConfigRepo, createUsersRepo, getDocumentConnections } from './index.js';
 
 describe('createDocumentsRepo', () => {
   it('generates distinct slugs for documents with the same title', async () => {
@@ -231,6 +231,64 @@ describe('createUsersRepo', () => {
     const updated = await repo.updateUser(created.id, { role: 'EDITOR', isSuperAdmin: false });
     expect(updated).toMatchObject({ role: 'EDITOR', isSuperAdmin: false });
     expect((await repo.list()).find((user) => user.id === created.id)).toMatchObject({ isSuperAdmin: false });
+  });
+});
+
+describe('createCandidateRepository', () => {
+  it('creates, filters, and enforces candidate status transitions', async () => {
+    const rows: Array<Record<string, unknown> & { _id: ObjectId }> = [];
+    const queries: unknown[] = [];
+    const repo = createCandidateRepository({
+      collection(name: string) {
+        if (name !== 'knowledge_candidates') throw new Error(`Unexpected collection ${name}`);
+        return {
+          async insertOne(doc: Record<string, unknown> & { _id: ObjectId }) {
+            rows.push(doc);
+            return { insertedId: doc._id };
+          },
+          find(query: unknown) {
+            queries.push(query);
+            return {
+              sort() {
+                return {
+                  async toArray() {
+                    return rows;
+                  },
+                };
+              },
+            };
+          },
+          async findOne(query: { _id: ObjectId }) {
+            return rows.find((row) => row._id.equals(query._id)) ?? null;
+          },
+          async findOneAndUpdate(query: { _id: ObjectId }, update: { $set: Record<string, unknown> }) {
+            const row = rows.find((entry) => entry._id.equals(query._id));
+            if (!row) return null;
+            Object.assign(row, update.$set);
+            return row;
+          },
+        };
+      },
+    } as never);
+
+    const created = await repo.createCandidate({
+      title: 'Conversation candidate',
+      provenance: { kind: 'conversation', ref: 'chat://1' },
+      riskFactors: ['no_source'],
+      workspaceId: 'workspace-a',
+    });
+
+    expect(created.status).toBe('NEEDS_CHECK');
+    expect(created.provenance).toMatchObject({ needsSource: true });
+    await expect(repo.listCandidates({ riskFactor: 'no_source', provenanceKind: 'conversation', workspaceId: 'workspace-a' })).resolves.toHaveLength(1);
+    expect(queries[0]).toMatchObject({
+      riskFactors: 'no_source',
+      'provenance.kind': 'conversation',
+      workspaceId: 'workspace-a',
+    });
+
+    await expect(repo.updateCandidateStatus(created.id, 'SOURCE_VERIFIED')).resolves.toMatchObject({ status: 'SOURCE_VERIFIED' });
+    await expect(repo.updateCandidateStatus(created.id, 'AI_ORGANIZED')).rejects.toThrow('Invalid candidate status transition');
   });
 });
 

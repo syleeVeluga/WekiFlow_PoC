@@ -356,6 +356,66 @@ describe('@wf/api routes', () => {
     await app.close();
   });
 
+  it('serves first-class knowledge candidates and enforces status transitions', async () => {
+    const app = buildServer();
+    const ownerToken = await login(app, 'admin01@veluga.io', 'admin01@veluga.io');
+
+    const denied = await app.inject({
+      method: 'POST',
+      url: '/api/candidates',
+      payload: {
+        title: 'Unauthorized candidate',
+        provenance: { kind: 'manual', ref: 'manual://1' },
+      },
+    });
+    expect(denied.statusCode).toBe(403);
+
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/candidates',
+      headers: { authorization: `Bearer ${ownerToken}` },
+      payload: {
+        title: '회의 기반 승인 정책',
+        summary: '대화에서 나온 정책 후보',
+        provenance: { kind: 'conversation', ref: 'chat://1', speaker: '이지수' },
+        riskFactors: ['official_answer', 'no_source'],
+        workspaceId: 'workspace-default',
+      },
+    });
+    expect(created.statusCode).toBe(200);
+    expect(created.json()).toMatchObject({
+      status: 'NEEDS_CHECK',
+      provenance: { kind: 'conversation', needsSource: true },
+    });
+
+    const filtered = await app.inject({ method: 'GET', url: '/api/candidates?riskFactor=no_source&provenanceKind=conversation' });
+    expect(filtered.statusCode).toBe(200);
+    expect(filtered.json()).toEqual(expect.arrayContaining([expect.objectContaining({ id: created.json().id })]));
+
+    const detail = await app.inject({ method: 'GET', url: `/api/candidates/${created.json().id}` });
+    expect(detail.statusCode).toBe(200);
+    expect(detail.json().title).toBe('회의 기반 승인 정책');
+
+    const advanced = await app.inject({
+      method: 'PATCH',
+      url: `/api/candidates/${created.json().id}`,
+      headers: { authorization: `Bearer ${ownerToken}` },
+      payload: { status: 'SOURCE_VERIFIED' },
+    });
+    expect(advanced.statusCode).toBe(200);
+    expect(advanced.json().status).toBe('SOURCE_VERIFIED');
+
+    const invalid = await app.inject({
+      method: 'PATCH',
+      url: `/api/candidates/${created.json().id}`,
+      headers: { authorization: `Bearer ${ownerToken}` },
+      payload: { status: 'AI_ORGANIZED' },
+    });
+    expect(invalid.statusCode).toBe(400);
+
+    await app.close();
+  });
+
   it('runs owner-only agent preview and streams persisted steps', async () => {
     const app = buildServer();
     const ownerToken = await login(app, 'admin01@veluga.io', 'admin01@veluga.io');

@@ -7,13 +7,16 @@ import { extractText, getDocumentProxy } from 'unpdf';
 import { z, ZodError } from 'zod';
 import {
   AgentPreviewRequestSchema,
+  CreateKnowledgeCandidateSchema,
   CreateUserBodySchema,
   ExternalIngestionRequestSchema,
   IngestRequestSchema,
   KnowledgeQuerySchema,
+  KnowledgeCandidateListQuerySchema,
   LoginBodySchema,
   MsResolveBodySchema,
   RuntimeConfigPatchSchema,
+  UpdateKnowledgeCandidateStatusSchema,
   UpdateAppSettingsSchema,
   UpdateUserRoleBodySchema,
   type User,
@@ -714,6 +717,32 @@ export function buildServer({
   });
 
   app.get('/api/reviews', async () => store.reviews());
+
+  app.get('/api/candidates', async (request) => store.listCandidates(KnowledgeCandidateListQuerySchema.parse(request.query)));
+
+  app.post('/api/candidates', async (request, reply) => {
+    const me = await currentUser(request);
+    if (!me || !canEdit(me.role)) return reply.code(403).send({ error: 'Forbidden' });
+    const body = CreateKnowledgeCandidateSchema.parse(request.body);
+    return store.createCandidate(body);
+  });
+
+  app.get('/api/candidates/:id', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const candidate = await store.getCandidate(id);
+    if (!candidate) return reply.code(404).send({ error: 'Not found' });
+    return candidate;
+  });
+
+  app.patch('/api/candidates/:id', async (request, reply) => {
+    const me = await currentUser(request);
+    if (!me || !canEdit(me.role)) return reply.code(403).send({ error: 'Forbidden' });
+    const { id } = request.params as { id: string };
+    const body = UpdateKnowledgeCandidateStatusSchema.parse(request.body);
+    const result = await store.updateCandidateStatus(id, body.status);
+    if (!result.ok) return reply.code(result.statusCode).send({ error: result.error });
+    return result.candidate;
+  });
 
   app.get('/api/knowledge', async (request) => store.listKnowledge(KnowledgeQuerySchema.parse(request.query)));
 

@@ -46,6 +46,18 @@ export const CANDIDATE_STATUS_LABEL: Record<CandidateStatus, string> = {
   CONFLICTED: '충돌 있음',
 };
 
+export const RISK_FACTOR_LABEL: Record<RiskFactor, string> = {
+  policy: '정책성',
+  regulation: '규정',
+  contract: '계약',
+  security: '보안',
+  pricing: '가격',
+  official_answer: '공식 답변',
+  no_source: '출처 없음',
+  conflict: '충돌',
+  external_exposure: '외부 공개',
+};
+
 export const CANDIDATE_TO_DOC_STATUS: Record<CandidateStatus, CandidateDocumentStatus> = {
   AI_ORGANIZED: 'DRAFT',
   SOURCE_VERIFIED: 'REVIEW',
@@ -143,3 +155,46 @@ export function canAutoPublish(candidate: Pick<CandidateContract, 'status' | 'ri
     candidate.provenance.kind !== 'conversation'
   );
 }
+
+export const KnowledgeCandidateSchema = CandidateContractSchema.extend({
+  id: z.string(),
+  title: z.string().min(1),
+  summary: z.string().default(''),
+  bodyMarkdown: z.string().default(''),
+  linkedDocId: z.string().nullable().optional(),
+  conflictWith: z.array(z.string()).default([]),
+  workspaceId: z.string().min(1).optional(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
+export type KnowledgeCandidate = z.infer<typeof KnowledgeCandidateSchema>;
+
+export const CreateKnowledgeCandidateSchema = z.object({
+  title: z.string().min(1),
+  summary: z.string().optional().default(''),
+  bodyMarkdown: z.string().optional().default(''),
+  status: CandidateStatusSchema.optional(),
+  riskFactors: z.array(RiskFactorSchema).optional().default([]),
+  provenance: CandidateProvenanceSchema,
+  linkedDocId: z.string().nullable().optional(),
+  conflictWith: z.array(z.string()).optional().default([]),
+  workspaceId: z.string().min(1).optional(),
+});
+
+export type CreateKnowledgeCandidate = z.input<typeof CreateKnowledgeCandidateSchema>;
+
+export const KnowledgeCandidateListQuerySchema = z.object({
+  status: CandidateStatusSchema.optional(),
+  riskFactor: RiskFactorSchema.optional(),
+  provenanceKind: z.enum(['file', 'url', 'datasource', 'conversation', 'manual']).optional(),
+  workspaceId: z.string().min(1).optional(),
+});
+
+export type KnowledgeCandidateListQuery = z.infer<typeof KnowledgeCandidateListQuerySchema>;
+
+export const UpdateKnowledgeCandidateStatusSchema = z.object({
+  status: CandidateStatusSchema,
+});
+
+export type UpdateKnowledgeCandidateStatus = z.infer<typeof UpdateKnowledgeCandidateStatusSchema>;

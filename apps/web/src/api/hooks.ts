@@ -5,7 +5,7 @@ import {
   useQueryClient,
   type UseQueryResult,
 } from '@tanstack/react-query';
-import type { AgentPreviewResult, AgentStepDTO, DocumentDTO, TreeNode } from '@wf/shared';
+import type { AgentPreviewResult, AgentStepDTO, CandidateStatus, DocumentDTO, KnowledgeCandidateListQuery, TreeNode } from '@wf/shared';
 import * as api from './client.js';
 
 export const queryKeys = {
@@ -14,6 +14,8 @@ export const queryKeys = {
   policy: ['admin', 'policy'] as const,
   tree: ['tree'] as const,
   reviews: ['reviews'] as const,
+  candidates: (q: KnowledgeCandidateListQuery) => ['candidates', q] as const,
+  candidate: (id: string) => ['candidate', id] as const,
   document: (id: string) => ['document', id] as const,
   connections: (id: string) => ['connections', id] as const,
   trash: ['trash'] as const,
@@ -32,6 +34,33 @@ export function usePublished(): UseQueryResult<TreeNode[]> {
 
 export function useReviews(): UseQueryResult<DocumentDTO[]> {
   return useQuery({ queryKey: queryKeys.reviews, queryFn: api.fetchReviews });
+}
+
+export function useCandidates(q: KnowledgeCandidateListQuery = {}) {
+  return useQuery({ queryKey: queryKeys.candidates(q), queryFn: () => api.fetchCandidates(q) });
+}
+
+export function useCandidate(id: string | null) {
+  return useQuery({ queryKey: queryKeys.candidate(id ?? ''), queryFn: () => api.fetchCandidate(id!), enabled: id != null });
+}
+
+export function useCreateCandidate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: api.createCandidate,
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['candidates'] }),
+  });
+}
+
+export function useUpdateCandidateStatus() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, status }: { id: string; status: CandidateStatus }) => api.updateCandidateStatus(id, status),
+    onSuccess: (candidate) => {
+      void qc.invalidateQueries({ queryKey: ['candidates'] });
+      void qc.invalidateQueries({ queryKey: queryKeys.candidate(candidate.id) });
+    },
+  });
 }
 
 export function useSettings() {
