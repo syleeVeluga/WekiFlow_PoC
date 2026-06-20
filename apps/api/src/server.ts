@@ -7,6 +7,7 @@ import { extractText, getDocumentProxy } from 'unpdf';
 import { z, ZodError } from 'zod';
 import {
   AgentPreviewRequestSchema,
+  AskResponseSchema,
   ConversationIngestRequestSchema,
   CreateKnowledgeCandidateSchema,
   CreateUserBodySchema,
@@ -21,6 +22,10 @@ import {
   UpdateKnowledgeCandidateStatusSchema,
   UpdateAppSettingsSchema,
   UpdateUserRoleBodySchema,
+  type AskCitation,
+  type AskFollowUp,
+  type AskResponse,
+  type CandidateStatus,
   type User,
   canAccessDevPanel,
   canApprove,
@@ -113,7 +118,7 @@ export interface BuildServerOptions {
   externalRateLimit?: { max: number; windowMs: number };
   maxQueueBacklog?: number;
   reviewPolicy?: Policy;
-  discoveryAsk?: (input: { question: string; user?: User }) => Promise<string>;
+  discoveryAsk?: (input: { question: string; user?: User }) => Promise<string | AskResponse>;
 }
 
 export function buildServer({
@@ -435,6 +440,112 @@ export function buildServer({
   function writeSse(res: import('node:http').ServerResponse, event: string, data: unknown) {
     if (res.writableEnded) return;
     res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+  }
+
+  function normalizeAskText(value: string): string {
+    return value.normalize('NFKC').toLowerCase();
+  }
+
+  function askTokens(question: string): string[] {
+    return [...new Set(normalizeAskText(question).split(/[^\p{L}\p{N}]+/u).filter((token) => token.length > 1))];
+  }
+
+  function scoreAskText(question: string, value: string): number {
+    const normalized = normalizeAskText(value);
+    const direct = normalized.includes(normalizeAskText(question).trim()) ? 3 : 0;
+    return direct + askTokens(question).filter((token) => normalized.includes(token)).length;
+  }
+
+  function askSnippet(value: string, question: string): string {
+    const compact = value.replace(/\s+/g, ' ').trim();
+    if (compact.length <= 180) return compact;
+    const token = askTokens(question)[0];
+    const index = token ? normalizeAskText(compact).indexOf(token) : -1;
+    const start = index > 40 ? index - 40 : 0;
+    return `${start > 0 ? '...' : ''}${compact.slice(start, start + 180)}${start + 180 < compact.length ? '...' : ''}`;
+  }
+
+  function trustRank(status: CandidateStatus): number {
+    const order: Record<CandidateStatus, number> = {
+      PUBLISHED: 0,
+      SOURCE_VERIFIED: 1,
+      NEEDS_CHECK: 2,
+      NEEDS_APPROVAL: 3,
+      AI_ORGANIZED: 4,
+      CONFLICTED: 5,
+    };
+    return order[status];
+  }
+
+  function mergeAskCitations(left: AskCitation[], right: AskCitation[]): AskCitation[] {
+    const seen = new Set<string>();
+    const merged: AskCitation[] = [];
+    for (const citation of [...left, ...right]) {
+      const key = `${citation.sourceType}:${citation.id}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      merged.push(citation);
+    }
+    return merged.slice(0, 6);
+  }
+
+  async function collectAskCitations(question: string): Promise<AskCitation[]> {
+    const knowledge = await store.listKnowledge({ q: '', person: 'all', topic: 'all', tag: null, status: 'all', sort: 'uses' });
+    const knowledgeCitations = knowledge.map((item) => ({
+      citation: {
+        id: `knowledge:${item.id}`,
+        title: item.title,
+        path: `${item.category}/${item.id}.md`,
+        snippet: askSnippet(item.summary || item.contentMarkdown, question),
+        trustStatus: 'PUBLISHED' as const,
+        sourceType: 'knowledge' as const,
+        documentId: item.documentId ?? item.id,
+      },
+      score: scoreAskText(question, `${item.title} ${item.summary} ${item.contentMarkdown} ${item.aiTags.join(' ')}`),
+    }));
+
+    const candidateStatuses = new Set<CandidateStatus>(['PUBLISHED', 'SOURCE_VERIFIED', 'NEEDS_CHECK']);
+    const candidateCitations = (await store.listCandidates({}))
+      .filter((candidate) => candidateStatuses.has(candidate.status))
+      .map((candidate) => ({
+        candidate,
+        score: scoreAskText(question, `${candidate.title} ${candidate.summary} ${candidate.bodyMarkdown} ${candidate.provenance.label ?? ''} ${candidate.provenance.conversationQuote ?? ''}`),
+      }))
+      .filter(({ score }) => score > 0)
+      .map(({ candidate, score }) => ({
+        citation: {
+          id: `candidate:${candidate.id}`,
+          title: candidate.title,
+          path: candidate.linkedDocId ? `document://${candidate.linkedDocId}` : candidate.provenance.ref,
+          snippet: askSnippet(candidate.summary || candidate.bodyMarkdown || candidate.provenance.conversationQuote || '', question),
+          trustStatus: candidate.status,
+          sourceType: 'candidate' as const,
+          ...(candidate.linkedDocId ? { documentId: candidate.linkedDocId } : {}),
+        },
+        score,
+      }));
+
+    return [...knowledgeCitations, ...candidateCitations]
+      .filter(({ score }) => score > 0)
+      .sort((a, b) => trustRank(a.citation.trustStatus) - trustRank(b.citation.trustStatus) || b.score - a.score)
+      .map(({ citation }) => citation)
+      .slice(0, 6);
+  }
+
+  function askFollowUp(question: string, reason: string): AskFollowUp {
+    return { kind: 'knowledge_gap', target: 'conversation', question, reason };
+  }
+
+  function normalizeAskResponse(result: string | AskResponse, citations: AskCitation[]): AskResponse {
+    const base: Partial<AskResponse> & { answer: string } = typeof result === 'string' ? { answer: result } : result;
+    const mergedCitations = mergeAskCitations(base.citations ?? [], citations);
+    const usedTrustLevels = [...new Set([...(base.usedTrustLevels ?? []), ...mergedCitations.map((citation) => citation.trustStatus)])];
+    return AskResponseSchema.parse({
+      ...base,
+      citations: mergedCitations,
+      usedTrustLevels,
+      needsAttention: Boolean(base.needsAttention) || usedTrustLevels.includes('NEEDS_CHECK'),
+    });
   }
 
   // --- Auth ---
@@ -991,11 +1102,15 @@ export function buildServer({
     });
     res.write(': connected\n\n');
     try {
-      const answer = await discoveryAsk({ question: body.question, user: me });
-      writeSse(res, 'answer', { answer });
+      const citations = await collectAskCitations(body.question);
+      const answer = normalizeAskResponse(await discoveryAsk({ question: body.question, user: me }), citations);
+      writeSse(res, 'answer', answer);
       writeSse(res, 'completed', { ok: true });
     } catch (error) {
-      writeSse(res, 'failed', { error: error instanceof Error ? error.message : String(error) });
+      writeSse(res, 'failed', {
+        error: error instanceof Error ? error.message : String(error),
+        followUp: askFollowUp(body.question, 'Discovery answer failed before it could return cited evidence.'),
+      });
     } finally {
       res.end();
     }

@@ -33,6 +33,14 @@ function multipartPayload(input: {
   };
 }
 
+function sseEvent<T>(payload: string, eventName: string): T {
+  const frame = payload.split('\n\n').find((part) => part.includes(`event: ${eventName}`));
+  if (!frame) throw new Error(`Missing SSE event: ${eventName}`);
+  const data = frame.split(/\r?\n/).find((line) => line.startsWith('data: '))?.slice('data: '.length);
+  if (!data) throw new Error(`Missing SSE data for event: ${eventName}`);
+  return JSON.parse(data) as T;
+}
+
 describe('@wf/api routes', () => {
   it('skips review by default and uses settings to re-enable approval gates', async () => {
     const store = new InMemoryWekiFlowStore();
@@ -346,14 +354,66 @@ describe('@wf/api routes', () => {
       method: 'POST',
       url: '/api/ask',
       headers: { authorization: `Bearer ${ownerToken}` },
-      payload: { question: 'leave?' },
+      payload: { question: '근거 자료?' },
     });
 
     expect(streamed.statusCode).toBe(200);
     expect(streamed.payload).toContain('event: answer');
-    expect(streamed.payload).toContain('answer:leave?');
+    const answer = sseEvent<{ answer: string; citations: Array<{ trustStatus: string; sourceType: string }>; usedTrustLevels: string[]; needsAttention: boolean }>(streamed.payload, 'answer');
+    expect(answer.answer).toBe('answer:근거 자료?');
+    expect(answer.citations).toEqual(expect.arrayContaining([expect.objectContaining({ trustStatus: 'PUBLISHED', sourceType: 'knowledge' })]));
+    expect(answer.usedTrustLevels).toContain('PUBLISHED');
+    expect(answer.needsAttention).toBe(false);
     expect(streamed.payload).toContain('event: completed');
     await app.close();
+  });
+
+  it('adds needs-check citations and follow-up signals to /api/ask', async () => {
+    const app = buildServer({ discoveryAsk: async ({ question }) => `answer:${question}` });
+    const ownerToken = await login(app, 'admin01@veluga.io', 'admin01@veluga.io');
+
+    await app.inject({
+      method: 'POST',
+      url: '/api/candidates',
+      headers: { authorization: `Bearer ${ownerToken}` },
+      payload: {
+        title: 'Leave exception from standup',
+        summary: 'Leave exception requires manager approval before it becomes official.',
+        status: 'NEEDS_CHECK',
+        riskFactors: ['no_source'],
+        provenance: {
+          kind: 'conversation',
+          ref: 'conversation://ask-test',
+          conversationQuote: 'Leave exception requires manager approval.',
+          speaker: '이지수',
+        },
+      },
+    });
+
+    const streamed = await app.inject({
+      method: 'POST',
+      url: '/api/ask',
+      headers: { authorization: `Bearer ${ownerToken}` },
+      payload: { question: 'leave exception' },
+    });
+    const answer = sseEvent<{ citations: Array<{ trustStatus: string; sourceType: string }>; usedTrustLevels: string[]; needsAttention: boolean }>(streamed.payload, 'answer');
+    expect(answer.citations).toEqual(expect.arrayContaining([expect.objectContaining({ trustStatus: 'NEEDS_CHECK', sourceType: 'candidate' })]));
+    expect(answer.usedTrustLevels).toContain('NEEDS_CHECK');
+    expect(answer.needsAttention).toBe(true);
+
+    const failedApp = buildServer({ discoveryAsk: async () => { throw new Error('no evidence'); } });
+    const failedToken = await login(failedApp, 'admin01@veluga.io', 'admin01@veluga.io');
+    const failed = await failedApp.inject({
+      method: 'POST',
+      url: '/api/ask',
+      headers: { authorization: `Bearer ${failedToken}` },
+      payload: { question: 'unknown gap' },
+    });
+    const failedEvent = sseEvent<{ error: string; followUp: { kind: string; target: string; question: string } }>(failed.payload, 'failed');
+    expect(failedEvent.error).toBe('no evidence');
+    expect(failedEvent.followUp).toMatchObject({ kind: 'knowledge_gap', target: 'conversation', question: 'unknown gap' });
+    await app.close();
+    await failedApp.close();
   });
 
   it('serves first-class knowledge candidates and enforces status transitions', async () => {

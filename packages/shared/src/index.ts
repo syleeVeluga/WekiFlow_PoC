@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { KnowledgeCandidateSchema } from './candidate.js';
+import { CandidateStatusSchema, KnowledgeCandidateSchema } from './candidate.js';
 import { DepartmentSchema } from './wiki/enums.js';
 
 export const documentStatuses = [
@@ -180,6 +180,34 @@ export const KnowledgeMapSchema = z.object({
   generatedAt: z.string(),
 });
 export type KnowledgeMap = z.infer<typeof KnowledgeMapSchema>;
+
+export const AskCitationSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  path: z.string(),
+  snippet: z.string().default(''),
+  trustStatus: CandidateStatusSchema,
+  sourceType: z.enum(['knowledge', 'candidate']).default('knowledge'),
+  documentId: z.string().optional(),
+});
+export type AskCitation = z.infer<typeof AskCitationSchema>;
+
+export const AskFollowUpSchema = z.object({
+  kind: z.enum(['knowledge_gap']),
+  target: z.enum(['learner', 'conversation']),
+  question: z.string(),
+  reason: z.string(),
+});
+export type AskFollowUp = z.infer<typeof AskFollowUpSchema>;
+
+export const AskResponseSchema = z.object({
+  answer: z.string(),
+  citations: z.array(AskCitationSchema).default([]),
+  usedTrustLevels: z.array(CandidateStatusSchema).default([]),
+  needsAttention: z.boolean().default(false),
+  followUp: AskFollowUpSchema.optional(),
+});
+export type AskResponse = z.infer<typeof AskResponseSchema>;
 
 /** A document currently in the trash (soft-deleted). */
 export const TrashEntrySchema = z.object({

@@ -2,6 +2,7 @@ import type {
   AgentPreviewRequest,
   AgentPreviewRun,
   AppSettings,
+  AskResponse,
   AuthResult,
   ConversationIngestRequest,
   ConversationIngestResult,
@@ -265,3 +266,54 @@ export function agentPreviewStreamUrl(jobId: string): string {
   const token = encodeURIComponent(authToken ?? '');
   return `${BASE}/agent-preview/${jobId}/stream?token=${token}`;
 }
+
+function parseSseEvent(raw: string): { event: string; data: unknown } | null {
+  const lines = raw.split(/\r?\n/);
+  const event = lines.find((line) => line.startsWith('event: '))?.slice('event: '.length).trim();
+  const data = lines
+    .filter((line) => line.startsWith('data: '))
+    .map((line) => line.slice('data: '.length))
+    .join('\n');
+  if (!event || !data) return null;
+  return { event, data: JSON.parse(data) as unknown };
+}
+
+export async function ask(
+  question: string,
+  onEvent: (event: string, data: unknown) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  const headers: Record<string, string> = { 'content-type': 'application/json' };
+  if (authToken) headers.authorization = `Bearer ${authToken}`;
+  const init: RequestInit = {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ question }),
+    ...(signal ? { signal } : {}),
+  };
+  const res = await fetch(`${BASE}/ask`, init);
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new ApiError(res.status, body.error ?? `Request failed: ${res.status}`);
+  }
+  if (!res.body) throw new ApiError(500, 'Ask stream is not readable');
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  while (true) {
+    const { value, done } = await reader.read();
+    buffer += decoder.decode(value ?? new Uint8Array(), { stream: !done });
+    const frames = buffer.split(/\n\n/);
+    buffer = frames.pop() ?? '';
+    for (const frame of frames) {
+      const parsed = parseSseEvent(frame);
+      if (parsed) onEvent(parsed.event, parsed.data);
+    }
+    if (done) break;
+  }
+  const parsed = parseSseEvent(buffer);
+  if (parsed) onEvent(parsed.event, parsed.data);
+}
+
+export type { AskResponse };
