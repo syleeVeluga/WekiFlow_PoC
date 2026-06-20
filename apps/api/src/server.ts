@@ -31,7 +31,7 @@ import {
 } from '@wf/shared';
 import { extractConversationCandidates } from '@wf/agent-tools';
 import { getConnector } from '@wf/connectors';
-import { PolicyError, PolicySchema, defaultPolicy, enforcePolicy, loadEffectivePolicy, parse as parseWkf, routeCandidate, type Policy } from '@wekiflow/wkf';
+import { PolicyError, PolicySchema, defaultPolicy, enforcePolicy, knowledgeItemsToLinkGraph, loadEffectivePolicy, parse as parseWkf, routeCandidate, type Policy } from '@wekiflow/wkf';
 import { InMemoryWekiFlowStore, type IngestInput, type IngestResult, type WekiFlowStore } from './store.js';
 
 // Shared cap for both upload routes (/api/ingest/file and /api/agent-preview).
@@ -865,6 +865,15 @@ export function buildServer({
   });
 
   app.get('/api/knowledge', async (request) => store.listKnowledge(KnowledgeQuerySchema.parse(request.query)));
+
+  app.get('/api/knowledge-map', async (request) => {
+    const query = request.query as { typedRelations?: string };
+    const categories = await store.treeCategories();
+    return knowledgeItemsToLinkGraph(
+      categories.flatMap((category) => category.items),
+      { includeTypedRelations: query.typedRelations === '1' },
+    );
+  });
 
   app.get('/api/knowledge/:id', async (request, reply) => {
     const { id } = request.params as { id: string };

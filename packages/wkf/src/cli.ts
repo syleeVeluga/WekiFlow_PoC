@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { join } from 'node:path';
 import { initBundle } from './sync/init.js';
 import { generateIndexes } from './index-gen.js';
 import { MongoClient } from 'mongodb';
@@ -10,6 +11,7 @@ import { pullBundle } from './sync/pull.js';
 import { JsonDocumentSource, JsonDocumentStore } from './sync/source.js';
 import { statusBundle } from './sync/status.js';
 import { serveWkfMcp } from './mcp.js';
+import { writeKnowledgeMapHtml } from './linkGraph.js';
 
 function hasFlag(args: string[], flag: string): boolean {
   return args.includes(flag);
@@ -24,7 +26,7 @@ function bundleArg(args: string[]): string {
   const positionals: string[] = [];
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index]!;
-    if (arg === '--source' || arg === '--slug' || arg === '--concept' || arg === '--mongo-uri' || arg === '--db' || arg === '--embedding-model') {
+    if (arg === '--source' || arg === '--slug' || arg === '--concept' || arg === '--mongo-uri' || arg === '--db' || arg === '--embedding-model' || arg === '--output') {
       index += 1;
       continue;
     }
@@ -123,12 +125,20 @@ async function main(argv: string[]): Promise<void> {
     return;
   }
 
+  if (command === 'visualize') {
+    const bundlePath = bundleArg(args);
+    const outputPath = optionValue(args, '--output') ?? join(bundlePath, 'viz.html');
+    const graph = await writeKnowledgeMapHtml(bundlePath, outputPath, { includeTypedRelations: hasFlag(args, '--typed-relations') });
+    console.log(`visualized ${graph.nodes.length} nodes, ${graph.edges.length} edges -> ${outputPath}`);
+    return;
+  }
+
   if (command === 'mcp') {
     await serveWkfMcp(bundleArg(args));
     return;
   }
 
-  throw new Error('Usage: wkf <init|pull|status|push|reference|reindex|index|regenerate|mcp> [bundlePath] [--dry-run] [--source documents.json]');
+  throw new Error('Usage: wkf <init|pull|status|push|reference|reindex|index|regenerate|visualize|mcp> [bundlePath] [--dry-run] [--source documents.json]');
 }
 
 main(process.argv.slice(2)).catch((error: unknown) => {

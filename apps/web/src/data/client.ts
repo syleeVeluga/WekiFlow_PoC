@@ -4,6 +4,7 @@ import type {
   DailyDigest,
   JobRef,
   KnowledgeItem,
+  KnowledgeMap,
   KnowledgeQuery,
   MsResolveBody,
   MultiSourceGroup,
@@ -78,5 +79,8 @@ export const dataClient = {
   },
   treeCategories(): Promise<TreeCategory[]> {
     return request('/tree/categories');
+  },
+  knowledgeMap(includeTypedRelations = false): Promise<KnowledgeMap> {
+    return request(`/knowledge-map${includeTypedRelations ? '?typedRelations=1' : ''}`);
   },
 };
