@@ -1,7 +1,7 @@
 # PR-22 — 런타임 config 저장소 (토대)
 
 > 원본 계획 §B. 제어판의 **데이터/머지 토대**. 프롬프트·인자·모델·정책 오버라이드를 한 곳에 저장·해소한다.
-> 상태: 미착수 · 선행: PR-21(게이트) · 후행: PR-23, PR-24, PR-25
+> 상태: 완료 · 구현 PR: #33 · 선행: PR-21(게이트) · 후행: PR-23, PR-24, PR-25
 
 ## 목표
 DB에 저장된 부분 오버라이드를 **빌트인 기본 + env 위에 머지**해 effective config를 돌려주는 런타임 config 저장소와 API를 만든다. 빌트인 기본값(프롬프트 상수, stepLimit, k 등)을 단일 출처로 모은다. 이 PR은 저장/머지/API까지 — 실제 주입(워커 배선)은 PR-23/24.
@@ -54,8 +54,12 @@ PromptKey = 'main'|'curation'|'merge'|'discoveryDecompose'|'discoverySystem'|'le
 - 수동: `PATCH`로 `vectorK` 변경 → `GET`에 effective 반영 + 기본값 동시 노출 확인.
 
 ## 완료 기준
-- 빌트인 기본이 단일 출처화되고, DB 오버라이드가 안전하게 머지됨.
-- API가 게이트 하위에서 effective+기본을 제공 — UI(PR-25)가 바로 소비 가능.
+- [x] 빌트인 기본이 단일 출처화되고, DB 오버라이드가 안전하게 머지됨.
+- [x] API가 게이트 하위에서 effective+기본을 제공 — UI(PR-25)가 바로 소비 가능.
+
+## 완료 기록
+- 병합: PR #33 (`Add runtime config store and admin API`)
+- 검증: `corepack pnpm verify:testing`
 
 ## 범위 밖
 - 워커 주입 배선(PR-23 프롬프트/인자, PR-24 정책).
