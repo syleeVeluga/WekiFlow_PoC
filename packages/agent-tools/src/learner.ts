@@ -1,6 +1,6 @@
 import { generateObject, type LanguageModel } from 'ai';
 import { z } from 'zod';
-import type { AgentStepDTO } from '@wf/shared';
+import { DEFAULT_RUNTIME_PROMPTS, type AgentStepDTO } from '@wf/shared';
 
 export const LearnerGapTypeSchema = z.enum([
   'MISSING_CITATION',
@@ -33,16 +33,7 @@ export const TrajectoryAnalysisResultSchema = z.object({
 export type WkfEnrichmentProposal = z.infer<typeof WkfEnrichmentProposalSchema>;
 export type TrajectoryAnalysisResult = z.infer<typeof TrajectoryAnalysisResultSchema>;
 
-export const LEARNER_JUDGE_PROMPT = `You are WekiFlow's trajectory judge.
-Review jobs.agentSteps and propose only concrete, evidence-backed WKF enrichment tasks.
-Map signals as follows:
-- failed tool_verify_integrity or unverified claims => FAILED_VERIFICATION or MISSING_CITATION.
-- graph retrieval with empty paths for a relationship question => MISSING_RELATION.
-- weak vector/hybrid retrieval scores => LOW_RETRIEVAL_SCORE.
-- sandbox grep found useful facts outside the target document => OFF_TREE_HIT.
-Quote the relevant step. Redact email addresses, phone numbers, and long numeric identifiers with [REDACTED].
-If there is no actionable gap, return an empty proposals array.
-Successful question-answer traces may include evalCandidate for regression goldens.`;
+export const LEARNER_JUDGE_PROMPT = DEFAULT_RUNTIME_PROMPTS.learnerJudge;
 
 export function redactPii(value: string): string {
   return value

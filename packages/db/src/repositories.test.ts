@@ -1,6 +1,6 @@
 import { ObjectId } from 'mongodb';
 import { describe, expect, it } from 'vitest';
-import { createDocumentsRepo, createUsersRepo, getDocumentConnections } from './repositories.js';
+import { createDocumentsRepo, createRuntimeConfigRepo, createUsersRepo, getDocumentConnections } from './repositories.js';
 
 describe('createDocumentsRepo', () => {
   it('generates distinct slugs for documents with the same title', async () => {
@@ -231,6 +231,53 @@ describe('createUsersRepo', () => {
     const updated = await repo.updateUser(created.id, { role: 'EDITOR', isSuperAdmin: false });
     expect(updated).toMatchObject({ role: 'EDITOR', isSuperAdmin: false });
     expect((await repo.list()).find((user) => user.id === created.id)).toMatchObject({ isSuperAdmin: false });
+  });
+});
+
+describe('createRuntimeConfigRepo', () => {
+  it('round-trips partial overrides and restores null patch values', async () => {
+    let row: (Record<string, unknown> & { _id: string }) | null = null;
+    const repo = createRuntimeConfigRepo({
+      collection(name: string) {
+        if (name !== 'app_config') throw new Error(`Unexpected collection ${name}`);
+        return {
+          async findOne(query: { _id: string }) {
+            return row && row._id === query._id ? row : null;
+          },
+          async updateOne(query: { _id: string }, update: { $set: Record<string, unknown>; $setOnInsert?: Record<string, unknown> }) {
+            row = {
+              ...(row ?? { _id: query._id, ...(update.$setOnInsert ?? {}) }),
+              ...update.$set,
+            };
+            return { upsertedCount: row._id === query._id ? 1 : 0 };
+          },
+        };
+      },
+    } as never);
+
+    expect(await repo.get()).toMatchObject({ prompts: {}, agentParams: {}, models: {}, policy: null });
+    await repo.update({
+      prompts: { main: 'custom main' },
+      agentParams: { vectorK: 10, graphMaxDepth: 3 },
+      models: { agentModel: 'gpt-custom' },
+    });
+    expect(await repo.get()).toMatchObject({
+      prompts: { main: 'custom main' },
+      agentParams: { vectorK: 10, graphMaxDepth: 3 },
+      models: { agentModel: 'gpt-custom' },
+    });
+
+    const restored = await repo.update({
+      prompts: { main: null },
+      agentParams: { vectorK: null },
+      models: { agentModel: null },
+    });
+    expect(restored).toMatchObject({
+      prompts: {},
+      agentParams: { graphMaxDepth: 3 },
+      models: {},
+      policy: null,
+    });
   });
 });
 

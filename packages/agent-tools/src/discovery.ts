@@ -1,5 +1,6 @@
 import { generateObject, tool, ToolLoopAgent, stepCountIs, type LanguageModel } from 'ai';
 import { z } from 'zod';
+import { DEFAULT_RUNTIME_PROMPTS } from '@wf/shared';
 
 interface DiscoveryContext {
   source: 'vector' | 'graph';
@@ -17,16 +18,8 @@ export const DiscoveryDecompositionSchema = z.object({
 
 export type DiscoveryDecomposition = z.infer<typeof DiscoveryDecompositionSchema>;
 
-export const DISCOVERY_DECOMPOSE_PROMPT = `Break the user's question into retrieval queries.
-Return the original question as baseline and at most three non-duplicate variants.
-Variants should cover synonyms, narrower entities, or Korean/English terminology when useful.
-Do not invent facts or filters.`;
-
-export const DISCOVERY_SYSTEM_PROMPT = `You are WekiFlow's Discovery Q&A agent.
-Answer only from retrieved WekiFlow context.
-First use tool_hybrid_retrieve for the user's question. Use graph or sandbox tools only when exact relations or wording need verification.
-Return concise answers with supporting document ids or paths when available.
-If context is insufficient, say what is missing instead of guessing.`;
+export const DISCOVERY_DECOMPOSE_PROMPT = DEFAULT_RUNTIME_PROMPTS.discoveryDecompose;
+export const DISCOVERY_SYSTEM_PROMPT = DEFAULT_RUNTIME_PROMPTS.discoverySystem;
 
 export async function decomposeQuestion(model: LanguageModel, question: string): Promise<string[]> {
   const { object } = await generateObject({

@@ -179,6 +179,148 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   reviewApprovalEnabled: false,
 };
 
+export const promptKeys = ['main', 'curation', 'merge', 'discoveryDecompose', 'discoverySystem', 'learnerJudge'] as const;
+export const PromptKeySchema = z.enum(promptKeys);
+export type PromptKey = z.infer<typeof PromptKeySchema>;
+
+export const DEFAULT_RUNTIME_PROMPTS: Record<PromptKey, string> = {
+  main: `너는 WekiFlow의 지식 병합 에이전트다. 목표는 인입된 정보를 기존 문서에 정확히 병합하는 것이다.
+원칙:
+1) 절대 추측하지 마라. 수치·규정번호·고유명사가 불확실하면 tool_execute_sandbox_terminal로 rg/grep을 실행해 원본(/docs)에서 직접 확인하라.
+2) 의미적 맥락은 tool_search_vector로, 규정 간 관계는 tool_search_graph로 보강하라.
+3) 충분한 팩트가 모이면 tool_merge로 병합 초안을 만들어라.
+4) 병합 후 반드시 tool_verify_integrity로 핵심 주장(수치/조항)을 자가 검증하라. 미검증 항목이 있으면 다시 grep으로 확인 후 수정하라.
+5) 최종 결과는 사람이 Monaco Diff로 검토할 것이므로 변경 요약(changeSummary)을 남겨라.
+도구는 필요할 때만, 최소 횟수로 호출하라.
+
+Phase 4 retrieval guide:
+- For relationship questions, start with tool_search_graph or tool_hybrid_retrieve using the most concrete startEntity in the user/document text.
+- Prefer tool_hybrid_retrieve when both semantically similar chunks and knowledge-graph paths are useful; it returns RRF-ranked context from vector and graph retrieval.
+- If graph paths are sparse, fall back to tool_search_vector and finally tool_execute_sandbox_terminal for exact clauses, numbers, and policy wording.
+- Pass graph path facts into tool_merge as evidence when they explain relationships across documents.`,
+  curation: `You are WekiFlow's knowledge curation agent. Keep the assigned concept current without destructive rewrites.
+
+Rules:
+1. First read the concept and its read-only reference context with tool_read_concept.
+2. Verify source facts with tool_grep_verify before deciding. If the source facts are unchanged, do not rewrite the document; call tool_write_concept with decision "verify".
+3. If facts changed, only produce additive updates. Preserve existing frontmatter keys, keep type/title/resource verbatim, union tags, and preserve every existing # heading in the same order and wording.
+4. If the topic does not clearly belong in the existing concept, use decision "create" only when the new reference is concrete, non-meta, citeable, and reusable. Otherwise use decision "skip".
+5. For external web sources, call tool_fetch_url. The tool enforces allowed_hosts and web_max_pages. Do not retry rejected URLs.
+6. When in doubt, skip. Only cite sources that were actually read or verified.`,
+  merge: `너는 사내 지식 문서 편집기다. 기존 문서(original)에 수집된 팩트(facts)를 정확히 병합한 마크다운 초안을 만든다.
+규칙:
+1) facts에 명시된 수치·조항·고유명사를 그대로 사용하고, 근거 없는 내용을 창작하지 마라.
+2) 기존 문서의 구조와 어조를 유지하되, 신규 정보를 적절한 섹션에 통합하라.
+3) mergedMarkdown에는 완성된 문서 전문을, changeSummary에는 무엇이 어떻게 바뀌었는지 한국어 요약을 담아라.`,
+  discoveryDecompose: `Break the user's question into retrieval queries.
+Return the original question as baseline and at most three non-duplicate variants.
+Variants should cover synonyms, narrower entities, or Korean/English terminology when useful.
+Do not invent facts or filters.`,
+  discoverySystem: `You are WekiFlow's Discovery Q&A agent.
+Answer only from retrieved WekiFlow context.
+First use tool_hybrid_retrieve for the user's question. Use graph or sandbox tools only when exact relations or wording need verification.
+Return concise answers with supporting document ids or paths when available.
+If context is insufficient, say what is missing instead of guessing.`,
+  learnerJudge: `You are WekiFlow's trajectory judge.
+Review jobs.agentSteps and propose only concrete, evidence-backed WKF enrichment tasks.
+Map signals as follows:
+- failed tool_verify_integrity or unverified claims => FAILED_VERIFICATION or MISSING_CITATION.
+- graph retrieval with empty paths for a relationship question => MISSING_RELATION.
+- weak vector/hybrid retrieval scores => LOW_RETRIEVAL_SCORE.
+- sandbox grep found useful facts outside the target document => OFF_TREE_HIT.
+Quote the relevant step. Redact email addresses, phone numbers, and long numeric identifiers with [REDACTED].
+If there is no actionable gap, return an empty proposals array.
+Successful question-answer traces may include evalCandidate for regression goldens.`,
+};
+
+export const DEFAULT_AGENT_PARAMS = {
+  mainStepLimit: 12,
+  discoveryStepLimit: 8,
+  curationStepLimit: 12,
+  vectorK: 8,
+  hybridK: 8,
+  graphMaxDepth: 2,
+  sandboxTimeoutMs: 10_000,
+} as const;
+
+const RuntimePromptsSchema = z.object({
+  main: z.string().min(1).optional(),
+  curation: z.string().min(1).optional(),
+  merge: z.string().min(1).optional(),
+  discoveryDecompose: z.string().min(1).optional(),
+  discoverySystem: z.string().min(1).optional(),
+  learnerJudge: z.string().min(1).optional(),
+});
+
+const RuntimePromptPatchSchema = z.object({
+  main: z.string().min(1).nullable().optional(),
+  curation: z.string().min(1).nullable().optional(),
+  merge: z.string().min(1).nullable().optional(),
+  discoveryDecompose: z.string().min(1).nullable().optional(),
+  discoverySystem: z.string().min(1).nullable().optional(),
+  learnerJudge: z.string().min(1).nullable().optional(),
+});
+
+const RuntimeAgentParamsSchema = z.object({
+  mainStepLimit: z.number().int().min(1).max(50).optional(),
+  discoveryStepLimit: z.number().int().min(1).max(50).optional(),
+  curationStepLimit: z.number().int().min(1).max(50).optional(),
+  vectorK: z.number().int().min(1).max(50).optional(),
+  hybridK: z.number().int().min(1).max(20).optional(),
+  graphMaxDepth: z.number().int().min(1).max(3).optional(),
+  sandboxTimeoutMs: z.number().int().min(1_000).max(30_000).optional(),
+});
+
+const RuntimeAgentParamsPatchSchema = z.object({
+  mainStepLimit: z.number().int().min(1).max(50).nullable().optional(),
+  discoveryStepLimit: z.number().int().min(1).max(50).nullable().optional(),
+  curationStepLimit: z.number().int().min(1).max(50).nullable().optional(),
+  vectorK: z.number().int().min(1).max(50).nullable().optional(),
+  hybridK: z.number().int().min(1).max(20).nullable().optional(),
+  graphMaxDepth: z.number().int().min(1).max(3).nullable().optional(),
+  sandboxTimeoutMs: z.number().int().min(1_000).max(30_000).nullable().optional(),
+});
+
+const RuntimeModelsSchema = z.object({
+  agentModel: z.string().min(1).optional(),
+  embeddingModel: z.string().min(1).optional(),
+  tripletGoogleModel: z.string().min(1).optional(),
+  tripletAnthropicModel: z.string().min(1).optional(),
+  tripletOpenAiFallbackModel: z.string().min(1).optional(),
+});
+
+const RuntimeModelsPatchSchema = z.object({
+  agentModel: z.string().min(1).nullable().optional(),
+  embeddingModel: z.string().min(1).nullable().optional(),
+  tripletGoogleModel: z.string().min(1).nullable().optional(),
+  tripletAnthropicModel: z.string().min(1).nullable().optional(),
+  tripletOpenAiFallbackModel: z.string().min(1).nullable().optional(),
+});
+
+export const RuntimeConfigSchema = z.object({
+  prompts: RuntimePromptsSchema.default({}),
+  agentParams: RuntimeAgentParamsSchema.default({}),
+  models: RuntimeModelsSchema.default({}),
+  policy: z.record(z.string(), z.unknown()).nullable().default(null),
+});
+
+export const RuntimeConfigPatchSchema = z.object({
+  prompts: RuntimePromptPatchSchema.optional(),
+  agentParams: RuntimeAgentParamsPatchSchema.optional(),
+  models: RuntimeModelsPatchSchema.optional(),
+  policy: z.record(z.string(), z.unknown()).nullable().optional(),
+});
+
+export type RuntimeConfig = z.infer<typeof RuntimeConfigSchema>;
+export type RuntimeConfigPatch = z.infer<typeof RuntimeConfigPatchSchema>;
+
+export const RuntimeConfigResponseSchema = z.object({
+  defaults: RuntimeConfigSchema,
+  overrides: RuntimeConfigSchema,
+  effective: RuntimeConfigSchema,
+});
+export type RuntimeConfigResponse = z.infer<typeof RuntimeConfigResponseSchema>;
+
 export const IngestRequestSchema = z.object({
   title: z.string().min(1),
   contentMarkdown: z.string().optional().default(''),
@@ -368,6 +510,58 @@ export type Env = z.infer<typeof EnvSchema>;
 
 export function loadEnv(input: NodeJS.ProcessEnv = process.env): Env {
   return EnvSchema.parse(input);
+}
+
+export function createDefaultRuntimeConfig(env: Pick<
+  Env,
+  'AGENT_MODEL' | 'EMBEDDING_MODEL' | 'TRIPLET_GOOGLE_MODEL' | 'TRIPLET_ANTHROPIC_MODEL' | 'TRIPLET_OPENAI_FALLBACK_MODEL'
+>): RuntimeConfig {
+  return {
+    prompts: { ...DEFAULT_RUNTIME_PROMPTS },
+    agentParams: { ...DEFAULT_AGENT_PARAMS },
+    models: {
+      agentModel: env.AGENT_MODEL,
+      embeddingModel: env.EMBEDDING_MODEL,
+      tripletGoogleModel: env.TRIPLET_GOOGLE_MODEL,
+      tripletAnthropicModel: env.TRIPLET_ANTHROPIC_MODEL,
+      tripletOpenAiFallbackModel: env.TRIPLET_OPENAI_FALLBACK_MODEL,
+    },
+    policy: null,
+  };
+}
+
+export function mergeRuntimeConfig(defaults: RuntimeConfig, overrides: RuntimeConfig): RuntimeConfig {
+  return RuntimeConfigSchema.parse({
+    prompts: { ...defaults.prompts, ...overrides.prompts },
+    agentParams: { ...defaults.agentParams, ...overrides.agentParams },
+    models: { ...defaults.models, ...overrides.models },
+    policy: overrides.policy ?? defaults.policy,
+  });
+}
+
+function mergeNullableSection<T extends Record<string, unknown>>(
+  current: T,
+  patch: Record<string, unknown | null> | undefined,
+): T {
+  if (!patch) return current;
+  const next: Record<string, unknown> = { ...current };
+  for (const [key, value] of Object.entries(patch)) {
+    if (value === null || value === undefined) {
+      delete next[key];
+    } else {
+      next[key] = value;
+    }
+  }
+  return next as T;
+}
+
+export function mergeRuntimeConfigPatch(current: RuntimeConfig, patch: RuntimeConfigPatch): RuntimeConfig {
+  return RuntimeConfigSchema.parse({
+    prompts: mergeNullableSection(current.prompts, patch.prompts),
+    agentParams: mergeNullableSection(current.agentParams, patch.agentParams),
+    models: mergeNullableSection(current.models, patch.models),
+    policy: patch.policy === undefined ? current.policy : patch.policy,
+  });
 }
 
 // --- Roles & permissions (cumulative ladder) ---

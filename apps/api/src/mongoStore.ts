@@ -1,6 +1,15 @@
 import type { Queue } from 'bullmq';
 import type { Db } from 'mongodb';
-import { createDocumentsRepo, createJobsRepo, createSettingsRepo, createUsersRepo, getDocumentConnections, toDocumentDTO } from '@wf/db';
+import {
+  createDocumentsRepo,
+  createJobsRepo,
+  createRuntimeConfigRepo,
+  createSettingsRepo,
+  createUsersRepo,
+  getDocumentConnections,
+  loadRuntimeConfig,
+  toDocumentDTO,
+} from '@wf/db';
 import { defaultJobOptions } from '@wf/queue';
 import {
   AgentPreviewResultSchema,
@@ -22,6 +31,8 @@ import {
   type MsResolveBody,
   type MultiSourceGroup,
   type ReviewItem,
+  type RuntimeConfigPatch,
+  type RuntimeConfigResponse,
   type Topic,
   type TreeCategory,
   type TreeNode,
@@ -60,6 +71,7 @@ export class MongoWekiFlowStore implements WekiFlowStore {
   private readonly jobs: ReturnType<typeof createJobsRepo>;
   private readonly usersRepo: ReturnType<typeof createUsersRepo>;
   private readonly settingsRepo: ReturnType<typeof createSettingsRepo>;
+  private readonly runtimeConfigRepo: ReturnType<typeof createRuntimeConfigRepo>;
 
   constructor(
     private readonly db: Db,
@@ -70,6 +82,7 @@ export class MongoWekiFlowStore implements WekiFlowStore {
     this.jobs = createJobsRepo(db);
     this.usersRepo = createUsersRepo(db);
     this.settingsRepo = createSettingsRepo(db);
+    this.runtimeConfigRepo = createRuntimeConfigRepo(db);
   }
 
   /** 부트 시 소유자 계정을 멱등하게 보장한다(데모 사용자는 scripts/seed-wiki.ts에서 시드). */
@@ -504,5 +517,14 @@ export class MongoWekiFlowStore implements WekiFlowStore {
     if (!canApprove(role)) return { ok: false, statusCode: 403, error: 'Forbidden' };
     if (body.reviewApprovalEnabled === false) await this.publishPendingReviews();
     return { ok: true, settings: await this.settingsRepo.update(body) };
+  }
+
+  async runtimeConfig(): Promise<RuntimeConfigResponse> {
+    return loadRuntimeConfig(this.db);
+  }
+
+  async updateRuntimeConfig(patch: RuntimeConfigPatch): Promise<RuntimeConfigResponse> {
+    await this.runtimeConfigRepo.update(patch);
+    return this.runtimeConfig();
   }
 }
