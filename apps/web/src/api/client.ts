@@ -11,6 +11,7 @@ import type {
   LoginBody,
   TrashEntry,
   TreeNode,
+  UpdateUserRoleBody,
   User,
   UserRole,
   UpdateAppSettings,
@@ -81,8 +82,8 @@ export function createUser(body: CreateUserBody): Promise<User> {
   return request('/users', { method: 'POST', body: JSON.stringify(body) });
 }
 
-export function updateUserRole(id: string, role: UserRole): Promise<User> {
-  return request(`/users/${id}`, { method: 'PATCH', body: JSON.stringify({ role }) });
+export function updateUserRole(id: string, body: UpdateUserRoleBody): Promise<User> {
+  return request(`/users/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
 }
 
 export function deleteUser(id: string): Promise<{ ok: boolean }> {

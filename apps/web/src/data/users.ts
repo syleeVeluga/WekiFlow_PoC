@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { CreateUserBody, UserRole } from '@wf/shared';
+import type { CreateUserBody, UpdateUserRoleBody } from '@wf/shared';
 import * as api from '../api/client.js';
 
 const USERS_KEY = ['users'] as const;
@@ -13,7 +13,7 @@ export function useUserMutations() {
   const invalidate = () => void qc.invalidateQueries({ queryKey: USERS_KEY });
   const create = useMutation({ mutationFn: (body: CreateUserBody) => api.createUser(body), onSuccess: invalidate });
   const updateRole = useMutation({
-    mutationFn: ({ id, role }: { id: string; role: UserRole }) => api.updateUserRole(id, role),
+    mutationFn: ({ id, body }: { id: string; body: UpdateUserRoleBody }) => api.updateUserRole(id, body),
     onSuccess: invalidate,
   });
   const remove = useMutation({ mutationFn: (id: string) => api.deleteUser(id), onSuccess: invalidate });

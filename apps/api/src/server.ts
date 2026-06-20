@@ -16,6 +16,7 @@ import {
   UpdateAppSettingsSchema,
   UpdateUserRoleBodySchema,
   type User,
+  canAccessDevPanel,
   canApprove,
   canEdit,
   canManageOwners,
@@ -156,6 +157,22 @@ export function buildServer({
     if (!token) return undefined;
     return store.me(token);
   }
+
+  async function requireDevPanelUser(request: FastifyRequest, reply: FastifyReply): Promise<User | undefined> {
+    const me = await currentUser(request);
+    if (!me || !canAccessDevPanel(me)) {
+      reply.code(403).send({ error: 'Forbidden' });
+      return undefined;
+    }
+    return me;
+  }
+
+  app.addHook('preHandler', async (request, reply) => {
+    const pathOnly = request.url.split('?')[0] ?? request.url;
+    if (!pathOnly.startsWith('/api/admin/')) return;
+    const me = await requireDevPanelUser(request, reply);
+    if (!me) return reply;
+  });
 
   function capPreviewText(text: string): string {
     return text.slice(0, PREVIEW_MAX_CHARS);
@@ -421,6 +438,10 @@ export function buildServer({
     return result.settings;
   });
 
+  app.get('/api/admin/health', async () => {
+    return { ok: true };
+  });
+
   // --- User management (소유자 + 승인; 소유자 역할/계정은 소유자만) ---
   app.get('/api/users', async (request, reply) => {
     const me = await currentUser(request);
@@ -434,6 +455,9 @@ export function buildServer({
     const body = CreateUserBodySchema.parse(request.body);
     if (body.role === 'OWNER' && !canManageOwners(me.role)) {
       return reply.code(403).send({ error: '소유자 역할은 소유자만 부여할 수 있습니다.' });
+    }
+    if (body.isSuperAdmin && !canManageOwners(me.role)) {
+      return reply.code(403).send({ error: '슈퍼어드민 플래그는 소유자만 변경할 수 있습니다.' });
     }
     const result = await store.createUser(body);
     if (!result.ok) return reply.code(result.statusCode).send({ error: result.error });
@@ -449,7 +473,10 @@ export function buildServer({
     if (!canManageOwners(me.role) && (body.role === 'OWNER' || target?.role === 'OWNER')) {
       return reply.code(403).send({ error: '소유자 권한 변경은 소유자만 가능합니다.' });
     }
-    const result = await store.updateUserRole(id, body.role);
+    if (!canManageOwners(me.role) && body.isSuperAdmin !== undefined && body.isSuperAdmin !== target?.isSuperAdmin) {
+      return reply.code(403).send({ error: '슈퍼어드민 플래그는 소유자만 변경할 수 있습니다.' });
+    }
+    const result = await store.updateUserRole(id, body);
     if (!result.ok) return reply.code(result.statusCode).send({ error: result.error });
     return result.user;
   });

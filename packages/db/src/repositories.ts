@@ -455,6 +455,7 @@ function toUserDTO(raw: WithId<Document>): User {
     email: String(raw.email ?? ''),
     name: String(raw.name ?? ''),
     role: (raw.role ?? 'VIEWER') as UserRole,
+    isSuperAdmin: raw.isSuperAdmin === true,
     createdAt: toIso(raw.createdAt),
   };
 }
@@ -473,7 +474,7 @@ export function createUsersRepo(db: Db) {
       const now = new Date();
       await users.updateOne(
         { email },
-        { $setOnInsert: { email, name: '소유자', role: 'OWNER', password, createdAt: now } },
+        { $setOnInsert: { email, name: '소유자', role: 'OWNER', isSuperAdmin: true, password, createdAt: now } },
         { upsert: true },
       );
     },
@@ -496,19 +497,28 @@ export function createUsersRepo(db: Db) {
       return row ? { ...toUserDTO(row), password: String(row.password ?? '') } : undefined;
     },
 
-    async create(input: { email: string; name: string; role: UserRole; password: string }): Promise<User> {
+    async create(input: { email: string; name: string; role: UserRole; isSuperAdmin?: boolean | undefined; password: string }): Promise<User> {
       const now = new Date();
       const id = new ObjectId();
       await users.insertOne({ _id: id, ...input, createdAt: now });
-      return { id: id.toString(), email: input.email, name: input.name, role: input.role, createdAt: now.toISOString() };
+      return {
+        id: id.toString(),
+        email: input.email,
+        name: input.name,
+        role: input.role,
+        isSuperAdmin: input.isSuperAdmin === true,
+        createdAt: now.toISOString(),
+      };
     },
 
-    async updateRole(id: string, role: UserRole): Promise<User | undefined> {
+    async updateUser(id: string, input: { role: UserRole; isSuperAdmin?: boolean | undefined }): Promise<User | undefined> {
       const oid = toObjectId(id);
       if (!oid) return undefined;
+      const $set: Document = { role: input.role };
+      if (input.isSuperAdmin !== undefined) $set.isSuperAdmin = input.isSuperAdmin;
       const updated = await users.findOneAndUpdate(
         { _id: oid },
-        { $set: { role } },
+        { $set },
         { returnDocument: 'after', projection: { password: 0 } },
       );
       return updated ? toUserDTO(updated) : undefined;

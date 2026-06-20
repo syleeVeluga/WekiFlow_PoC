@@ -4,6 +4,7 @@ import {
   KnowledgeFreshnessSchema,
   TagClassificationSchema,
   TripletArraySchema,
+  canAccessDevPanel,
   canApprove,
   canManageUsers,
   canReview,
@@ -55,6 +56,12 @@ describe('@wf/shared', () => {
     // 사용자 관리는 승인 + 소유자.
     expect(canManageUsers('APPROVER')).toBe(true);
     expect(canManageUsers('REVIEWER')).toBe(false);
+  });
+
+  it('keeps dev panel access separate from role rank', () => {
+    expect(canAccessDevPanel({ isSuperAdmin: true })).toBe(true);
+    expect(canAccessDevPanel({ isSuperAdmin: false })).toBe(false);
+    expect(canAccessDevPanel({})).toBe(false);
   });
 
   it('keeps wiki freshness separate from document workflow status', () => {
