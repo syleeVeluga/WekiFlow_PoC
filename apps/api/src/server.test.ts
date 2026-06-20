@@ -400,10 +400,15 @@ describe('@wf/api routes', () => {
       method: 'PATCH',
       url: `/api/candidates/${created.json().id}`,
       headers: { authorization: `Bearer ${ownerToken}` },
-      payload: { status: 'SOURCE_VERIFIED' },
+      payload: { status: 'SOURCE_VERIFIED', linkedDocId: 'doc-source-1', provenanceNeedsSource: false, removeRiskFactor: 'no_source' },
     });
     expect(advanced.statusCode).toBe(200);
-    expect(advanced.json().status).toBe('SOURCE_VERIFIED');
+    expect(advanced.json()).toMatchObject({
+      status: 'SOURCE_VERIFIED',
+      linkedDocId: 'doc-source-1',
+      provenance: { needsSource: false },
+      riskFactors: ['official_answer'],
+    });
 
     const invalid = await app.inject({
       method: 'PATCH',

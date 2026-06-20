@@ -5,7 +5,7 @@ import {
   useQueryClient,
   type UseQueryResult,
 } from '@tanstack/react-query';
-import type { AgentPreviewResult, AgentStepDTO, CandidateStatus, ConversationIngestRequest, DocumentDTO, KnowledgeCandidateListQuery, TreeNode } from '@wf/shared';
+import type { AgentPreviewResult, AgentStepDTO, ConversationIngestRequest, DocumentDTO, KnowledgeCandidateListQuery, TreeNode, UpdateKnowledgeCandidateStatus } from '@wf/shared';
 import * as api from './client.js';
 
 export const queryKeys = {
@@ -55,7 +55,7 @@ export function useCreateCandidate() {
 export function useUpdateCandidateStatus() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, status }: { id: string; status: CandidateStatus }) => api.updateCandidateStatus(id, status),
+    mutationFn: ({ id, ...patch }: { id: string } & UpdateKnowledgeCandidateStatus) => api.updateCandidateStatus(id, patch),
     onSuccess: (candidate) => {
       void qc.invalidateQueries({ queryKey: ['candidates'] });
       void qc.invalidateQueries({ queryKey: queryKeys.candidate(candidate.id) });

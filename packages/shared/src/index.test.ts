@@ -11,6 +11,7 @@ import {
   DOC_STATUS_TO_CANDIDATE,
   KnowledgeCandidateSchema,
   RISK_FACTOR_LABEL,
+  UpdateKnowledgeCandidateStatusSchema,
   JobQueueSchema,
   JobTypeSchema,
   KnowledgeFreshnessSchema,
@@ -226,6 +227,15 @@ describe('@wf/shared', () => {
       conflictWith: [],
       summary: '',
     });
+
+    expect(
+      UpdateKnowledgeCandidateStatusSchema.parse({
+        status: 'SOURCE_VERIFIED',
+        linkedDocId: 'doc-source-1',
+        provenanceNeedsSource: false,
+        removeRiskFactor: 'no_source',
+      }),
+    ).toMatchObject({ linkedDocId: 'doc-source-1', provenanceNeedsSource: false });
   });
 
   it('normalizes Korean entity surface forms consistently', () => {

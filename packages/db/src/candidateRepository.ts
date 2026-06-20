@@ -7,6 +7,7 @@ import {
   type CreateKnowledgeCandidate,
   type KnowledgeCandidate,
   type KnowledgeCandidateListQuery,
+  type UpdateKnowledgeCandidateStatus,
   canTransitionCandidate,
   defaultCandidateStatusForProvenance,
 } from '@wf/shared';
@@ -81,18 +82,24 @@ export function createCandidateRepository(db: Db) {
       return row ? toCandidate(row) : undefined;
     },
 
-    async updateCandidateStatus(id: string, status: CandidateStatus): Promise<KnowledgeCandidate | undefined> {
+    async updateCandidateStatus(id: string, patch: UpdateKnowledgeCandidateStatus): Promise<KnowledgeCandidate | undefined> {
       const oid = toObjectId(id);
       if (!oid) return undefined;
       const current = await collection.findOne({ _id: oid });
       if (!current) return undefined;
       const currentStatus = String(current.status) as CandidateStatus;
-      if (!canTransitionCandidate(currentStatus, status)) {
-        throw new Error(`Invalid candidate status transition: ${currentStatus} -> ${status}`);
+      if (!canTransitionCandidate(currentStatus, patch.status)) {
+        throw new Error(`Invalid candidate status transition: ${currentStatus} -> ${patch.status}`);
+      }
+      const set: Record<string, unknown> = { status: patch.status, updatedAt: new Date() };
+      if (patch.linkedDocId !== undefined) set.linkedDocId = patch.linkedDocId;
+      if (patch.provenanceNeedsSource !== undefined) set['provenance.needsSource'] = patch.provenanceNeedsSource;
+      if (patch.removeRiskFactor) {
+        set.riskFactors = (Array.isArray(current.riskFactors) ? current.riskFactors : []).filter((risk) => risk !== patch.removeRiskFactor);
       }
       const updated = await collection.findOneAndUpdate(
         { _id: oid },
-        { $set: { status, updatedAt: new Date() } },
+        { $set: set },
         { returnDocument: 'after' },
       );
       return updated ? toCandidate(updated) : undefined;

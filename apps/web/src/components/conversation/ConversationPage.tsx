@@ -54,15 +54,10 @@ export function ConversationPage() {
       return;
     }
     updateStatus.mutate(
-      { id: candidate.id, status: 'SOURCE_VERIFIED' },
+      { id: candidate.id, status: 'SOURCE_VERIFIED', linkedDocId, provenanceNeedsSource: false, removeRiskFactor: 'no_source' },
       {
         onSuccess: (updated) => {
-          const sourceChecked = {
-            ...updated,
-            linkedDocId,
-            provenance: { ...updated.provenance, needsSource: false },
-          };
-          setCandidates((items) => items.map((item) => (item.id === updated.id ? sourceChecked : item)));
+          setCandidates((items) => items.map((item) => (item.id === updated.id ? updated : item)));
           showToast('Candidate marked source verified.', 'ok');
         },
         onError: (error) => showToast(error instanceof Error ? error.message : 'Source update failed.', 'warn'),

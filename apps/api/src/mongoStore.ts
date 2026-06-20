@@ -18,7 +18,6 @@ import {
   type AgentPreviewResult,
   type AgentPreviewRun,
   type AppSettings,
-  type CandidateStatus,
   type CreateKnowledgeCandidate,
   type CreateUserBody,
   type DocumentConnections,
@@ -42,6 +41,7 @@ import {
   type TreeCategory,
   type TreeNode,
   type UpdateAppSettings,
+  type UpdateKnowledgeCandidateStatus,
   type UpdateUserRoleBody,
   type User,
   type UserRole,
@@ -291,9 +291,9 @@ export class MongoWekiFlowStore implements WekiFlowStore {
     return this.candidates.getCandidate(id);
   }
 
-  async updateCandidateStatus(id: string, status: CandidateStatus): Promise<CandidateResult> {
+  async updateCandidateStatus(id: string, patch: UpdateKnowledgeCandidateStatus): Promise<CandidateResult> {
     try {
-      const candidate = await this.candidates.updateCandidateStatus(id, status);
+      const candidate = await this.candidates.updateCandidateStatus(id, patch);
       return candidate ? { ok: true, candidate } : { ok: false, statusCode: 404, error: 'Not found' };
     } catch (error) {
       return {
