@@ -1,7 +1,7 @@
 # PR-23 — 프롬프트 주입 seam + 인자 배선
 
 > 원본 계획 §C (+ §B의 agentParams 워커 주입). 하드코딩 프롬프트/인자를 **런타임 오버라이드 가능**하게 만든다.
-> 상태: 미착수 · 선행: PR-22(config 저장소) · 후행: PR-25(UI 편집)
+> 상태: 완료 · 구현 PR: #35 · 선행: PR-22(config 저장소) · 후행: PR-25(UI 편집)
 
 ## 목표
 프롬프트 상수는 **기본값으로 유지**하면서, 각 팩토리/빌더가 컨텍스트의 오버라이드를 받아 사용하도록 seam을 추가한다. 워커가 `loadRuntimeConfig()`의 prompts·agentParams를 ctx로 주입한다. 오버라이드가 없으면 **동작 완전 불변**.
@@ -36,8 +36,12 @@
 - 수동: config로 main 프롬프트 변경 → 신규 agent-preview 잡에서 반영, 「기본 복원」 후 상수 사용 확인.
 
 ## 완료 기준
-- 6개 프롬프트 키 + agentParams가 런타임 오버라이드 경로로 흐름.
-- 오버라이드 없을 때 빌트인과 바이트 동일 동작.
+- [x] 6개 프롬프트 키 + agentParams가 런타임 오버라이드 경로로 흐름.
+- [x] 오버라이드 없을 때 빌트인과 바이트 동일 동작.
+
+## 완료 기록
+- 병합: PR #35 (`Wire runtime prompt and agent parameter overrides`)
+- 검증: `corepack pnpm verify:testing`
 
 ## 범위 밖
 - UI 편집기(PR-25). 정책 오버라이드(PR-24). env API 키 편집(영구 제외).

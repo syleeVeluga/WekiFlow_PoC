@@ -10,7 +10,7 @@
 |----|------|------|-------------|
 | [PR-21](./pr-21-superadmin-flag.md) | 직교 슈퍼어드민 플래그 | A | 완료 — `isSuperAdmin` + `canAccessDevPanel`, `/api/admin/*` 게이트 |
 | [PR-22](./pr-22-runtime-config-store.md) | 런타임 config 저장소 | B | 완료 — `RuntimeConfigSchema`, repo, `loadRuntimeConfig` 머지, config API |
-| [PR-23](./pr-23-prompt-injection-seam.md) | 프롬프트 주입 seam + 인자 배선 | C(+B) | 프롬프트 6키 seam, 워커 prompts·agentParams 주입 |
+| [PR-23](./pr-23-prompt-injection-seam.md) | 프롬프트 주입 seam + 인자 배선 | C(+B) | 완료 — 프롬프트 6키 seam, 워커 prompts·agentParams 주입 |
 | [PR-24](./pr-24-policy-runtime-override.md) | 정책 런타임 오버라이드 + role 정합 | D | `loadEffectivePolicy`, role 검증, policy API (PR-19 직결) |
 | [PR-25](./pr-25-web-dev-panel.md) | Web UI 개발자 패널 | E | DevPanel 4탭, 훅, LNB 진입점 |
 
@@ -24,7 +24,8 @@ PR-21 (게이트) ──┬─→ PR-22 (config 저장소) ──┬─→ PR-23
 
 - **PR-21**: 완료(PR #31).
 - **PR-22**: 완료(PR #33).
-- **PR-23 / PR-24**: 둘 다 PR-22 필요. 서로 독립이라 **병렬 가능**.
+- **PR-23**: 완료(PR #35).
+- **PR-24**: PR-22 필요.
 - **PR-25**: PR-21·22·23·24 전부 필요. 마지막.
 
 ## 권장 순서
