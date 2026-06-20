@@ -43,6 +43,13 @@ export function useTreeCategories() {
   return useQuery({ queryKey: dataQueryKeys.treeCategories, queryFn: dataClient.treeCategories });
 }
 
+export function useKnowledgeMap(includeTypedRelations = false) {
+  return useQuery({
+    queryKey: [...dataQueryKeys.knowledgeMap, includeTypedRelations],
+    queryFn: () => dataClient.knowledgeMap(includeTypedRelations),
+  });
+}
+
 export function usePatchKnowledge() {
   const qc = useQueryClient();
   return useMutation({

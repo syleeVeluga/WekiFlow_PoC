@@ -150,6 +150,37 @@ export const DocumentConnectionsSchema = z.object({
 });
 export type DocumentConnections = z.infer<typeof DocumentConnectionsSchema>;
 
+export const KnowledgeMapNodeSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  path: z.string(),
+  type: z.string().default('DOCUMENT'),
+  tags: z.array(z.string()).default([]),
+  headingCount: z.number().int().nonnegative().default(0),
+  linkCount: z.number().int().nonnegative().default(0),
+  backlinkCount: z.number().int().nonnegative().default(0),
+});
+export type KnowledgeMapNode = z.infer<typeof KnowledgeMapNodeSchema>;
+
+export const KnowledgeMapEdgeSchema = z.object({
+  id: z.string(),
+  source: z.string(),
+  target: z.string(),
+  label: z.string(),
+  kind: z.enum(['markdown_link', 'tag', 'typed_relation']),
+});
+export type KnowledgeMapEdge = z.infer<typeof KnowledgeMapEdgeSchema>;
+
+export const KnowledgeMapSchema = z.object({
+  nodes: z.array(KnowledgeMapNodeSchema),
+  edges: z.array(KnowledgeMapEdgeSchema),
+  unresolvedLinks: z
+    .array(z.object({ source: z.string(), target: z.string(), label: z.string() }))
+    .default([]),
+  generatedAt: z.string(),
+});
+export type KnowledgeMap = z.infer<typeof KnowledgeMapSchema>;
+
 /** A document currently in the trash (soft-deleted). */
 export const TrashEntrySchema = z.object({
   id: z.string(),

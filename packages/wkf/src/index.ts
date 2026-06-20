@@ -53,6 +53,13 @@ export {
   type ReindexOptions,
   type ReindexResult,
 } from './reindex.js';
+export {
+  buildLinkGraph,
+  extractLinkGraph,
+  knowledgeItemsToLinkGraph,
+  renderKnowledgeMapHtml,
+  writeKnowledgeMapHtml,
+} from './linkGraph.js';
 export { generateIndexes, type GenerateIndexOptions, type GenerateIndexResult } from './index-gen.js';
 export {
   PolicyError,

@@ -10,4 +10,5 @@ export const dataQueryKeys = {
   digest: ['wiki', 'digest'] as const,
   activity: ['wiki', 'activity'] as const,
   treeCategories: ['wiki', 'tree-categories'] as const,
+  knowledgeMap: ['wiki', 'knowledge-map'] as const,
 };

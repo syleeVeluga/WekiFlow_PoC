@@ -11,6 +11,7 @@ import { ConversationPage } from './components/conversation/ConversationPage.js'
 import { DevPanel } from './components/admin/DevPanel.js';
 import { AddPage } from './components/add/AddPage.js';
 import { TrashPage } from './components/trash/TrashPage.js';
+import { KnowledgeMapPage } from './components/map/KnowledgeMapPage.js';
 import { LoginPage } from './components/auth/LoginPage.js';
 import { Toast } from './components/common/Primitives.js';
 import { fetchMe, setAuthToken } from './api/client.js';
@@ -35,6 +36,7 @@ function ActivePage() {
   if (activePage === 'review') return <ReviewPage />;
   if (activePage === 'kb') return <KbPage />;
   if (activePage === 'doc') return <DocPage />;
+  if (activePage === 'map') return <KnowledgeMapPage />;
   if (activePage === 'users') return <UsersPage />;
   if (activePage === 'agent') return <AgentPreviewPage />;
   if (activePage === 'conversation') return <ConversationPage />;

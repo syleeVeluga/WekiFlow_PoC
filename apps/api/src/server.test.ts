@@ -808,6 +808,10 @@ describe('@wf/api routes', () => {
     const treeCategories = await app.inject({ method: 'GET', url: '/api/tree/categories' });
     expect(treeCategories.statusCode).toBe(200);
     expect(treeCategories.json()).toEqual(expect.arrayContaining([expect.objectContaining({ name: '미분류' })]));
+    const knowledgeMap = await app.inject({ method: 'GET', url: '/api/knowledge-map' });
+    expect(knowledgeMap.statusCode).toBe(200);
+    expect(knowledgeMap.json().nodes.length).toBeGreaterThan(0);
+    expect(knowledgeMap.json().edges).toEqual(expect.arrayContaining([expect.objectContaining({ kind: 'tag' })]));
     const systemTopic = topics.json().find((topic: { source: string }) => topic.source === 'system');
     const deleteSystem = await app.inject({ method: 'DELETE', url: `/api/topics/${systemTopic.id}` });
     expect(deleteSystem.statusCode).toBe(400);
