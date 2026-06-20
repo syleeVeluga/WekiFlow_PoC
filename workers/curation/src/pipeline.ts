@@ -112,6 +112,7 @@ export async function runCurationAgent(job: CurationConceptJob, ctx: CurationAge
     bundlePath: ctx.bundlePath,
     docsSnapshotDir: ctx.docsSnapshotDir,
     concept: job.concept,
+    policy,
     ...(ctx.now ? { now: ctx.now } : {}),
     recordStep: async (step) => {
       recordedSteps.push(step);
