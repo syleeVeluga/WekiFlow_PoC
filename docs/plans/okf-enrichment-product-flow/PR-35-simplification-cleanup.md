@@ -1,6 +1,6 @@
 # PR-35 — Simplification Cleanup: 용어·노출 정리 (T7)
 
-> Track T7 · 상태: 계획 · 선행: PR-27~34(표면 모델 도입 후 정리) · 근거: [`Overview.md`](./Overview.md) §2.1·§5.2-6·§6 GA-05, [`Gap-Analysis.md`](./Gap-Analysis.md) §3.6·§4.2
+> Track T7 · 상태: 완료(PR #47) · 선행: PR-27~34(표면 모델 도입 후 정리) · 근거: [`Overview.md`](./Overview.md) §2.1·§5.2-6·§6 GA-05, [`Gap-Analysis.md`](./Gap-Analysis.md) §3.6·§4.2
 > 외부 API 메모: 없음.
 
 ## 목표
@@ -39,10 +39,17 @@ GA-05를 마무리한다. 새 표면 모델 도입 후 남은 내부 pipeline te
 
 ## DoD
 
-- [ ] 유지/숨김/리네임/제거 목록이 문서로 확정·반영됐다.
-- [ ] 사용자-facing 용어가 Overview §2.1과 일치한다.
-- [ ] OKF/WKF·pipeline 용어가 일반 화면에 노출되지 않는다.
-- [ ] Overview §8 완료 기준이 acceptance gate로 검증된다.
+- [x] 유지/숨김/리네임/제거 목록이 문서로 확정·반영됐다.
+- [x] 사용자-facing 용어가 Overview §2.1과 일치한다.
+- [x] OKF/WKF·pipeline 용어가 일반 화면에 노출되지 않는다.
+- [x] Overview §8 완료 기준이 acceptance gate로 검증된다.
+
+## 완료 기록
+
+- 구현 PR: #47
+- 병합 커밋: `a2f90e52d12e3e3be1ccf526988418ff61f1ac6d`
+- 검증: 일반 화면 grep gate, `corepack pnpm -r typecheck`, `corepack pnpm -r test`, `corepack pnpm build`, GitHub CI `verify`.
+- 리뷰 보강: `terminology-map.md`에 PR-35 acceptance gate를 추가해 Overview §8 완료 기준의 증거 연결을 명시했다.
 
 ## 리스크·메모
 

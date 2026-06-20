@@ -326,13 +326,15 @@ Ask / Search / Knowledge Map / Export / MCP
 
 이 Overview의 후속 상세 계획이 완료되려면 다음이 충족되어야 한다.
 
-- [ ] 현재 인입/검토/Q&A/curation/learner 흐름의 실제 코드 경로가 문서화되어 있다.
-- [ ] `KnowledgeCandidate`와 published knowledge의 상태/승인 경계가 확정되어 있다.
-- [ ] Enrichment Draft Agent가 현재 Main Agent를 대체/흡수하는 범위가 확정되어 있다.
-- [ ] Conversation Ingest의 저장 정책과 provenance 정책이 확정되어 있다.
-- [ ] OKF Markdown link 기반 Knowledge Map의 v1 범위가 확정되어 있다.
-- [ ] 백엔드/프런트 PR 단위 계획 문서가 작성되어 있다.
-- [ ] 사용자-facing 용어가 확정되어 UI 문구와 docs에서 일관되게 사용된다.
+- [x] 현재 인입/검토/Q&A/curation/learner 흐름의 실제 코드 경로가 문서화되어 있다.
+- [x] `KnowledgeCandidate`와 published knowledge의 상태/승인 경계가 확정되어 있다.
+- [x] Enrichment Draft Agent가 현재 Main Agent를 대체/흡수하는 범위가 확정되어 있다.
+- [x] Conversation Ingest의 저장 정책과 provenance 정책이 확정되어 있다.
+- [x] OKF Markdown link 기반 Knowledge Map의 v1 범위가 확정되어 있다.
+- [x] 백엔드/프런트 PR 단위 계획 문서가 작성되어 있다.
+- [x] 사용자-facing 용어가 확정되어 UI 문구와 docs에서 일관되게 사용된다.
+
+완료 증거는 [`PR-Plan.md`](./PR-Plan.md)의 PR-26~35 완료 기록과 [`contracts/terminology-map.md`](./contracts/terminology-map.md)의 PR-35 acceptance gate를 기준으로 추적한다.
 
 ## 9. 참고 근거
 
