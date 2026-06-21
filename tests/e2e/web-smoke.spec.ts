@@ -10,6 +10,9 @@ test('renders the unauthenticated web app shell', async ({ page }) => {
 
 test('keeps cleared home empty, then shows a directly uploaded markdown item', async ({ page }) => {
   await page.request.post('/api/__test/reset');
+  await page.request.post('/api/documents', {
+    data: { title: 'Raw Draft Intake', contentMarkdown: '# Raw Draft Intake' },
+  });
   await page.goto('/');
   await page.locator('input[type="email"]').fill('admin01@veluga.io');
   await page.locator('input[type="password"]').fill('admin01@veluga.io');
@@ -20,6 +23,8 @@ test('keeps cleared home empty, then shows a directly uploaded markdown item', a
   await expect(page.getByText('표시할 주제가 없습니다.')).toBeVisible();
   await expect(page.getByText('법인카드 정산')).toHaveCount(0);
   await expect(page.getByText('건강검진 안내')).toHaveCount(0);
+  await expect(page.getByText('인입 원본')).toBeVisible();
+  await expect(page.getByRole('button', { name: '▫ Raw Draft Intake DRAFT' })).toBeVisible();
 
   await page.getByRole('button', { name: '직접 추가' }).click();
   await page.getByPlaceholder('예: 법인카드 사용 기준').fill('Home Digest Upload');
