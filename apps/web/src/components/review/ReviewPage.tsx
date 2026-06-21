@@ -20,6 +20,13 @@ const routeTitles: Record<CandidateReviewItem['route']['action'], string> = {
   reject: '충돌 보류',
 };
 
+const multiSourceTypeLabels: Record<MultiSourceGroup['multiSourceType'], string> = {
+  A: '동일 변경',
+  B: '버전 선택',
+  C: '충돌 확인',
+  D: '부분 반영',
+};
+
 function CandidateTriageCard({ item }: { item: CandidateReviewItem }) {
   const { showToast } = useUiStore();
   const resolve = useResolveCandidateRoute();
@@ -86,8 +93,8 @@ function CandidateTriageSection({ items }: { items: CandidateReviewItem[] }) {
     <section className="candidate-triage">
       <div className="rv-head">
         <div>
-          <p className="eyebrow">Triage</p>
-          <h2>승인 사유 inbox</h2>
+          <p className="eyebrow">후보 분류</p>
+          <h2>승인 사유함</h2>
         </div>
       </div>
       {ordered.length === 0 ? <div className="empty">승인 사유 기반 후보가 없습니다.</div> : null}
@@ -137,8 +144,8 @@ function Layer1ReviewSection({ items }: { items: DocumentDTO[] }) {
     <section className="layer1-review">
       <div className="rv-head">
         <div>
-          <p className="eyebrow">Layer 1</p>
-          <h2>파이프라인 검토</h2>
+          <p className="eyebrow">AI 정리</p>
+          <h2>AI 정리 초안 검토</h2>
         </div>
       </div>
       <div className="review-grid">
@@ -162,7 +169,7 @@ function Layer1ReviewSection({ items }: { items: DocumentDTO[] }) {
             </Suspense>
           </article>
         ))}
-        {items.length === 0 ? <div className="empty">파이프라인 검토 대상이 없습니다.</div> : null}
+        {items.length === 0 ? <div className="empty">AI 정리 초안 검토 대상이 없습니다.</div> : null}
       </div>
     </section>
   );
@@ -268,8 +275,8 @@ function MultiSourceCard({ group }: { group: MultiSourceGroup }) {
       <div className="rv-head">
         <div>
           <div className="row">
-            <Badge tone="info">Multi-source</Badge>
-            <Badge>Type {group.multiSourceType}</Badge>
+            <Badge tone="info">여러 출처</Badge>
+            <Badge>{multiSourceTypeLabels[group.multiSourceType]}</Badge>
             <Certainty value={group.certainty} />
           </div>
           <h3>{group.topicTitle}</h3>
@@ -409,7 +416,7 @@ export function ReviewPage() {
           <Badge tone="info">비활성화</Badge>
           <h2>검토 승인 기능이 꺼져 있습니다.</h2>
           <p>승인 권한을 가진 사용자가 설정 메뉴에서 검토 승인 활성화를 켜야 이 메뉴에서 검토할 수 있습니다.</p>
-          <p className="muted">현재는 파이프라인 결과가 검토 단계에서 멈추지 않고 바로 게시 단계로 넘어갑니다.</p>
+          <p className="muted">현재는 AI 정리 결과가 검토 단계에서 멈추지 않고 바로 게시 단계로 넘어갑니다.</p>
         </div>
       ) : (
         <>
