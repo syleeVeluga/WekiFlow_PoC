@@ -141,7 +141,7 @@ function replaceRelationsSection(body: string, relationsMarkdown: string): strin
 
 async function writeRelationsAndReindex(
   ctx: GraphPipelineContext,
-  input: { slug: string; triplets: Triplet[] },
+  input: { documentId: string; slug: string; triplets: Triplet[] },
 ): Promise<number> {
   if (!ctx.bundlePath) throw new Error('Graph pipeline persist requires bundlePath');
   if (!ctx.embed || !ctx.embeddingModel) throw new Error('Graph pipeline persist requires embed and embeddingModel');
@@ -154,6 +154,7 @@ async function writeRelationsAndReindex(
   await writeFile(path, serialize({ frontmatter: doc.frontmatter, body }), 'utf8');
   await reindexBundle(ctx.db, ctx.bundlePath, {
     concept: input.slug,
+    documentId: input.documentId,
     embed: ctx.embed,
     embeddingModel: ctx.embeddingModel,
   });
@@ -267,7 +268,7 @@ export async function runGraphPipeline(
   const triplets = dedupeTriplets(extracted);
   if (persist) {
     const started = Date.now();
-    const relationCount = await writeRelationsAndReindex(ctx, { slug: doc.slug, triplets });
+    const relationCount = await writeRelationsAndReindex(ctx, { documentId, slug: doc.slug, triplets });
     await ctx.recordStep?.({
       tool: 'graph_write_relations',
       args: { documentId, slug: doc.slug },

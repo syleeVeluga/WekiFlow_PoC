@@ -12,6 +12,7 @@ const RESERVED_MARKDOWN = new Set(['index.md', 'log.md']);
 export interface ReindexOptions {
   all?: boolean;
   concept?: string;
+  documentId?: string;
   embeddingModel?: string;
   embed?: EmbedFn;
 }
@@ -120,11 +121,11 @@ async function reindexConcept(
   db: Db,
   path: string,
   slug: string,
-  options: Required<Pick<ReindexOptions, 'embeddingModel' | 'embed'>> & { cleanupOrphans: boolean },
+  options: Required<Pick<ReindexOptions, 'embeddingModel' | 'embed'>> & { cleanupOrphans: boolean; documentId?: ObjectId },
 ): Promise<ReindexedConcept> {
   const raw = await readFile(path, 'utf8');
   const doc = parse(raw);
-  const documentId = documentIdForSlug(doc.frontmatter.slug ?? slug);
+  const documentId = options.documentId ?? documentIdForSlug(doc.frontmatter.slug ?? slug);
   const markdownForChunks = doc.body.trim();
   const chunks = chunkMarkdown(markdownForChunks);
   const embeddings = chunks.length > 0 ? await options.embed(chunks.map((chunk) => chunk.text)) : [];
@@ -188,6 +189,8 @@ async function reindexConcept(
 export async function reindexBundle(db: Db, bundlePath: string, options: ReindexOptions = {}): Promise<ReindexResult> {
   if (!options.all && !options.concept) throw new Error('wkf reindex requires --all or --concept <slug>');
   if (options.all && options.concept) throw new Error('wkf reindex accepts either --all or --concept, not both');
+  if (options.all && options.documentId) throw new Error('wkf reindex documentId is only valid with --concept');
+  if (options.documentId && !ObjectId.isValid(options.documentId)) throw new Error(`Invalid documentId: ${options.documentId}`);
 
   const embed = options.embed ?? defaultDeterministicEmbed;
   const embeddingModel = options.embeddingModel ?? 'wkf-deterministic-test-embedding';
@@ -205,8 +208,16 @@ export async function reindexBundle(db: Db, bundlePath: string, options: Reindex
     : await listConceptFiles(bundlePath);
 
   const concepts: ReindexedConcept[] = [];
+  const documentId = options.documentId ? new ObjectId(options.documentId) : undefined;
   for (const file of files) {
-    concepts.push(await reindexConcept(db, file, slugFromPath(bundlePath, file), { embed, embeddingModel, cleanupOrphans: !options.all }));
+    concepts.push(
+      await reindexConcept(db, file, slugFromPath(bundlePath, file), {
+        embed,
+        embeddingModel,
+        cleanupOrphans: !options.all,
+        ...(documentId ? { documentId } : {}),
+      }),
+    );
   }
 
   return {

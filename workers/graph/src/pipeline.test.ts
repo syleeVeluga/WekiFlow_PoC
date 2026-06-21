@@ -266,6 +266,7 @@ describe('runGraphPipeline', () => {
     expect(db.rows('kg_edges')).toHaveLength(1);
     expect(db.rows('kg_edges')[0]!.strength).toBe(0.9);
     expect(db.rows('kg_edges')[0]!.sourceDocIds).toHaveLength(1);
+    expect((db.rows('kg_edges')[0]!.sourceDocIds as ObjectId[])[0]!.equals(documentId)).toBe(true);
     expect(db.rows('chunks')).toHaveLength(3);
     expect(steps.map((step) => step.tool)).toEqual([
       'tool_extract_triplets',
