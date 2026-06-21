@@ -1,0 +1,8 @@
+wkf_version: "0.1"
+scope: knowledge
+snapshot:
+  documents: PUBLISHED
+publishing:
+  documents: PUBLISHED
+reference:
+  path: .ref
