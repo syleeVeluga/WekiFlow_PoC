@@ -30,7 +30,7 @@
 
 - PR-33 지식 맵: 화면명은 "지식 맵"을 사용하고, typed relation/KG는 advanced toggle 문구로 제한한다.
 - PR-34 Discovery Trust: 화면명은 "지식에 질문하기"를 사용하고, citation/source는 "출처"와 "신뢰 상태"로 표시한다.
-- PR-35 Simplification Cleanup: 일반 화면 grep 게이트(`WKF|OKF|pipeline|tool_|triplet`)를 이 표의 허용 위치 기준으로 판정한다.
+- PR-35 Simplification Cleanup: 일반 화면 grep 게이트(`WKF|OKF|pipeline|파이프라인|tool_|triplet`)를 이 표의 허용 위치 기준으로 판정한다.
 
 ## PR-35 grep gate
 
@@ -39,8 +39,11 @@
 - `WKF`
 - `OKF`
 - `pipeline`
+- `파이프라인`
 - `tool_`
 - `triplet` / `triple`
+
+검토 화면의 사용자-facing 문자열에서는 `Triage`, `Layer 1`, `Multi-source`, `Type A/B/C/D`도 각각 `후보 분류`, `AI 정리`, `여러 출처`, `동일 변경/버전 선택/충돌 확인/부분 반영`으로 표시한다.
 
 허용 위치:
 

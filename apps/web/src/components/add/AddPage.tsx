@@ -396,7 +396,7 @@ export function AddPage() {
 
           {mode === 'integration' ? (
             <div className="add-integration">
-              <p className="add-help">외부 에이전트, 스크립트, CI 파이프라인에서 REST API로 이 워크스페이스에 지식을 전달합니다.</p>
+              <p className="add-help">외부 에이전트, 스크립트, CI 자동화에서 REST API로 이 워크스페이스에 지식을 전달합니다.</p>
               <div className="add-workspace-id">
                 <span>워크스페이스 ID</span>
                 <code>{workspaceApiId}</code>
