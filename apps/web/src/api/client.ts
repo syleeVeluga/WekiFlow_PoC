@@ -238,6 +238,10 @@ export function approve(id: string): Promise<{ ok: true; doc: DocumentDTO; job: 
   return request(`/documents/${id}/approve`, { method: 'POST' });
 }
 
+export function organizeDocument(id: string): Promise<{ ok: true; doc: DocumentDTO; job: JobRef }> {
+  return request(`/documents/${id}/organize`, { method: 'POST' });
+}
+
 export function reject(id: string): Promise<DocumentDTO> {
   return request(`/documents/${id}/reject`, { method: 'POST' });
 }

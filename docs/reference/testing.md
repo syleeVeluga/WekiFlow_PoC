@@ -26,6 +26,22 @@ It starts from an empty knowledge workspace and verifies:
 
 The Markdown fixture is `tests/fixtures/core-pipeline-policy.md`.
 
+## Source-Only Promotion E2E
+
+The source-only promotion path is part of the primary smoke coverage in `tests/e2e/web-smoke.spec.ts`.
+
+It verifies:
+
+1. The workspace can be reset to an empty home state.
+2. A direct document created as a source-only draft remains visible under `인입 원본`.
+3. The draft is labeled `지식화 안 됨`, not with the internal `DRAFT` value.
+4. Opening the draft shows the `AI로 지식화` action.
+5. Running the action promotes the document into official knowledge when `reviewApprovalEnabled=false`.
+6. The promoted document shows `지식화 완료`.
+7. `GET /api/tree/categories` includes the promoted document, proving that organization knowledge surfaces were updated.
+
+The living product contract for this flow is `docs/reference/source-to-official-knowledge-flow.md`.
+
 ## Manual No-Approval Happy Path
 
 Use this scenario when a developer wants to test the normal route directly without exercising the human approval gate. The expected default is `reviewApprovalEnabled=false`, so an accepted Markdown upload should move through the stub main worker and publish immediately.

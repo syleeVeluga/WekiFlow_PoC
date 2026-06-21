@@ -39,6 +39,7 @@ import {
   UNCLASSIFIED_TOPIC_NAME,
   buildIngestedKnowledgeItem,
   canApprove,
+  canEdit,
   canReview,
   createSeedActivity,
   createSeedAiTagSuggestions,
@@ -133,6 +134,7 @@ export interface WekiFlowStore {
   }): Promise<DocumentDTO>;
   ingest(input: IngestInput): Promise<IngestResult>;
   reviews(): Promise<DocumentDTO[]>;
+  organizeSource(id: string, role: UserRole): Promise<ApproveResult>;
   approve(id: string, role: UserRole): Promise<ApproveResult>;
   reject(id: string): Promise<DocumentDTO | undefined>;
   createCandidate(input: CreateKnowledgeCandidate): Promise<KnowledgeCandidate>;
@@ -512,6 +514,25 @@ export class InMemoryWekiFlowStore implements WekiFlowStore {
       return { ok: false, statusCode: 403, error: 'Forbidden' };
     }
     return this.publishDocument(id);
+  }
+
+  async organizeSource(id: string, role: UserRole): Promise<ApproveResult> {
+    if (!canEdit(role)) {
+      return { ok: false, statusCode: 403, error: 'Forbidden' };
+    }
+    const doc = this.documents.get(id);
+    if (!doc) return { ok: false, statusCode: 404, error: 'Not found' };
+    if (doc.status !== 'DRAFT') {
+      return { ok: false, statusCode: 409, error: 'Only source-only draft documents can be organized' };
+    }
+    const result = await this.publishDocument(id);
+    if (result.ok) {
+      const item = this.knowledge.get(id);
+      if (item && !item.aiTags.includes('AI 정리됨')) {
+        this.knowledge.set(id, { ...item, aiTags: [...item.aiTags, 'AI 정리됨'] });
+      }
+    }
+    return result;
   }
 
   private async publishPendingReviews(): Promise<void> {

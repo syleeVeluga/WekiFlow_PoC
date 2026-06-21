@@ -233,6 +233,14 @@ export function useApprove() {
   });
 }
 
+export function useOrganizeDocument() {
+  const invalidate = useInvalidateAll();
+  return useMutation({
+    mutationFn: ({ id }: { id: string }) => api.organizeDocument(id),
+    onSuccess: invalidate,
+  });
+}
+
 export function useReject() {
   const invalidate = useInvalidateAll();
   return useMutation({

@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState, type CSSProperties } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Lnb } from './components/lnb/Lnb.js';
 import { HomePage } from './components/home/HomePage.js';
@@ -40,9 +40,40 @@ function ActivePage() {
 }
 
 function Workspace() {
+  const [sidebarWidth, setSidebarWidth] = useState(() => {
+    const stored = Number(localStorage.getItem('wf.sidebarWidth'));
+    return Number.isFinite(stored) && stored >= 220 && stored <= 420 ? stored : 256;
+  });
+
+  const beginResize = () => {
+    const onMove = (event: PointerEvent) => {
+      const next = Math.min(420, Math.max(220, event.clientX));
+      setSidebarWidth(next);
+      localStorage.setItem('wf.sidebarWidth', String(next));
+    };
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      document.body.classList.remove('is-resizing-sidebar');
+    };
+    document.body.classList.add('is-resizing-sidebar');
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  };
+
   return (
-    <div className="app">
+    <div className="app" style={{ '--sw': `${sidebarWidth}px` } as CSSProperties}>
       <Lnb />
+      <div
+        aria-label="사이드바 너비 조절"
+        className="layout-resizer"
+        onDoubleClick={() => {
+          setSidebarWidth(256);
+          localStorage.setItem('wf.sidebarWidth', String(256));
+        }}
+        onPointerDown={beginResize}
+        role="separator"
+      />
       <main className="main">
         <ActivePage />
       </main>

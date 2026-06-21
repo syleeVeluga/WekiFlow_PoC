@@ -1,10 +1,9 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { canEdit, type KnowledgeItem } from '@wf/shared';
-import { useConnections, useDocument } from '../../api/hooks.js';
+import { useConnections, useDocument, useOrganizeDocument } from '../../api/hooks.js';
 import { useKnowledgeItem, usePatchKnowledge, useSetKnowledgeCategory, useTopicMutations, useTopics } from '../../data/hooks.js';
 import { useAuthStore } from '../../auth/store.js';
 import { useUiStore } from '../../store.js';
-import { isObjectId } from '../../lib/docId.js';
 import { BlockNotePane } from '../blocknote/BlockNotePane.js';
 import { Badge, Modal } from '../common/Primitives.js';
 import { TopicChipGrid } from '../common/TopicChipGrid.js';
@@ -22,6 +21,15 @@ const TAB_LABELS = {
   relations: '연결 관계',
   history: '변경 기록',
 } satisfies Record<(typeof DOC_TABS)[number], string>;
+
+function documentStatusView(status: string): { label: string; tone: 'neutral' | 'ok' | 'warn' | 'error' | 'info'; note?: string } {
+  if (status === 'PUBLISHED' || status === 'GRAPH_INDEXED') return { label: '공식 지식', tone: 'ok' };
+  if (status === 'REVIEW') return { label: '확인 필요', tone: 'warn', note: 'AI가 정리한 초안이지만, 현재 설정 또는 정책상 확인 후 반영됩니다.' };
+  if (status === 'PROCESSING') return { label: 'AI 처리 중', tone: 'info', note: '업로드된 원본을 AI가 읽고 지식화 가능 여부를 판단하는 중입니다.' };
+  if (status === 'FAILED') return { label: '처리 실패', tone: 'error', note: 'AI 처리 중 오류가 발생했습니다. 다시 분석하거나 원본을 확인해야 합니다.' };
+  if (status === 'DRAFT') return { label: '지식화 안 됨', tone: 'warn', note: '업로드된 원본은 보관되어 있지만 아직 홈, 조직 지식, 지식 맵에 쓰이는 공식 지식은 아닙니다.' };
+  return { label: status, tone: 'neutral' };
+}
 
 function strengthDots(strength: number): string {
   const filled = Math.min(3, Math.max(1, Math.round(strength * 3)));
@@ -85,11 +93,12 @@ export function DocPage() {
   // knowledge item first (getKnowledge matches by wiki.id regardless of id shape). Fall back to the
   // read-only real-document view only when no wiki item exists (e.g. a doc still in review).
   const { data: doc } = useKnowledgeItem(selectedDocId);
-  const { data: realDoc } = useDocument(isObjectId(selectedDocId) ? selectedDocId : null);
+  const { data: realDoc } = useDocument(selectedDocId);
   const { docTab, setDocTab, openCategory, showToast, selectedCategory } = useUiStore();
   const role = useAuthStore((s) => s.user?.role ?? 'VIEWER');
   const editable = canEdit(role);
   const patch = usePatchKnowledge();
+  const organize = useOrganizeDocument();
   const [draft, setDraft] = useState<string | null>(null);
   // Which revision the 변경 기록 tab has expanded into a diff (null = list only). Reset on doc/tab change.
   const [openRevision, setOpenRevision] = useState<string | null>(null);
@@ -120,10 +129,11 @@ export function DocPage() {
         <button className="btn-primary" onClick={save} disabled={!changed || patch.isPending}>저장</button>
       </div>
     );
+    const knowledgeStateBadge = doc.aiTags.includes('AI 정리됨') ? <Badge tone="info">지식화 완료</Badge> : <Badge tone="ok">공식 지식</Badge>;
 
     return (
       <section className="pg doc-page">
-        <div className="topbar"><div><h1>{doc.title}</h1><p>{editable ? <button type="button" className="doc-cat-edit" title="주제 변경" onClick={() => setCatOpen(true)}>{doc.category} <span className="doc-cat-edit-ic">✎</span></button> : doc.category} · {doc.department}</p></div><button className="btn" onClick={() => openCategory(doc.category)}>← 카테고리로</button></div>
+        <div className="topbar"><div><h1>{doc.title}</h1><p className="doc-meta-line">{knowledgeStateBadge}{editable ? <button type="button" className="doc-cat-edit" title="주제 변경" onClick={() => setCatOpen(true)}>{doc.category} <span className="doc-cat-edit-ic">✎</span></button> : doc.category} · {doc.department}</p></div><button className="btn" onClick={() => openCategory(doc.category)}>← 카테고리로</button></div>
         {catOpen ? <CategoryPickerModal item={doc} onClose={() => setCatOpen(false)} /> : null}
         <div className="doc-toolbar"><div className="tabs">{DOC_TABS.map((tab) => <button className={docTab === tab ? 'on' : ''} onClick={() => setDocTab(tab)} key={tab}>{TAB_LABELS[tab]}</button>)}</div><button className="btn" onClick={() => showToast('챗봇 컨텍스트를 전환했습니다.', 'inf')}>챗봇 토글</button></div>
         <div className="card doc-body">
@@ -160,15 +170,30 @@ export function DocPage() {
   // --- Read-only fallback for real documents without a materialized wiki item (e.g. in review) ---
   if (realDoc) {
     const hasDraft = realDoc.draftMarkdown != null && realDoc.draftMarkdown !== realDoc.contentMarkdown;
+    const statusView = documentStatusView(realDoc.status);
+    const canOrganizeSource = editable && realDoc.status === 'DRAFT';
+    const organizeSource = () => {
+      organize.mutate(
+        { id: realDoc.id },
+        {
+          onSuccess: () => showToast('지식화 완료 후 공식 지식에 반영했습니다.', 'ok'),
+          onError: (error) => showToast(error instanceof Error ? error.message : '지식화에 실패했습니다.', 'warn'),
+        },
+      );
+    };
     return (
       <section className="pg doc-page">
         <div className="topbar">
           <div>
             <h1>{realDoc.title}</h1>
-            <p><Badge tone="info">{realDoc.status}</Badge> version {realDoc.version}</p>
+            <p><Badge tone={statusView.tone}>{statusView.label}</Badge> version {realDoc.version}</p>
           </div>
-          {selectedCategory ? <button className="btn" onClick={() => openCategory(selectedCategory)}>← 카테고리로</button> : null}
+          <div className="doc-top-actions">
+            {canOrganizeSource ? <button className="btn-primary" onClick={organizeSource} disabled={organize.isPending}>AI로 지식화</button> : null}
+            {selectedCategory ? <button className="btn" onClick={() => openCategory(selectedCategory)}>← 카테고리로</button> : null}
+          </div>
         </div>
+        {statusView.note ? <div className="source-state-note">{statusView.note}</div> : null}
         <div className="doc-toolbar"><div className="tabs">{DOC_TABS.map((tab) => <button className={docTab === tab ? 'on' : ''} onClick={() => setDocTab(tab)} key={tab}>{TAB_LABELS[tab]}</button>)}</div><button className="btn" onClick={() => showToast('챗봇 컨텍스트를 전환했습니다.', 'inf')}>챗봇 토글</button></div>
         <div className="card doc-body">
           {docTab === 'edit' ? (

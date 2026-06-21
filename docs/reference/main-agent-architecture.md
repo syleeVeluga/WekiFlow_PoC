@@ -138,6 +138,7 @@
 
 ## 7. 관련 문서
 
+- [Source to Official Knowledge Flow](./source-to-official-knowledge-flow.md) - source-only 원본, `AI로 지식화`, `지식화 완료`, 공식 지식 승격 계약
 - [01. 아키텍처](../archive/01-architecture.md) _(archive)_
 - [02. 기술 스택](../archive/02-tech-stack.md) _(archive)_
 - [04. 에이전트 도구 명세](../archive/04-agent-tools.md) _(archive)_

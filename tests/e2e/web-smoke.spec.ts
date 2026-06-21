@@ -24,7 +24,14 @@ test('keeps cleared home empty, then shows a directly uploaded markdown item', a
   await expect(page.getByText('법인카드 정산')).toHaveCount(0);
   await expect(page.getByText('건강검진 안내')).toHaveCount(0);
   await expect(page.getByText('인입 원본')).toBeVisible();
-  await expect(page.getByRole('button', { name: '▫ Raw Draft Intake DRAFT' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '▫ Raw Draft Intake 지식화 안 됨' })).toBeVisible();
+  await page.getByRole('button', { name: /Raw Draft Intake/ }).click();
+  await expect(page.getByRole('button', { name: 'AI로 지식화' })).toBeVisible();
+  await page.getByRole('button', { name: 'AI로 지식화' }).click();
+  await expect(page.getByText('지식화 완료')).toBeVisible();
+  await expect
+    .poll(async () => JSON.stringify(await (await page.request.get('/api/tree/categories')).json()))
+    .toContain('Raw Draft Intake');
 
   await page.getByRole('button', { name: '직접 추가' }).click();
   await page.getByPlaceholder('예: 법인카드 사용 기준').fill('Home Digest Upload');

@@ -170,6 +170,7 @@ OKF/WKF PR-01~20은 구현 완료되어 `docs/archive/okf-knowledge-standard/imp
 - OKF/WKF는 사용자-facing 개념이 아니라 내부 저장·교환 포맷이다. UI 문구에는 Pipeline A/B/C/D, WKF, `# Relations` 같은 내부 용어를 기본 노출하지 않는다.
 - 사용자 흐름은 "넣기 → AI 정리 → 필요한 경우 승인 → 질문/탐색"으로 유지한다.
 - 모든 인입 파일·대화·회의록·외부 문서는 우선 원본 또는 지식 후보로 저장한다. 공식 지식으로 승격하려면 출처 확인 또는 승인 정책을 통과해야 한다.
+- source-only 원본 문서는 사용자에게 `인입 원본` / `지식화 안 됨`으로 보여야 하며 숨기지 않는다. 승인 비활성화(`reviewApprovalEnabled=false`) 상태에서 사용자가 `AI로 지식화`를 명시적으로 실행하면 `PUBLISHED`로 물질화되어 `AI 정리됨` 태그와 `지식화 완료` 배지를 갖고 홈 다이제스트, 조직 지식, 지식 맵에 반영된다. 승인 활성화 상태에서는 이 경로가 승인 우회가 되어서는 안 된다. 상세 계약은 `docs/reference/source-to-official-knowledge-flow.md`를 따른다.
 - Enrichment Draft Agent는 기존 Main/Ingest Agent의 제품명이다. 역할은 기존 문서 병합뿐 아니라 신규 후보 생성, 기존 지식 보강, skip/source-only 판단까지 포함한다.
 - Conversation Ingest는 대화 내용을 공식 지식으로 직접 쓰지 않는다. 대화 기반 후보는 `확인 필요`로 두고, 원본 문서 연결 또는 담당자 승인 후 공식화한다.
 - Curation은 published 지식에만 강한 가드레일을 적용한다. `assertNoShrinkage` 같은 비축소 검증은 curation-origin 변경과 감사 친화적 거부 경로에 집중하고, 일반 신규 인입에는 과도하게 적용하지 않는다.

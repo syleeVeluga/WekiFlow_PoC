@@ -4,6 +4,14 @@ import { useUiStore } from '../../store.js';
 import { TreeCategory } from './TreeCategory.js';
 import { TreeContextMenu } from './TreeContextMenu.js';
 
+function sourceStatusLabel(status: string): string {
+  if (status === 'DRAFT') return '지식화 안 됨';
+  if (status === 'PROCESSING') return 'AI 처리 중';
+  if (status === 'REVIEW') return '확인 필요';
+  if (status === 'FAILED') return '처리 실패';
+  return status;
+}
+
 // 미분류를 포함한 분류 목록은 서버(treeCategories → groupKnowledgeByCategory)가 항상 보장한다.
 export function LnbDocumentTree() {
   const { data: categories = [] } = useTreeCategories();
@@ -26,6 +34,7 @@ export function LnbDocumentTree() {
           <div className="tree-empty">문서가 없습니다.</div>
         ) : (
           <>
+            {hasVisibleCategories ? <div className="tree-sec-label">공식 지식</div> : null}
             {categories.map((category) => <TreeCategory key={category.id} category={category} />)}
             {hasSourceDocs ? (
               <div className="tree-cat">
@@ -45,7 +54,7 @@ export function LnbDocumentTree() {
                     >
                       <span>▫</span>
                       <span>{doc.title}</span>
-                      <small className="tree-status">{doc.status}</small>
+                      <small className="tree-status">{sourceStatusLabel(doc.status)}</small>
                     </button>
                   ))}
                 </div>

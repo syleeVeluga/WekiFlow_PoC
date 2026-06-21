@@ -712,6 +712,19 @@ export function buildServer({
     });
   });
 
+  app.post('/api/documents/:id/organize', async (request, reply) => {
+    const me = await currentUser(request);
+    if (!me || !canEdit(me.role)) return reply.code(403).send({ error: 'Forbidden' });
+    const settings = await store.settings();
+    if (settings.reviewApprovalEnabled) {
+      return reply.code(409).send({ error: 'Review approval is enabled; use the review flow' });
+    }
+    const { id } = request.params as { id: string };
+    const result = await store.organizeSource(id, me.role);
+    if (!result.ok) return reply.code(result.statusCode).send({ error: result.error });
+    return result;
+  });
+
   app.post('/api/ingest', async (request, reply) => {
     if (!(await ensureIngestCapacity(reply))) return reply;
     const body = IngestRequestSchema.parse(request.body);

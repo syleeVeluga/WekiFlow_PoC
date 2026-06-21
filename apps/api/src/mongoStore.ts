@@ -47,6 +47,7 @@ import {
   type UserRole,
   UNCLASSIFIED_TOPIC_NAME,
   canApprove,
+  canEdit,
   canReview,
   createDefaultTopics,
   createWorkspaceDigest,
@@ -271,6 +272,26 @@ export class MongoWekiFlowStore implements WekiFlowStore {
     if (!doc) {
       return { ok: false, statusCode: 404, error: 'Not found' };
     }
+    const job = await this.enqueue(this.graphQueue, 'EXTRACT_TRIPLETS', id);
+    return { ok: true, doc, job };
+  }
+
+  async organizeSource(id: string, role: UserRole): Promise<ApproveResult> {
+    if (!canEdit(role)) {
+      return { ok: false, statusCode: 403, error: 'Forbidden' };
+    }
+    const current = await this.docs.getById(id);
+    if (!current) {
+      return { ok: false, statusCode: 404, error: 'Not found' };
+    }
+    if (current.status !== 'DRAFT') {
+      return { ok: false, statusCode: 409, error: 'Only source-only draft documents can be organized' };
+    }
+    const doc = await this.docs.publish(id);
+    if (!doc) {
+      return { ok: false, statusCode: 404, error: 'Not found' };
+    }
+    await this.docs.addWikiTags(id, ['AI 정리됨']);
     const job = await this.enqueue(this.graphQueue, 'EXTRACT_TRIPLETS', id);
     return { ok: true, doc, job };
   }

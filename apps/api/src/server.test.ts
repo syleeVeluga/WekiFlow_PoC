@@ -203,6 +203,62 @@ describe('@wf/api routes', () => {
     await app.close();
   });
 
+  it('organizes a source-only draft into published knowledge when approval is disabled', async () => {
+    const store = new InMemoryWekiFlowStore();
+    const app = buildServer({ store });
+    clearWorkspaceData(store);
+    const ownerToken = await login(app, 'admin01@veluga.io', 'admin01@veluga.io');
+
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/documents',
+      payload: { title: 'Raw source plan', contentMarkdown: '# Raw source plan\n\nUse this as official knowledge.' },
+    });
+    expect(created.statusCode).toBe(200);
+    expect(created.json().status).toBe('DRAFT');
+    const id = created.json().id;
+
+    const denied = await app.inject({ method: 'POST', url: `/api/documents/${id}/organize` });
+    expect(denied.statusCode).toBe(403);
+
+    const organized = await app.inject({
+      method: 'POST',
+      url: `/api/documents/${id}/organize`,
+      headers: { authorization: `Bearer ${ownerToken}` },
+    });
+    expect(organized.statusCode).toBe(200);
+    expect(organized.json().doc.status).toBe('PUBLISHED');
+    expect(organized.json().job.type).toBe('EXTRACT_TRIPLETS');
+
+    const knowledge = await app.inject({ method: 'GET', url: `/api/knowledge/${id}` });
+    expect(knowledge.statusCode).toBe(200);
+    expect(knowledge.json()).toMatchObject({ id, title: 'Raw source plan' });
+    expect(knowledge.json().aiTags).toContain('AI 정리됨');
+    expect(JSON.stringify((await app.inject({ method: 'GET', url: '/api/home/digest' })).json())).toContain('Raw source plan');
+    expect(JSON.stringify((await app.inject({ method: 'GET', url: '/api/tree/categories' })).json())).toContain('Raw source plan');
+    expect(JSON.stringify((await app.inject({ method: 'GET', url: '/api/knowledge-map' })).json())).toContain('Raw source plan');
+
+    await app.inject({
+      method: 'PATCH',
+      url: '/api/settings',
+      headers: { authorization: `Bearer ${ownerToken}` },
+      payload: { reviewApprovalEnabled: true },
+    });
+    const gated = await app.inject({
+      method: 'POST',
+      url: '/api/documents',
+      payload: { title: 'Gated raw source', contentMarkdown: '# Gated raw source' },
+    });
+    const blocked = await app.inject({
+      method: 'POST',
+      url: `/api/documents/${gated.json().id}/organize`,
+      headers: { authorization: `Bearer ${ownerToken}` },
+    });
+    expect(blocked.statusCode).toBe(409);
+
+    await app.close();
+  });
+
   it('ingests multiple uploaded files as separate documents and rejects invalid batches atomically', async () => {
     const store = new InMemoryWekiFlowStore();
     const app = buildServer({ store });
