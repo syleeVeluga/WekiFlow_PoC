@@ -20,3 +20,6 @@
 
 > 런타임 구현 스펙은 패키지와 함께: [`packages/wkf/SPEC.md`](../../packages/wkf/SPEC.md).
 > 문서 번호(04·05·07~09)는 원본 OKF 폴더 번호를 유지한다. 01·02·03·06·10은 archive로 분리돼 일부 상호링크가 archive를 가리킨다.
+## Current Testing
+
+- [`testing.md`](./testing.md) - current test gates, empty Playwright API harness, and the core OKF Markdown upload pipeline E2E.

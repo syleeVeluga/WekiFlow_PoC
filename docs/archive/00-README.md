@@ -52,3 +52,6 @@
 - 📦 = 설치할 패키지, 🛠️ = 구현 작업, ✅ = 완료 기준(DoD), ⚠️ = 주의/리스크.
 - 코드 블록의 버전은 **상한 핀(pin)** 기준. 실제 설치 직전 `npm view <pkg> version`으로 패치 버전을 재확인할 것.
 - 모든 백엔드 코드는 **TypeScript(ESM) + Node.js 24 LTS** 기준.
+## Later Testing Records
+
+- [`okf-core-pipeline-testing.md`](./okf-core-pipeline-testing.md) - completed Playwright plan for the empty-workspace OKF Markdown upload, review, publish, map, and ask loop.
