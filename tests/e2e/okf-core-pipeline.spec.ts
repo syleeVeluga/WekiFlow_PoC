@@ -5,6 +5,7 @@ import path from 'node:path';
 const TITLE = 'Remote Access Policy 2026';
 
 test('empty workspace completes md upload, review, publish, map, and ask loop', async ({ page }) => {
+  await page.request.post('/api/__test/reset');
   await page.goto('/');
   await expect
     .poll(async () => (await page.request.get('/api/settings')).status(), {

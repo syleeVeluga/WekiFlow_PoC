@@ -49,7 +49,7 @@ import {
   canApprove,
   canReview,
   createDefaultTopics,
-  createSeedDigest,
+  createWorkspaceDigest,
   deriveTopicsFromItems,
   groupKnowledgeByCategory,
   loadEnv,
@@ -452,8 +452,18 @@ export class MongoWekiFlowStore implements WekiFlowStore {
   }
 
   async homeDigest(): Promise<DailyDigest> {
-    if (!(await this.settingsRepo.get()).reviewApprovalEnabled) return createSeedDigest(0);
-    return createSeedDigest((await this.listRichReviews()).length + (await this.listMultiSource()).length);
+    const [knowledgeItems, reviewItems, multiSourceGroups, activityCount] = await Promise.all([
+      this.listKnowledge({ person: 'all', topic: 'all', tag: null, status: 'all', q: '', sort: 'recent' }),
+      this.listRichReviews(),
+      this.listMultiSource(),
+      this.dbCollection('activity_log').countDocuments(),
+    ]);
+    return createWorkspaceDigest({
+      knowledgeItems,
+      pendingReview: reviewItems.length + multiSourceGroups.length,
+      conflictCount: multiSourceGroups.filter((group) => group.multiSourceType === 'C').length,
+      activityCount,
+    });
   }
 
   async listActivity(limit = 5): Promise<ActivityEntry[]> {

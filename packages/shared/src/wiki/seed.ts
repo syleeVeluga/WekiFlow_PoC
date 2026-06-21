@@ -2,6 +2,7 @@ import type {
   ActivityEntry,
   AiTagSuggestion,
   DailyDigest,
+  DigestSection,
   KnowledgeItem,
   MultiSourceGroup,
   ReviewItem,
@@ -254,6 +255,97 @@ export function createSeedDigest(pendingReview: number): DailyDigest {
       { key: 'travel', label: '출장', count: 24 },
       { key: 'office', label: '회의실', count: 18 },
     ],
+  };
+}
+
+function todayLabel(now = new Date()): string {
+  return new Intl.DateTimeFormat('ko-KR', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    timeZone: 'Asia/Seoul',
+  }).format(now);
+}
+
+function isToday(iso: string | undefined, now = new Date()): boolean {
+  if (!iso) return false;
+  const value = new Date(iso);
+  if (Number.isNaN(value.getTime())) return false;
+  return todayLabel(value) === todayLabel(now);
+}
+
+function topCategories(items: KnowledgeItem[]) {
+  const counts = new Map<string, number>();
+  for (const item of items) counts.set(item.category, (counts.get(item.category) ?? 0) + 1);
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'ko'))
+    .slice(0, 5)
+    .map(([label, count]) => ({ key: label, label, count }));
+}
+
+export function createWorkspaceDigest(input: {
+  knowledgeItems: KnowledgeItem[];
+  pendingReview: number;
+  conflictCount?: number;
+  activityCount?: number;
+  now?: Date;
+}): DailyDigest {
+  const knowledgeItems = [...input.knowledgeItems];
+  const recent = [...knowledgeItems]
+    .sort((a, b) => (b.origin?.at ?? b.lastChange?.at ?? '').localeCompare(a.origin?.at ?? a.lastChange?.at ?? ''))
+    .slice(0, 4);
+  const updated = [...knowledgeItems]
+    .filter((item) => item.modCount > 0)
+    .sort((a, b) => (b.lastChange?.at ?? '').localeCompare(a.lastChange?.at ?? ''))
+    .slice(0, 4);
+  const todayNewCount = knowledgeItems.filter((item) => isToday(item.origin?.at, input.now)).length;
+  const sections: DigestSection[] = [];
+  if ((input.conflictCount ?? 0) > 0) {
+    sections.push({
+      title: '확인이 필요한 지식',
+      pill: `${input.conflictCount}건`,
+      tone: 'warn',
+      entities: [],
+    });
+  }
+  if (recent.length > 0) {
+    sections.push({
+      title: '새로 정리된 조직 지식',
+      pill: `+신규 ${recent.length}건`,
+      tone: 'ok',
+      entities: recent.map((item) => ({ kind: 'new', itemId: item.id, title: item.title })),
+    });
+  }
+  if (updated.length > 0) {
+    sections.push({
+      title: '최근 갱신된 지식',
+      pill: `업데이트 ${updated.length}건`,
+      tone: 'info',
+      entities: updated.map((item) => ({ kind: 'update', itemId: item.id, title: item.title })),
+    });
+  }
+
+  const mostAsked = topCategories(knowledgeItems);
+  return {
+    dateLabel: todayLabel(input.now),
+    updatedAtLabel: '방금 전',
+    leadCounts: {
+      detected: knowledgeItems.length,
+      conflicts: input.conflictCount ?? 0,
+      toApply: input.pendingReview,
+    },
+    ...(mostAsked[0] ? { topSearch: mostAsked[0].label } : {}),
+    sections,
+    metrics: {
+      pendingReview: input.pendingReview,
+      todayNewCount,
+      failedCount: 0,
+      analysisCount: input.activityCount ?? 0,
+      extractedCount: mostAsked.length,
+      autoAppliedCount: knowledgeItems.filter((item) => item.modCount > 0 || item.origin).length,
+      autoProcessingRate: knowledgeItems.length === 0 ? 0 : Math.round((knowledgeItems.filter((item) => item.origin).length / knowledgeItems.length) * 100),
+    },
+    mostAsked,
   };
 }
 

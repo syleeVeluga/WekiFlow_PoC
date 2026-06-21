@@ -33,6 +33,20 @@ function multipartPayload(input: {
   };
 }
 
+function clearWorkspaceData(store: InMemoryWekiFlowStore) {
+  store.documents.clear();
+  store.knowledge.clear();
+  store.topics.clear();
+  store.richReviews.clear();
+  store.multiSource.clear();
+  store.aiTagSuggestions.clear();
+  store.candidates.clear();
+  store.ingestMeta.clear();
+  store.agentRuns.clear();
+  store.trash.clear();
+  store.activity.splice(0, store.activity.length);
+}
+
 function sseEvent<T>(payload: string, eventName: string): T {
   const frame = payload.split('\n\n').find((part) => part.includes(`event: ${eventName}`));
   if (!frame) throw new Error(`Missing SSE event: ${eventName}`);
@@ -222,6 +236,79 @@ describe('@wf/api routes', () => {
     expect((await app.inject({ method: 'POST', url: '/api/ingest/files', ...invalid })).statusCode).toBe(415);
     expect(store.documents.size).toBe(beforeDocuments);
     expect(store.mainQueue.jobs).toHaveLength(beforeJobs);
+
+    await app.close();
+  });
+
+  it('does not show seeded home digest items after workspace data is cleared', async () => {
+    const store = new InMemoryWekiFlowStore();
+    const app = buildServer({ store });
+    clearWorkspaceData(store);
+
+    const digest = await app.inject({ method: 'GET', url: '/api/home/digest' });
+
+    expect(digest.statusCode, digest.payload).toBe(200);
+    expect(digest.json()).toMatchObject({
+      sections: [],
+      mostAsked: [],
+      leadCounts: { detected: 0, conflicts: 0, toApply: 0 },
+      metrics: {
+        pendingReview: 0,
+        todayNewCount: 0,
+        failedCount: 0,
+        analysisCount: 0,
+        extractedCount: 0,
+        autoAppliedCount: 0,
+        autoProcessingRate: 0,
+      },
+    });
+    expect(digest.json().topSearch).toBeUndefined();
+    expect(digest.payload).not.toContain('법인카드 정산');
+    expect(digest.payload).not.toContain('건강검진 안내');
+    expect(digest.payload).not.toContain('VPN 설치 및 접속');
+    expect(digest.payload).not.toContain('2026년 5월 30일');
+
+    await app.close();
+  });
+
+  it('surfaces an uploaded markdown document in home digest and tree after a cleared workspace', async () => {
+    const store = new InMemoryWekiFlowStore();
+    const app = buildServer({ store });
+    clearWorkspaceData(store);
+
+    const upload = multipartPayload({
+      fields: { topic: '복지', workspace: '총무팀' },
+      file: { name: 'flow.md', content: '# Flow\n\nDirect add body', contentType: 'text/markdown' },
+    });
+    const accepted = await app.inject({ method: 'POST', url: '/api/ingest/files', ...upload });
+
+    expect(accepted.statusCode).toBe(200);
+    expect(accepted.json().items).toHaveLength(1);
+    const item = accepted.json().items[0];
+    expect(item).toMatchObject({ fileName: 'flow.md', doc: { title: 'flow', status: 'PUBLISHED' } });
+
+    const treeCategories = await app.inject({ method: 'GET', url: '/api/tree/categories' });
+    expect(treeCategories.statusCode).toBe(200);
+    const welfare = treeCategories.json().find((category: { name: string }) => category.name === '복지');
+    expect(welfare?.items).toEqual(expect.arrayContaining([expect.objectContaining({ id: item.documentId, title: 'flow' })]));
+
+    const digest = await app.inject({ method: 'GET', url: '/api/home/digest' });
+    expect(digest.statusCode, digest.payload).toBe(200);
+    expect(digest.json()).toMatchObject({
+      topSearch: '복지',
+      leadCounts: { detected: 1, conflicts: 0, toApply: 0 },
+      metrics: { pendingReview: 0, extractedCount: 1, autoAppliedCount: 1 },
+    });
+    expect(digest.json().sections).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          title: '새로 정리된 조직 지식',
+          entities: expect.arrayContaining([expect.objectContaining({ itemId: item.documentId, title: 'flow' })]),
+        }),
+      ]),
+    );
+    expect(digest.payload).not.toContain('법인카드 정산');
+    expect(digest.payload).not.toContain('건강검진 안내');
 
     await app.close();
   });

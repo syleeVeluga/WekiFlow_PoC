@@ -42,10 +42,10 @@ import {
   canReview,
   createSeedActivity,
   createSeedAiTagSuggestions,
-  createSeedDigest,
   createSeedKnowledgeItems,
   createSeedMultiSourceGroups,
   createSeedReviews,
+  createWorkspaceDigest,
   createDefaultTopics,
   createDefaultRuntimeConfig,
   defaultCandidateStatusForProvenance,
@@ -780,9 +780,13 @@ export class InMemoryWekiFlowStore implements WekiFlowStore {
   }
 
   async homeDigest(): Promise<DailyDigest> {
-    if (!this.settingsState.reviewApprovalEnabled) return createSeedDigest(0);
-    const pendingReview = (await this.listRichReviews()).length + (await this.listMultiSource()).length;
-    return createSeedDigest(pendingReview);
+    const [reviewItems, multiSourceGroups] = await Promise.all([this.listRichReviews(), this.listMultiSource()]);
+    return createWorkspaceDigest({
+      knowledgeItems: [...this.knowledge.values()],
+      pendingReview: reviewItems.length + multiSourceGroups.length,
+      conflictCount: multiSourceGroups.filter((group) => group.multiSourceType === 'C').length,
+      activityCount: this.activity.length,
+    });
   }
 
   async listActivity(limit = 5): Promise<ReturnType<typeof createSeedActivity>> {

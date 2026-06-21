@@ -6,17 +6,22 @@ const port = Number(process.env.PLAYWRIGHT_API_PORT ?? 4100);
 const host = process.env.PLAYWRIGHT_HOST ?? '127.0.0.1';
 
 const store = new InMemoryWekiFlowStore();
+
+function clearWorkspaceData() {
+  store.documents.clear();
+  store.knowledge.clear();
+  store.richReviews.clear();
+  store.multiSource.clear();
+  store.aiTagSuggestions.clear();
+  store.candidates.clear();
+  store.agentRuns.clear();
+  store.trash.clear();
+  store.ingestMeta.clear();
+  store.activity.length = 0;
+}
+
 store.seed();
-store.documents.clear();
-store.knowledge.clear();
-store.richReviews.clear();
-store.multiSource.clear();
-store.aiTagSuggestions.clear();
-store.candidates.clear();
-store.agentRuns.clear();
-store.trash.clear();
-store.ingestMeta.clear();
-store.activity.length = 0;
+clearWorkspaceData();
 store.seed = () => undefined;
 
 const app = buildServer({
@@ -27,6 +32,12 @@ const app = buildServer({
     usedTrustLevels: [],
     needsAttention: false,
   }),
+});
+
+app.post('/api/__test/reset', async () => {
+  clearWorkspaceData();
+  await store.updateSettings({ reviewApprovalEnabled: false }, 'OWNER');
+  return { ok: true };
 });
 
 await app.listen({ port, host });
